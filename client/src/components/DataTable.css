@@ -1,0 +1,312 @@
+/* Table Header Styling */
+.dataTables_wrapper .dataTables_filter input {
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    padding: 6px 12px;
+    margin-left: 10px;
+    outline: none;
+}
+
+.dataTables_wrapper .dataTables_length select {
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 4px;
+}
+
+/* Table Body Styling */
+table.dataTable thead th {
+    background-color: #f8fafc;
+    color: #1e293b;
+    font-weight: 700;
+    text-transform: uppercase;
+    font-size: 12px;
+    border-bottom: 2px solid #e2e8f0 !important;
+}
+
+table.dataTable td {
+    font-size: 14px;
+    color: #475569;
+    padding: 12px !important;
+}
+
+/* Pagination Buttons */
+.dataTables_wrapper .dataTables_paginate .paginate_button.current {
+    background: #2563eb !important;
+    color: white !important;
+    border: 1px solid #2563eb !important;
+    border-radius: 6px;
+}
+
+.dataTables_wrapper .dataTables_paginate .paginate_button:hover {
+    background: #eff6ff !important;
+    color: #2563eb !important;
+    border: 1px solid #dbeafe !important;
+}
+
+tr.dtrg-level-0 {
+    display: none !important;
+}
+
+.expanded-data-row {
+    background-color: #f8fafc !important; /* Halka highlight color */
+}
+
+
+/* Excel Button Styling */
+.excel-export-button {
+    background-color: #16a34a !important;
+    color: white !important;
+    border: none !important;
+    padding: 8px 16px !important;
+    border-radius: 6px !important;
+    font-weight: 600 !important;
+    font-size: 13px !important;
+    cursor: pointer;
+    transition: background 0.3s;
+}
+
+.excel-export-button:hover {
+    background-color: #15803d !important;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+/* Print Button Styling */
+.print-button {
+    background-color: #475569 !important; /* Slate color */
+    color: white !important;
+    border: none !important;
+    padding: 8px 16px !important;
+    border-radius: 6px !important;
+    font-weight: 600 !important;
+    font-size: 13px !important;
+    margin-left: 10px !important;
+}
+
+/* Search box ko right align karne ke liye */
+.dataTables_filter {
+    float: right;
+}
+
+.dataTables_filter input {
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    padding: 6px 12px;
+    outline: none;
+}
+
+/* Power BI Matrix Style */
+.pbi-matrix {
+    border: 1px solid #e2e8f0 !important;
+}
+
+/* Level 0: LOA Name */
+tr.group-level-0 {
+    background-color: #f1f5f9 !important;
+    cursor: pointer;
+    font-weight: 800;
+    color: #1e3a8a;
+}
+
+tr.group-level-0 td {
+    border-left: 5px solid #2563eb !important;
+    padding: 10px !important;
+}
+
+/* Level 1: Cost/Revenue */
+tr.group-level-1 {
+    background-color: #f8fafc !important;
+    cursor: pointer;
+    font-weight: 700;
+    color: #334155;
+}
+
+tr.group-level-1 td {
+    border-left: 5px solid #94a3b8 !important;
+    padding: 8px !important;
+}
+
+/* Indentation for Level 1 */
+.pl-8 {
+    padding-left: 35px !important;
+}
+
+/* Actual Data Rows (Categories) */
+.pbi-matrix tbody tr:not(.group-level-0):not(.group-level-1) td {
+    padding-left: 60px !important;
+    font-size: 12px;
+    color: #64748b;
+    background-color: #ffffff;
+}
+
+/* Icons */
+.toggle-icon {
+    display: inline-block;
+    width: 15px;
+    font-size: 10px;
+    margin-right: 5px;
+}
+
+.text-right {
+    text-align: right !important;
+}
+
+/* Table Layout Fix */
+.pbi-table {
+    table-layout: auto !important; /* 🔥 Columns ko fix rakhega */
+    width: 100% !important;
+    border-collapse: collapse !important;
+    margin: 0 !important;
+}
+
+/* Har column ki ek minimum width set karein taaki data wrap na ho */
+.pbi-table th, .pbi-table td {
+    width: 120px; /* Default width */
+    min-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: normal !important;
+    border: 1px solid #e2e8f0 !important;
+    word-wrap: break-word; /* Words ko break karega agar column se bahar jayein */
+    max-width: 300px; /* Kisi bhi column ko 300px se bada nahi hone dega */
+    vertical-align: top !important;
+}
+
+.pbi-table th:nth-child(10) {
+    min-width: 150px !important; /* Is column ko thodi extra jagah dein */
+}
+
+/* Specific widths for larger columns */
+.pbi-table th:nth-child(2), .pbi-table td:nth-child(2), /* Customer */
+.pbi-table th:nth-child(3), .pbi-table td:nth-child(3), /* LOA Name */
+.pbi-table th:nth-child(6), .pbi-table td:nth-child(6)  /* Category */ {
+    width: 250px !important;
+}
+
+.pbi-table tbody tr:hover td {
+    background-color: #f1f5f9 !important;
+    cursor: default;
+}
+
+/* Header Styling */
+.pbi-table thead th {
+    background-color: #004593 !important;
+    color: white !important;
+    border: 1px solid #003366 !important;
+    font-size: 11px;
+    text-align: center !important;
+    white-space: normal !important;
+    min-width: 100px;
+    vertical-align: middle !important;
+}
+
+/* Totals Alignment */
+.text-right {
+    text-align: right !important;
+    padding-right: 10px !important;
+}
+
+.text-left { 
+    text-align: left !important; 
+    padding-right: 10px !important;
+}
+
+/* Parent/Child Row Colors */
+tr.group-parent { background-color: #f1f5f9 !important; font-weight: bold; }
+tr.group-child {
+    background-color: #ffffff !important;
+    border-top: 2px solid #e2e8f0 !important;
+    cursor: pointer;
+}
+
+tr.group-child.expanded {
+    background-color: #f1f5f9 !important;
+}
+
+tr.group-child:hover {
+    background-color: #f8fafc !important;
+}
+
+/* 3. Repeated values ko hide karne ka logic (First 5 columns) */
+/* Jab row expanded-data-row ho, toh pehle 5 cells ka text transparent kar dein */
+tr.expanded-data-row td:nth-child(1),
+tr.expanded-data-row td:nth-child(2),
+tr.expanded-data-row td:nth-child(3),
+tr.expanded-data-row td:nth-child(4),
+tr.expanded-data-row td:nth-child(5) {
+    color: transparent !important;
+    user-select: none; /* Text select na ho sake */
+    border-right: none !important; /* Clean look ke liye borders hatayein */
+}
+
+/* Data Rows (Categories) */
+.pbi-table tbody tr:not(.group-child) td {
+    background-color: #fdfdfd;
+    padding-left: 40px !important;
+    color: #64748b;
+    border: 1px solid #e2e8f0 !important;
+}
+
+
+
+/* Indentation */
+tr.group-child td.pbi-col {
+    padding-left: 25px !important;
+}
+
+.matrix-wrapper {
+    background: white;
+    padding: 0;
+    border-radius: none;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+    /* 🔥 YEH LINES UPDATE KAREIN */
+    width: 100%;
+    overflow-x: auto; /* Scroll sirf table ke andar hoga */
+    position: relative;
+    border: 1px solid #f1f5f9;
+}
+
+/* Select2 Modern Styling */
+.select2-container--default .select2-selection--single {
+    background-color: #f8fafc !important; /* slate-50 */
+    border: 1px solid #f1f5f9 !important;
+    border-radius: 12px !important;
+    height: 36px !important;
+    display: flex;
+    align-items: center;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__rendered {
+    color: #475569 !important; /* slate-600 */
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    padding-left: 12px !important;
+}
+
+.select2-container--default .select2-selection--single .select2-selection__arrow {
+    height: 34px !important;
+    right: 8px !important;
+}
+
+.select2-dropdown {
+    border: 1px solid #f1f5f9 !important;
+    border-radius: 12px !important;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1) !important;
+    overflow: hidden;
+}
+
+.select2-search--dropdown .select2-search__field {
+    border: 1px solid #e2e8f0 !important;
+    border-radius: 8px !important;
+    padding: 6px !important;
+    font-size: 13px !important;
+    outline: none !important;
+}
+
+.select2-results__option {
+    font-size: 13px !important;
+    padding: 8px 12px !important;
+}
+
+.select2-container--default .select2-results__option--highlighted[aria-selected] {
+    background-color: #2563eb !important; /* blue-600 */
+}

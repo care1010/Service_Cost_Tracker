@@ -1,0 +1,36 @@
+{
+  "name": "client",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "ag-grid-community": "^35.2.0",
+    "ag-grid-react": "^35.2.0",
+    "axios": "^1.6.0",
+    "datatables.net-buttons-dt": "^3.2.6",
+    "datatables.net-dt": "^2.3.7",
+    "datatables.net-rowgroup-dt": "^1.6.0",
+    "jquery": "^4.0.0",
+    "jszip": "^3.10.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "5.0.1",
+    "recharts": "^3.8.1",
+    "select2": "^4.1.0-rc.0"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build"
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  }
+}
