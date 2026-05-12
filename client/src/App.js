@@ -1,32 +1,57 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import SummaryView from './pages/SummaryView';
 import AddProject from './pages/AddProject';
-import PtdAutomation from './pages/PtdAutomation'; // 🔥 YEH IMPORT MISSING THA
+import PtdAutomation from './pages/PtdAutomation';
 import AsblAutomation from './pages/AsblAutomation';
 import Dashboard from './pages/Dashboard';
+import Login from './pages/Login';
 
 function App() {
+  const [user, setUser] = useState(null);
   const [activeTab, setActiveTab] = useState('summary');
+
+  // Check if user is already logged in
+  useEffect(() => {
+    const savedUser = localStorage.getItem('user');
+    if (savedUser) setUser(JSON.parse(savedUser));
+  }, []);
+
+const handleLogout = () => {
+    if (window.confirm("Are you sure you want to sign out?")) {
+      localStorage.removeItem('user'); // Browser se data hataya
+      setUser(null); // State null ki (Isse automatic Login page aa jayega)
+    }
+  };
+
+  if (!user) {
+    return <Login onLoginSuccess={(userData) => setUser(userData)} />;
+  }
 
   return (
     <div className="flex bg-slate-50 min-h-screen">
-      <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} />
+      <Sidebar 
+        activeTab={activeTab} 
+        setActiveTab={setActiveTab} 
+        user={user} 
+        onLogout={handleLogout} 
+      />
 
       <main className="flex-1 ml-64 p-8 bg-[#fcfcfd] min-h-screen overflow-x-hidden">
         
         <div className="mb-8">
           <h1 className="text-3xl font-extrabold text-slate-800 tracking-tight">
-            NI India <span className="text-blue-600">Cost Tracker</span>
+            Financial Services <span className="text-blue-600">Cost Tracker Platform</span>
           </h1>
         </div>
 
         {/* Dynamic Content */}
-        {activeTab === 'summary' && <SummaryView />}
+        {activeTab === 'summary' && <SummaryView user={user} />}
         {activeTab === 'add-project' && <AddProject />}
         {activeTab === 'ptd' && <PtdAutomation />}
         {activeTab === 'asbl' && <AsblAutomation />}
         {activeTab === 'dashboard' && <Dashboard />}
+
 
         {/* Sirf un tabs ke liye jo abhi nahi bane hain */}
         {['ftc'].includes(activeTab) && (

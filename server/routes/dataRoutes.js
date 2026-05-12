@@ -8,6 +8,8 @@ const projectController = require('../controllers/projectController');
 const path = require('path');
 // ASBL Update route
 const asblController = require('../controllers/asblController');
+const authController = require('../controllers/authController');
+
 
 // In teeno routes ke naam controller ke function se match hone chahiye
 router.get('/wbs-summary', dataController.getWbsSummary);
@@ -17,11 +19,15 @@ router.get('/categories', dataController.getCategories);
 router.post('/save-project', dataController.saveProjectData);
 router.post('/update-non-committed', dataController.updateNonCommitted);
 router.post('/ptd-automation', upload.single('file'), ptdController.uploadPtdData);
+router.get('/review-changes', dataController.getReviewChanges);
+router.post('/finalize-changes', dataController.finalizeChanges);
 router.post('/process-project-paste', projectController.processProjectPaste);
 router.get('/download-template', (req, res) => {
     const filePath = path.join(__dirname, '../../ASBL_Data_Template.xlsx');
     res.download(filePath);
 });
+
+router.post('/login', authController.login);
 
 router.get('/analytics-bu', dataController.getBuAnalytics);
 router.get('/analytics-loa', dataController.getLoaAnalytics);

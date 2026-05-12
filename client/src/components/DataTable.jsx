@@ -10,7 +10,6 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate }) => {
     const tableRef = useRef(null);
     const dataTableInstance = useRef(null);
 
-    // Helper: Numbers ko format karne ke liye (2 decimal places)
     const fmt = (val) => {
         const num = parseFloat(val) || 0;
         return num.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -22,19 +21,18 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate }) => {
 
     const handleSave = async () => {
         const updates = [];
-        $('.nc-input.is-changed').each(function() {
+        $('.nc-input.is-changed').each(function () {
             updates.push({
                 loa_name: $(this).data('loa'),
                 categories: $(this).data('cat'),
                 value: $(this).val()
             });
         });
-
         if (updates.length === 0) return alert("No changes to save.");
-
         try {
             await axios.post('http://localhost:5000/api/data/update-non-committed', { updates });
-            alert("✅ Data Saved Successfully!");
+            alert("✅ Changes saved to Draft!");
+            $('.nc-input').removeClass('is-changed').css('border-color', '#e2e8f0');
             if (dataTableInstance.current) dataTableInstance.current.ajax.reload(null, false);
         } catch (err) { alert("❌ Save failed"); }
     };
@@ -42,25 +40,17 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate }) => {
     useEffect(() => {
         if (!tableRef.current) return;
 
-        // 🔥 LIVE CALCULATION & HIGHLIGHT LOGIC
-        $(tableRef.current).on('input', '.nc-input', function() {
+        // LIVE CALCULATION
+        $(tableRef.current).on('input', '.nc-input', function () {
             const $input = $(this);
             const $row = $input.closest('tr');
-            
-            // Mark as changed
             $input.addClass('is-changed').css('border-color', '#eab308');
-
-            // Get values from other cells in the same row
             const asbl = parseFloat($row.find('td:nth-child(7)').text().replace(/,/g, '')) || 0;
             const ptd = parseFloat($row.find('td:nth-child(9)').text().replace(/,/g, '')) || 0;
             const oc = parseFloat($row.find('td:nth-child(10)').text().replace(/,/g, '')) || 0;
             const nc = parseFloat($input.val()) || 0;
-
-            // Live Math
             const newEac = ptd + oc + nc;
             const newVar = asbl - newEac;
-
-            // Update EAC and Variance cells (Columns 12 and 13)
             $row.find('td:nth-child(12)').text(fmt(newEac));
             $row.find('td:nth-child(13)').text(fmt(newVar));
         });
@@ -88,30 +78,23 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate }) => {
                 data: col.field,
                 defaultContent: "-",
                 className: col.header.match(/ASBL|PTD|EAC|COMMITTED/i) ? 'text-right' : 'text-left',
-                render: function(data, type, row) {
-                    if (col.field === 'non_committed') {
-                        if (row.categories) {
-                            // 🔥 COMPARISON: Agar edited value original se alag hai toh Blue highlight
-                                const original = parseFloat(row.non_committed_original) || 0;
-                                const current = parseFloat(data) || 0;
-                                const isModified = current !== original;
-                                
-                                const highlightClass = isModified ? 'bg-blue-100 border-blue-500 text-blue-900' : 'border-gray-200';
+                render: function (data, type, row) {
+                    // 🔥 Metadata columns ko sirf Category rows mein blank rakhein
+                    const metadataFields = ['bu', 'customer', 'loa_name', 'loa_id', 'cost_revenue'];
+                    if (metadataFields.includes(col.field) && row.categories) {
+                        return ""; 
+                    }
 
-                                return `<input type="number" 
-                                        class="nc-input w-24 p-1 border-2 ${highlightClass} text-right font-bold rounded shadow-sm" 
-                                        value="${current}" 
-                                        data-loa="${row.loa_name}" 
-                                        data-cat="${row.categories}"
-                                        title="Original Value: ${original}">`; // Hover karne par purani value dikhegi
+                    if (col.header === 'Non Committed' || col.field === 'non_committed') {
+                        if (row.categories) {
+                            const original = parseFloat(row.non_committed_original) || 0;
+                            const current = parseFloat(data) || 0;
+                            const isModified = Math.abs(current - original) > 0.01;
+                            const highlightClass = isModified ? 'bg-blue-50 border-blue-400 text-blue-700' : 'border-slate-200';
+                            return `<input type="number" class="nc-input w-24 p-1 border-2 ${highlightClass} text-right font-bold rounded-lg shadow-sm" value="${current}" data-loa="${row.loa_name}" data-cat="${row.categories}" title="Original: ${original}">`;
                         }
                     }
-                    // EAC aur Variance ko 2 decimal tak fix karein
-                    if (col.field === 'eac' || col.field === 'eac_vs_asbl') {
-                        return fmt(data);
-                    }
-                    // Format numbers to 2 decimal places
-                    if (type === 'display' && !isNaN(data) && col.field !== 'bu' && col.field !== 'loa_id') {
+                    if (col.field === 'eac' || col.field === 'eac_vs_asbl' || (type === 'display' && !isNaN(data) && !metadataFields.includes(col.field))) {
                         return fmt(data);
                     }
                     return data;
@@ -121,47 +104,94 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate }) => {
             rowGroup: {
                 dataSrc: ['loa_name', 'cost_revenue'],
                 startRender: function (rows, group, level) {
-                    if (level === 0) return null; 
-                    const rowData = rows.data()[0];
-                    
+                    const rowData = rows.data().toArray()[0];
                     const asbl = calculateSum(rows, 'asbl');
                     const asbl_loa = calculateSum(rows, 'asbl_loa');
                     const ptd = calculateSum(rows, 'ptd');
                     const oc = calculateSum(rows, 'open_commitment');
                     const nc = calculateSum(rows, 'non_committed');
                     const eac = ptd + oc + nc;
-                    const variance = asbl - eac;
+                    const varTotal = asbl - eac;
 
-                    return $(`
-                        <tr class="group-child">
-                            <td class="pbi-col"><span class="toggle-icon">➕</span> ${rowData.bu}</td>
-                            <td>${rowData.customer}</td>
-                            <td>${rowData.loa_name}</td>
-                            <td>${rowData.loa_id}</td>
-                            <td class="font-bold">${group}</td>
-                            <td></td>
-                            <td class="text-right font-bold">${fmt(asbl)}</td>
-                            <td class="text-right font-bold">${fmt(asbl_loa)}</td>
-                            <td class="text-right font-bold">${fmt(ptd)}</td>
-                            <td class="text-right font-bold">${fmt(oc)}</td>
-                            <td class="text-right font-bold">${fmt(nc)}</td>
-                            <td class="text-right font-bold">${fmt(eac)}</td>
-                            <td class="text-right font-bold">${fmt(variance)}</td>
-                        </tr>
-                    `);
+                    if (level === 0) {
+                        // 🔥 PARENT ROW (Level 0): Metadata + Totals
+                        return $(`
+                            <tr class="group-parent">
+                                <td class="pbi-col font-black text-blue-800"><span class="toggle-icon">➕</span> ${rowData.bu}</td>
+                                <td class="font-bold text-slate-700">${rowData.customer}</td>
+                                <td class="font-bold text-slate-700">${group}</td>
+                                <td class="font-bold text-slate-700">${rowData.loa_id}</td>
+                                <td></td><td></td>
+                                <td class="text-right font-bold text-slate-900">${fmt(asbl)}</td>
+                                <td class="text-right font-bold text-slate-900">${fmt(asbl_loa)}</td>
+                                <td class="text-right font-bold text-slate-900">${fmt(ptd)}</td>
+                                <td class="text-right font-bold text-slate-900">${fmt(oc)}</td>
+                                <td class="text-right font-bold text-slate-900">${fmt(nc)}</td>
+                                <td class="text-right font-bold text-slate-900">${fmt(eac)}</td>
+                                <td class="text-right font-bold text-slate-900">${fmt(varTotal)}</td>
+                            </tr>
+                        `);
+                    } else {
+                        // 🔥 CHILD ROW (Level 1): Metadata + Cost/Revenue + Totals
+                        return $(`
+                            <tr class="group-child">
+                                <td class="text-slate-400">${rowData.bu}</td>
+                                <td class="text-slate-400">${rowData.customer}</td>
+                                <td class="text-slate-400">${rowData.loa_name}</td>
+                                <td class="text-slate-400">${rowData.loa_id}</td>
+                                <td class="pbi-col font-bold text-slate-600"><span class="toggle-icon">➕</span> ${group}</td>
+                                <td></td>
+                                <td class="text-right font-bold text-slate-700">${fmt(asbl)}</td>
+                                <td class="text-right font-bold"></td>
+                                <td class="text-right font-bold text-slate-700">${fmt(ptd)}</td>
+                                <td class="text-right font-bold text-slate-700">${fmt(oc)}</td>
+                                <td class="text-right font-bold text-slate-700">${fmt(nc)}</td>
+                                <td class="text-right font-bold text-slate-700">${fmt(eac)}</td>
+                                <td class="text-right font-bold text-slate-700">${fmt(varTotal)}</td>
+                            </tr>
+                        `);
+                    }
                 }
             },
             dom: '<"flex justify-between mb-4"lf>rt<"flex justify-between mt-4"ip>',
             drawCallback: function() {
                 const table = $(tableRef.current);
-                table.find('tbody tr:not(.group-child)').hide().addClass('expanded-data-row');
+                table.find('tbody tr:not(.group-parent)').hide();
+
+                // Parent Toggle
+                table.find('tbody').off('click', 'tr.group-parent').on('click', 'tr.group-parent', function() {
+                    const icon = $(this).find('.toggle-icon');
+                    const isExpanded = $(this).hasClass('expanded');
+                    const childGroups = $(this).nextUntil('tr.group-parent', 'tr.group-child');
+                    
+                    if (isExpanded) {
+                        $(this).nextUntil('tr.group-parent').hide();
+                        $(this).removeClass('expanded');
+                        icon.text('➕');
+                    } else {
+                        childGroups.show();
+                        $(this).addClass('expanded');
+                        icon.text('➖');
+                    }
+                    dataTableInstance.current.columns.adjust();
+                });
+
+                // Child Toggle
                 table.find('tbody').off('click', 'tr.group-child').on('click', 'tr.group-child', function() {
                     const icon = $(this).find('.toggle-icon');
                     const isExpanded = $(this).hasClass('expanded');
-                    const dataRows = $(this).nextUntil('tr.group-child');
-                    if (isExpanded) { dataRows.hide(); $(this).removeClass('expanded'); icon.text('➕'); }
-                    else { dataRows.show(); $(this).addClass('expanded'); icon.text('➖'); }
-                    if (dataTableInstance.current) dataTableInstance.current.columns.adjust();
+                    const dataRows = $(this).nextUntil('tr.group-child, tr.group-parent');
+                    
+                    if (isExpanded) {
+                        dataRows.hide();
+                        $(this).removeClass('expanded');
+                        icon.text('➕');
+                    } else {
+                        dataRows.show();
+                        $(this).addClass('expanded');
+                        icon.text('➖');
+                    }
+                    dataTableInstance.current.columns.adjust();
                 });
             }
         });
@@ -182,11 +212,11 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate }) => {
         <div className="matrix-wrapper bg-white p-6 rounded-[2rem] shadow-2xl border border-gray-100">
             <div className="flex justify-between items-center mb-6 border-b pb-4">
                 <h2 className="text-xl font-black text-slate-800">{title}</h2>
-                <button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-2xl font-bold text-sm shadow-lg flex items-center gap-2">
-                    💾 Save Changes
+                <button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-xl font-bold text-xs shadow-lg flex items-center gap-2 transition-all active:scale-95">
+                    💾 Save Draft Changes
                 </button>
             </div>
-            <table ref={tableRef} className="display nowrap pbi-table" style={{width: '100%'}}></table>
+            <table ref={tableRef} className="display nowrap pbi-table" style={{ width: '100%' }}></table>
         </div>
     );
 };

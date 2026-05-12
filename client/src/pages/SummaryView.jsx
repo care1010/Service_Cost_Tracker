@@ -4,33 +4,92 @@ import DataTable from '../components/DataTable';
 import FilterBar from '../components/FilterBar';
 import KpiCards from '../components/KpiCards';
 import AsblModal from '../components/AsblModal';
+import ReviewChanges from './ReviewChanges';
 
-const SummaryView = () => {
+const SummaryView = ({ user }) => {
+    // 1. SAARE STATES (Hamesha sabse upar)
     const [filters, setFilters] = useState({
         wbs: 'All', customer: 'All', loa_id: 'All', loa_name: 'All', active_inactive: 'All', period: 'All'
     });
     const [options, setOptions] = useState({});
     const [kpiData, setKpiData] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [showAll, setShowAll] = useState(false); // 🔥 Naya State
+    const [showAll, setShowAll] = useState(true); 
+    const [loading, setLoading] = useState(false);
+    const [isReviewMode, setIsReviewMode] = useState(false);
+
+    // 2. SAARE EFFECTS (Hooks order maintain karne ke liye)
+    // SummaryView.jsx mein fetchOptions ko update karein
 
     useEffect(() => {
-        const fetchOptions = async () => {
-            try {
-                const res = await axios.get(`http://localhost:5000/api/data/filter-options`);
-                setOptions(res.data);
-            } catch (err) { console.error("Error:", err); }
-        };
+    const fetchOptions = async () => {
+        try {
+            const userType = user?.type || 'user';
+            const customers = user?.allowedCustomers ? user.allowedCustomers.join(',') : '';
+            
+            // URLSearchParams use karna sabse safe hai
+            const params = new URLSearchParams({
+                ...filters,
+                type: userType,
+                allowedCustomers: customers
+            });
+
+            const res = await axios.get(`http://localhost:5000/api/data/filter-options?${params.toString()}`);
+            setOptions(res.data);
+        } catch (err) {
+            console.error("Error fetching filter options:", err);
+        }
+    };
+
+    if (user) {
         fetchOptions();
+    }
+}, [user, filters]); // Filters badalne par dropdowns refresh honge
+
+    // 3. SAARE HANDLERS (useCallback hooks)
+    const handleFilterChange = (name, value) => setFilters(prev => ({ ...prev, [name]: value }));
+    
+    const handleReset = () => setFilters({ 
+        wbs: 'All', customer: 'All', loa_id: 'All', loa_name: 'All', active_inactive: 'All', period: 'All' 
+    });
+
+    const handleKpiUpdate = useCallback((data) => {
+        setKpiData(data);
     }, []);
 
-    const handleFilterChange = (name, value) => setFilters(prev => ({ ...prev, [name]: value }));
-    const handleReset = () => setFilters({ wbs: 'All', customer: 'All', loa_id: 'All', loa_name: 'All', active_inactive: 'All', period: 'All' });
-    const handleKpiUpdate = useCallback((data) => setKpiData(data), []);
+    const handleFullExport = () => {
+        const exportUrl = new URL('http://localhost:5000/api/data/export-excel');
+        exportUrl.searchParams.append('showAll', showAll);
+        Object.keys(filters).forEach(key => {
+            if (filters[key] && filters[key] !== 'All') exportUrl.searchParams.append(key, filters[key]);
+        });
+        window.location.href = exportUrl.toString();
+    };
 
-    const queryParams = new URLSearchParams(filters).toString();
-    // 🔥 FIX: dynamicApiUrl sirf ek baar declare kiya hai
-    const dynamicApiUrl = `http://localhost:5000/api/data/wbs-summary?${queryParams}&showAll=${showAll}`;
+    const handleFullRefresh = async () => {
+        if(!window.confirm("This will take 1-2 minutes. Are you sure?")) return;
+        setLoading(true);
+        try {
+            const res = await axios.post('http://localhost:5000/api/data/full-refresh');
+            alert(res.data.message);
+            window.location.reload(); 
+        } catch (err) { alert("Refresh failed"); }
+        finally { setLoading(false); }
+    };
+
+    const handleAsblSubmit = (data) => {
+        setIsModalOpen(false);
+    };
+
+    // 4. LOGIC CALCULATIONS
+    const queryParams = new URLSearchParams(filters);
+    queryParams.append('showAll', showAll);
+    queryParams.append('type', user?.type); // 🔥 Role bhejien
+    if (user?.allowedCustomers) {
+        queryParams.append('allowedCustomers', user.allowedCustomers.join(',')); // 🔥 Customers bhejien
+}
+
+    const dynamicApiUrl = `http://localhost:5000/api/data/wbs-summary?${queryParams.toString()}`;
 
     const tableColumns = [
         { header: 'BU', field: 'bu' },
@@ -43,143 +102,68 @@ const SummaryView = () => {
         { header: 'ASBL LOA', field: 'asbl_loa' },
         { header: 'PTD', field: 'ptd' },
         { header: 'Open Com.', field: 'open_commitment' },
-        { header: 'Non Committed', field: 'non_committed' }, // 🔥 Yeh editable banega
+        { header: 'Non Committed', field: 'non_committed' },
         { header: 'EAC', field: 'eac' },
         { header: 'EAC vs ASBL', field: 'eac_vs_asbl' }
     ];
 
-const handleFullExport = () => {
-        const exportUrl = new URL('http://localhost:5000/api/data/export-excel');
-        Object.keys(filters).forEach(key => {
-            if (filters[key] && filters[key] !== 'All') exportUrl.searchParams.append(key, filters[key]);
-        });
-        window.location.href = exportUrl.toString();
-    };
+    // 🔥 5. CONDITIONAL RETURN (Hamesha saare hooks ke BAAD aana chahiye)
+    if (isReviewMode) {
+        return <ReviewChanges onBack={() => setIsReviewMode(false)} />;
+    }
 
-const handleFullRefresh = async () => {
-    if(!window.confirm("This will take 2-3 minutes. Are you sure?")) return;
-    setLoading(true);
-    try {
-        const res = await axios.post('http://localhost:5000/api/data/full-refresh');
-        alert(res.data.message);
-        window.location.reload(); // Reload to see fresh data
-    } catch (err) { alert("Refresh failed"); }
-    finally { setLoading(false); }
-};
-
-const handleAsblSubmit = (data) => {
-        console.log("Pasted Data:", data);
-        // Abhi ke liye sirf console kar rahe hain, baad mein processing logic likhenge
-        alert("Data received! Processing logic will be added in next step.");
-        setIsModalOpen(false);
-    };
-
+    // 6. FINAL UI RETURN
     return (
-        <div className="p-5 bg-[#f8fafc] min-h-screen">
-            {/* --- TOP HEADER SECTION (Shifted Up) --- */}
-            <div className="flex justify-between items-start mb-4">
-                <div className="flex justify-center items-center py-4">
-                    <h1 className="text-3xl md:text-4xl font-black tracking-tight text-center relative group">
-                        
-                        <span className="text-slate-900">
-                        Financial Services
-                        </span>{' '}
-                        
-                        <span className="bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
-                        Cost Tracker Platform
-                        </span>
-
-                        {/* Animated underline */}
-                        <span className="absolute left-1/2 -bottom-2 h-[3px] w-0 bg-gradient-to-r from-blue-600 to-indigo-600 transition-all duration-500 group-hover:w-full group-hover:left-0"></span>
-                        
-                    </h1>
-                    </div>
-                
-                {/* Compact Last Updated Tile */}
-                <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-xl shadow-sm border border-slate-100">
-                    <span className="text-[16px]">📅</span>
-                    <div className="leading-tight">
-                        <div className="text-[9px] font-bold text-slate-400 uppercase">Updated</div>
-                        <div className="text-[11px] font-bold text-slate-700">{new Date().toLocaleDateString()}</div>
-                    </div>
+        <div className="p-5 bg-[#f8fafc] min-h-screen relative">
+            {loading && (
+                <div className="fixed inset-0 z-[3000] bg-slate-900/80 backdrop-blur-md flex flex-col items-center justify-center text-white">
+                    <div className="w-20 h-20 border-4 border-orange-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                    <h2 className="text-xl font-bold">Performing Full System Sync...</h2>
                 </div>
-            </div>
+            )}
 
-            {/* --- FILTERS (More Compact) --- */}
+            
+
             <FilterBar filters={filters} options={options} onFilterChange={handleFilterChange} onReset={handleReset} />
             
-            {/* --- KPI & EXCEL ROW --- */}
             <div className="flex flex-col lg:flex-row gap-4 mb-6 items-stretch">
                 <div className="flex-1">
                     <KpiCards data={kpiData} />
                 </div>
                 
-                {/* EXPORT BUTTON (KPIs ke side mein) */}
-                {/* BUTTONS GROUP */}
                 <div className="flex gap-3">
-                    {/* Export Excel */}
-                    <button onClick={handleFullExport} className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 rounded-3xl shadow-lg shadow-emerald-100 flex flex-col items-center justify-center transition-all hover:-translate-y-1 min-w-[110px]">
+                    <button onClick={handleFullExport} className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 rounded-3xl shadow-lg flex flex-col items-center justify-center transition-all min-w-[100px]">
                         <span className="text-xl mb-1">📥</span>
-                        <span className="text-[10px] font-bold uppercase tracking-wider">Export</span>
+                        <span className="text-[10px] font-bold uppercase">Export</span>
                     </button>
 
-                    {/* Add ASBL Button */}
-                    <button 
-                        onClick={() => setIsModalOpen(true)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-5 rounded-3xl shadow-lg shadow-blue-100 flex flex-col items-center justify-center transition-all hover:-translate-y-1 min-w-[110px]"
+
+                    <button onClick={() => setShowAll(!showAll)}
+                        className={`px-5 rounded-3xl shadow-lg flex flex-col items-center justify-center transition-all ${showAll ? 'bg-orange-500 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
                     >
-                        <span className="text-xl mb-1">➕</span>
-                        <span className="text-[10px] font-bold uppercase tracking-wider">Add ASBL</span>
+                        <span className="text-xl mb-1">{showAll ? '🎯' : '📂'}</span>
+                        <span className="text-[10px] font-bold uppercase">{showAll ? 'Showing All' : 'All Categories'}</span>
                     </button>
 
-                    {/* UI mein button add karein (KPIs ke paas) */}
-                    <button 
-                        onClick={() => setShowAll(!showAll)}
-                        className={`px-4 py-2 rounded-3xl font-bold text-[10px] uppercase transition-all ${showAll ? 'bg-orange-500 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
-                    >
-                        {showAll ? '🎯 Showing All' : '📂 All Categories'}
+                    <button onClick={() => setIsReviewMode(true)} className="bg-amber-500 hover:bg-amber-600 text-white px-5 rounded-3xl shadow-lg flex flex-col items-center justify-center transition-all min-w-[100px]">
+                        <span className="text-xl mb-1">🔍</span>
+                        <span className="text-[10px] font-bold uppercase">Review</span>
                     </button>
 
-                    <button onClick={handleFullRefresh} className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-3xl shadow-lg text-[10px] font-bold uppercase">
-                        🔄 Full Sync from View
+                    <button onClick={handleFullRefresh} className="bg-slate-800 hover:bg-black text-white px-5 rounded-3xl shadow-lg flex flex-col items-center justify-center transition-all min-w-[100px]">
+                        <span className="text-xl mb-1">🔄</span>
+                        <span className="text-[10px] font-bold uppercase">Full Sync</span>
                     </button>
                 </div>
             </div>
 
-            {/* DataTable */}
-            <div className="rounded-[1.5rem] overflow-hidden shadow-xl border border-white">
+            <div className="rounded-[1.5rem] overflow-hidden shadow-xl border border-white bg-white">
                 <DataTable title="" columns={tableColumns} apiUrl={dynamicApiUrl} filters={filters} onKpiUpdate={handleKpiUpdate} />
             </div>
 
-            {/* 🔥 ASBL MODAL */}
-            <AsblModal 
-                isOpen={isModalOpen} 
-                onClose={() => setIsModalOpen(false)} 
-                onSubmit={handleAsblSubmit} 
-            />
+            <AsblModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSubmit={handleAsblSubmit} />
         </div>
     );
-
-
-
-
-//     return (
-//         <div className="p-4 bg-gray-50 min-h-screen">
-//             <FilterBar filters={filters} options={options} onFilterChange={(n, v) => setFilters({...filters, [n]: v})} onReset={() => setFilters({bu:'All', customer:'All', loa_id:'All', loa_name:'All', active_inactive:'All', period:'All'})} />
-            
-//             {/* 🔥 KPI CARDS SECTION */}
-//             <KpiCards data={kpiData} />
-
-//             <DataTable 
-//                 title="" 
-//                 columns={tableColumns} 
-//                 apiUrl={dynamicApiUrl} 
-//                 filters={filters}
-                
-//                 onKpiUpdate={handleKpiUpdate}
-//             />
-//         </div>
-//     );
 };
 
 export default SummaryView;

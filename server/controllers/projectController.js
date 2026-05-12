@@ -27,7 +27,8 @@ const CATEGORY_MAP = [
     { cat: "ADD WARR PROV CUST P", type: "Cost" }, { cat: "REL EX WAR PROV C PR", type: "Cost" },
     { cat: "IMPORT FREIGHT FOR", type: "Cost" }, { cat: "Other", type: "Cost" },
     { cat: "I&C Services + DD Resources", type: "Cost" }, { cat: "TPM +EMS Resources", type: "Cost" },
-    { cat: "Cross ERP Cost", type: "Cost" }
+    { cat: "Cross ERP Cost", type: "Cost" },
+    { cat: "New Category", type: "Cost" }
 ];
 
 exports.processProjectPaste = async (req, res) => {

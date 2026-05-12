@@ -24,6 +24,16 @@ const Dashboard = () => {
 
     if (loading) return <div className="p-10 text-center font-bold">Loading Analytics...</div>;
 
+    // Agar data khali hai toh graph na dikhayein
+if (buData.length === 0) {
+    return (
+        <div className="p-20 text-center">
+            <h2 className="text-2xl font-bold text-slate-400">No data available for charts.</h2>
+            <p className="text-slate-300">Please perform a Full Sync or add projects first.</p>
+        </div>
+    );
+}
+
     return (
         <div className="p-6 space-y-10 bg-[#f8fafc] min-h-screen">
             <h1 className="text-3xl font-black text-slate-800 mb-8">Executive <span className="text-blue-600">Analytics</span></h1>

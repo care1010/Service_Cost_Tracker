@@ -13,13 +13,12 @@ const FilterBar = ({ filters, options, onFilterChange, onReset }) => {
         { label: 'Period', name: 'period' },
     ];
 
-    useEffect(() => {
-        // 1. Initialize Select2 on all dropdowns
-        const selects = $('.select2-dropdown').select2({
-            width: '100%',
-            placeholder: "Search...",
-            allowClear: false
-        });
+
+        useEffect(() => {
+    const selects = $('.select2-dropdown').select2({
+        width: '100%',
+        placeholder: "Search..."
+    });
 
         // 2. Handle Change Event
         selects.on('change', (e) => {
@@ -36,7 +35,7 @@ const FilterBar = ({ filters, options, onFilterChange, onReset }) => {
             selects.off('change');
             // selects.select2('destroy'); // Optional: React re-render issues se bachne ke liye ise comment rakhein
         };
-    }, [options, filters]); // Jab options ya filters badlein, Select2 update ho
+    }, [options]); // Jab options ya filters badlein, Select2 update ho
 
     return (
         <div className="bg-white p-4 rounded-[1.5rem] mb-4 shadow-sm border border-slate-50">

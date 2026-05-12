@@ -2,15 +2,16 @@ import React, { useState } from 'react';
 import './Sidebar.css';
 import logo from '../assets/OIP.jpg';
 
-const Sidebar = ({ activeTab, setActiveTab }) => {
-const [openMenu, setOpenMenu] = useState(false);
+// 🔥 FIX: Yahan brackets ke andar 'user' aur 'onLogout' add kiya
+const Sidebar = ({ activeTab, setActiveTab, user, onLogout }) => {
+  const [openMenu, setOpenMenu] = useState(false);
 
   const menuItems = [
     { id: 'summary', label: 'Summary View' },
-    { id: 'add-project', label: 'Add Project' },
+    { id: 'add-project', label: '+ Add Project' },
     { id: 'ptd', label: 'PTD' },
     { id: 'asbl', label: 'ASBL' },
-    { id: 'dashboard', label: 'Dashboard' },
+    { id: 'dashboard', label: 'Dashboard-Graph' },
   ];
 
   return (
@@ -36,37 +37,45 @@ const [openMenu, setOpenMenu] = useState(false);
       
       {/* PROFILE SECTION */}
       <div className="profile-section">
-  <div 
-    className="profile-icon"
-    onClick={() => setOpenMenu(!openMenu)}
-  >
-    <span className="user-icon">👤</span>
-  </div>
-
-  {openMenu && (
-    <div className="profile-card">
-      
-      <div className="profile-header">
-        <div className="avatar">N</div>
-        <div>
-          <div className="email">neha.sain.ext@nokia.com</div>
-          <div className="role">SUPER ADMIN</div>
+        <div 
+          className="profile-icon"
+          onClick={() => setOpenMenu(!openMenu)}
+        >
+          <span className="user-icon">👤</span>
         </div>
+
+        {openMenu && (
+          <div className="profile-card">
+            
+            <div className="profile-header">
+              {/* 🔥 Dynamic Avatar (Email ka pehla letter) */}
+              <div className="avatar">{user?.email?.charAt(0).toUpperCase() || 'U'}</div>
+              <div>
+                {/* 🔥 Dynamic Email aur Role */}
+                <div className="email">{user?.email || 'User'}</div>
+                <div className="role">{user?.type?.toUpperCase() || 'GUEST'}</div>
+              </div>
+            </div>
+
+            <div className="divider"></div>
+
+            {/* Admin Panel sirf Admin/Super Admin ko dikhega */}
+            {(user?.type === 'admin' || user?.type === 'super_admin') && (
+              <div className="menu-item">🛠 Admin Panel</div>
+            )}
+
+            {/* 🔥 SIGN OUT BUTTON (onLogout function ab defined hai) */}
+            <div className="menu-item" onClick={onLogout} style={{cursor: 'pointer'}}>
+              🚪 Sign Out
+            </div>
+
+            <div className="cancel-btn" onClick={() => setOpenMenu(false)}>
+              Cancel
+            </div>
+
+          </div>
+        )}
       </div>
-
-      <div className="divider"></div>
-
-      <div className="menu-item">🛠 Admin Panel</div>
-      <div className="menu-item">🚪 Sign Out</div>
-
-      <div className="cancel-btn" onClick={() => setOpenMenu(false)}>
-        Cancel
-      </div>
-
-    </div>
-  )}
-</div>
-
     </div>
   );
 };
