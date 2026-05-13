@@ -6,14 +6,14 @@ const AddProject = () => {
     const [loading, setLoading] = useState(false);
 
     const handleDownloadTemplate = () => {
-        window.location.href = 'http://localhost:5000/api/data/download-project-template';
+        window.location.href = `${process.env.REACT_APP_API_URL}/api/data/download-project-template`;
     };
 
     const handleProcess = async () => {
         if (!pasteData.trim()) return alert("Please paste Excel data first!");
         setLoading(true);
         try {
-            const res = await axios.post('http://localhost:5000/api/data/process-project-paste', { rawText: pasteData });
+            const res = await axios.post(`${process.env.REACT_APP_API_URL}/api/data/process-project-paste`, { rawText: pasteData });
             alert(res.data.message);
             setPasteData('');
         } catch (err) {

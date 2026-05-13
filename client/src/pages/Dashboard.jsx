@@ -11,8 +11,8 @@ const Dashboard = () => {
         const fetchData = async () => {
             try {
                 const [buRes, loaRes] = await Promise.all([
-                    axios.get('http://localhost:5000/api/data/analytics-bu'),
-                    axios.get('http://localhost:5000/api/data/analytics-loa')
+                    axios.get(`${process.env.REACT_APP_API_URL}/api/data/analytics-bu`),
+                    axios.get(`${process.env.REACT_APP_API_URL}/api/data/analytics-loa`)
                 ]);
                 setBuData(buRes.data);
                 setLoaData(loaRes.data);

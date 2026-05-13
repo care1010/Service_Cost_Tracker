@@ -6,7 +6,7 @@ const ReviewChanges = ({ onBack }) => {
     const handleFinalize = async () => {
         if (!window.confirm("Are you sure you want to finalize these changes?")) return;
         try {
-            const res = await axios.post('http://localhost:5000/api/data/finalize-changes');
+            const res = await axios.post(`${process.env.REACT_APP_API_URL}/api/data/finalize-changes`);
             alert(res.data.message);
             onBack(); 
         } catch (err) { alert("Finalize failed"); }
@@ -47,7 +47,7 @@ const ReviewChanges = ({ onBack }) => {
                 <DataTable 
                     title="" 
                     columns={tableColumns} 
-                    apiUrl="http://localhost:5000/api/data/review-changes" 
+                    apiUrl={`${process.env.REACT_APP_API_URL}/api/data/review-changes`} 
                     filters={{}} 
                     onKpiUpdate={() => {}} // Dummy function to prevent error
                 />

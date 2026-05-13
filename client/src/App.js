@@ -6,6 +6,7 @@ import PtdAutomation from './pages/PtdAutomation';
 import AsblAutomation from './pages/AsblAutomation';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
+import AdminPanel from './pages/AdminPanel';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -30,12 +31,8 @@ const handleLogout = () => {
 
   return (
     <div className="flex bg-slate-50 min-h-screen">
-      <Sidebar 
-        activeTab={activeTab} 
-        setActiveTab={setActiveTab} 
-        user={user} 
-        onLogout={handleLogout} 
-      />
+      {/* 🔥 Sidebar ab hamesha dikhega */}
+        <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} user={user} onLogout={handleLogout} />
 
       <main className="flex-1 ml-64 p-8 bg-[#fcfcfd] min-h-screen overflow-x-hidden">
         
@@ -51,6 +48,7 @@ const handleLogout = () => {
         {activeTab === 'ptd' && <PtdAutomation />}
         {activeTab === 'asbl' && <AsblAutomation />}
         {activeTab === 'dashboard' && <Dashboard />}
+        {activeTab === 'admin' && <AdminPanel onBack={() => setActiveTab('summary')} />}
 
 
         {/* Sirf un tabs ke liye jo abhi nahi bane hain */}

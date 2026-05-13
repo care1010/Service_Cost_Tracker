@@ -10,7 +10,7 @@ const Login = ({ onLoginSuccess }) => {
         e.preventDefault();
         setLoading(true);
         try {
-            const res = await axios.post('http://localhost:5000/api/data/login', { email, password });
+            const res = await axios.post(`${process.env.REACT_APP_API_URL}/api/data/login`, { email, password });
             // User data ko browser mein save karein
             localStorage.setItem('user', JSON.stringify(res.data.user));
             onLoginSuccess(res.data.user);

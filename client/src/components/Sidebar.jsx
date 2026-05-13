@@ -8,11 +8,15 @@ const Sidebar = ({ activeTab, setActiveTab, user, onLogout }) => {
 
   const menuItems = [
     { id: 'summary', label: 'Summary View' },
-    { id: 'add-project', label: '+ Add Project' },
-    { id: 'ptd', label: 'PTD' },
-    { id: 'asbl', label: 'ASBL' },
-    { id: 'dashboard', label: 'Dashboard-Graph' },
-  ];
+    { id: 'dashboard', label: 'Dashboard' },
+    // { id: 'loa-view', label: 'Loa Wise View' },
+    // Inhe sirf admin ya super_admin ko dikhao
+    ...(user?.type !== 'user' ? [
+        { id: 'add-project', label: 'Add Project' },
+        { id: 'ptd', label: 'PTD' },
+        { id: 'asbl', label: 'ASBL' }
+    ] : [])
+];
 
   return (
     <div className="sidebar-container">
@@ -59,10 +63,16 @@ const Sidebar = ({ activeTab, setActiveTab, user, onLogout }) => {
 
             <div className="divider"></div>
 
-            {/* Admin Panel sirf Admin/Super Admin ko dikhega */}
-            {(user?.type === 'admin' || user?.type === 'super_admin') && (
-              <div className="menu-item">🛠 Admin Panel</div>
-            )}
+            {/* 🔥 ROLE CHECK: Sirf Admin aur Super Admin ko dikhega */}
+        {(user?.type === 'admin' || user?.type === 'super_admin') && (
+            <div 
+                className="menu-item" 
+                onClick={() => { setActiveTab('admin'); setOpenMenu(false); }}
+                style={{ cursor: 'pointer' }}
+            >
+                🛠 Admin Panel
+            </div>
+        )}
 
             {/* 🔥 SIGN OUT BUTTON (onLogout function ab defined hai) */}
             <div className="menu-item" onClick={onLogout} style={{cursor: 'pointer'}}>

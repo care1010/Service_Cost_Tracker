@@ -18,7 +18,7 @@ const PtdAutomation = () => {
         setStatus('Processing Excel and Updating MySQL...');
 
         try {
-            const res = await axios.post('http://localhost:5000/api/data/ptd-automation', formData);
+            const res = await axios.post(`${process.env.REACT_APP_API_URL}/api/data/ptd-automation`, formData);
             alert(res.data.message);
             setStatus('Success!');
         } catch (err) {

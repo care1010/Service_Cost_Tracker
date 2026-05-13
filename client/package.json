@@ -15,7 +15,8 @@
     "react-dom": "^18.2.0",
     "react-scripts": "5.0.1",
     "recharts": "^3.8.1",
-    "select2": "^4.1.0-rc.0"
+    "select2": "^4.1.0-rc.0",
+    "sweetalert2": "^11.26.24"
   },
   "scripts": {
     "start": "react-scripts start",

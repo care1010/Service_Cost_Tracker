@@ -10,7 +10,7 @@ const AddProjectAutomation = () => {
 
         setLoading(true);
         try {
-            const res = await axios.post('http://localhost:5000/api/data/add-project-automation', {
+            const res = await axios.post(`${process.env.REACT_APP_API_URL}/api/data/add-project-automation`, {
                 rawData: pasteData
             });
             alert(res.data.message);

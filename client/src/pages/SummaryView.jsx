@@ -14,7 +14,7 @@ const SummaryView = ({ user }) => {
     const [options, setOptions] = useState({});
     const [kpiData, setKpiData] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
-    const [showAll, setShowAll] = useState(true); 
+    const [showAll, setShowAll] = useState(false); 
     const [loading, setLoading] = useState(false);
     const [isReviewMode, setIsReviewMode] = useState(false);
 
@@ -34,7 +34,7 @@ const SummaryView = ({ user }) => {
                 allowedCustomers: customers
             });
 
-            const res = await axios.get(`http://localhost:5000/api/data/filter-options?${params.toString()}`);
+            const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/data/filter-options?${params.toString()}`);
             setOptions(res.data);
         } catch (err) {
             console.error("Error fetching filter options:", err);
@@ -58,7 +58,7 @@ const SummaryView = ({ user }) => {
     }, []);
 
     const handleFullExport = () => {
-        const exportUrl = new URL('http://localhost:5000/api/data/export-excel');
+        const exportUrl = new URL(`${process.env.REACT_APP_API_URL}/api/data/export-excel`);
         exportUrl.searchParams.append('showAll', showAll);
         Object.keys(filters).forEach(key => {
             if (filters[key] && filters[key] !== 'All') exportUrl.searchParams.append(key, filters[key]);
@@ -70,7 +70,7 @@ const SummaryView = ({ user }) => {
         if(!window.confirm("This will take 1-2 minutes. Are you sure?")) return;
         setLoading(true);
         try {
-            const res = await axios.post('http://localhost:5000/api/data/full-refresh');
+            const res = await axios.post(`${process.env.REACT_APP_API_URL}/api/data/full-refresh`);
             alert(res.data.message);
             window.location.reload(); 
         } catch (err) { alert("Refresh failed"); }
@@ -89,7 +89,7 @@ const SummaryView = ({ user }) => {
         queryParams.append('allowedCustomers', user.allowedCustomers.join(',')); // 🔥 Customers bhejien
 }
 
-    const dynamicApiUrl = `http://localhost:5000/api/data/wbs-summary?${queryParams.toString()}`;
+    const dynamicApiUrl = `${process.env.REACT_APP_API_URL}/api/data/wbs-summary?${queryParams.toString()}`;
 
     const tableColumns = [
         { header: 'BU', field: 'bu' },
@@ -139,11 +139,11 @@ const SummaryView = ({ user }) => {
 
 
                     <button onClick={() => setShowAll(!showAll)}
-                        className={`px-5 rounded-3xl shadow-lg flex flex-col items-center justify-center transition-all ${showAll ? 'bg-orange-500 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
-                    >
-                        <span className="text-xl mb-1">{showAll ? '🎯' : '📂'}</span>
-                        <span className="text-[10px] font-bold uppercase">{showAll ? 'Showing All' : 'All Categories'}</span>
-                    </button>
+    className={`px-5 rounded-3xl shadow-lg flex flex-col items-center justify-center transition-all ${showAll ? 'bg-orange-500 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
+>
+    <span className="text-xl mb-1">{showAll ? '🎯' : '📂'}</span>
+    <span className="text-[10px] font-bold uppercase">{showAll ? 'Showing All' : 'All Categories'}</span>
+</button>
 
                     <button onClick={() => setIsReviewMode(true)} className="bg-amber-500 hover:bg-amber-600 text-white px-5 rounded-3xl shadow-lg flex flex-col items-center justify-center transition-all min-w-[100px]">
                         <span className="text-xl mb-1">🔍</span>

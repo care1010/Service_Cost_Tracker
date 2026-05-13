@@ -6,7 +6,7 @@ const AsblModal = ({ isOpen, onClose, onSubmit }) => {
     if (!isOpen) return null;
 
     const handleDownloadTemplate = () => {
-        window.location.href = 'http://localhost:5000/api/data/download-template';
+        window.location.href = `${process.env.REACT_APP_API_URL}/api/data/download-template`;
     };
 
     return (

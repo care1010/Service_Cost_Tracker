@@ -30,7 +30,7 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate }) => {
         });
         if (updates.length === 0) return alert("No changes to save.");
         try {
-            await axios.post('http://localhost:5000/api/data/update-non-committed', { updates });
+            await axios.post(`${process.env.REACT_APP_API_URL}/api/data/update-non-committed`, { updates });
             alert("✅ Changes saved to Draft!");
             $('.nc-input').removeClass('is-changed').css('border-color', '#e2e8f0');
             if (dataTableInstance.current) dataTableInstance.current.ajax.reload(null, false);
@@ -66,9 +66,9 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate }) => {
                 url: apiUrl,
                 type: 'GET',
                 data: (d) => ({ ...d, ...filters }),
-                dataSrc: (json) => {
+                dataSrc: function (json) {
                     if (json.kpis && typeof onKpiUpdate === 'function') {
-                        requestAnimationFrame(() => onKpiUpdate(json.kpis));
+                        onKpiUpdate(json.kpis); 
                     }
                     return json.data;
                 }
@@ -204,6 +204,8 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate }) => {
         };
     }, []);
 
+    // 🔥 ajax.reload() ko call karne se backend ka getWbsSummary dubara chalega
+        // aur naye kpis calculate hoke aayenge
     useEffect(() => {
         if (dataTableInstance.current) dataTableInstance.current.ajax.url(apiUrl).load();
     }, [apiUrl, filters]); 

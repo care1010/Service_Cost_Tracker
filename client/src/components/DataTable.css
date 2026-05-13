@@ -310,3 +310,39 @@ tr.group-child td.pbi-col {
 .select2-container--default .select2-results__option--highlighted[aria-selected] {
     background-color: #2563eb !important; /* blue-600 */
 }
+
+
+
+/* Admin Panel DataTable Customization */
+.admin-dt-wrapper .dataTables_length, 
+.admin-dt-wrapper .dataTables_filter, 
+.admin-dt-wrapper .dataTables_info, 
+.admin-dt-wrapper .dataTables_paginate {
+    color: #94a3b8 !important; /* slate-400 */
+    font-size: 11px;
+    font-weight: bold;
+    margin-bottom: 15px;
+}
+
+.admin-dt-wrapper input, .admin-dt-wrapper select {
+    background-color: #020617 !important; /* slate-950 */
+    border: 1px solid #1e293b !important;
+    color: white !important;
+    border-radius: 8px !important;
+    padding: 4px 10px !important;
+}
+
+.admin-dt-wrapper table.dataTable {
+    border-bottom: 1px solid #1e293b !important;
+}
+
+.admin-dt-wrapper .paginate_button {
+    color: #94a3b8 !important;
+}
+
+.admin-dt-wrapper .paginate_button.current {
+    background: #2563eb !important;
+    border: none !important;
+    border-radius: 6px !important;
+    color: white !important;
+}

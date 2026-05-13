@@ -13,7 +13,7 @@ const AsblAutomation = () => {
     const [showAll, setShowAll] = useState(false);
 
     useEffect(() => {
-        axios.get('http://localhost:5000/api/data/filter-options').then(res => {
+        axios.get(`${process.env.REACT_APP_API_URL}/api/data/filter-options`).then(res => {
             if (res.data && res.data.loa_id) setLoaOptions(res.data.loa_id);
         });
     }, []);
@@ -26,7 +26,7 @@ const AsblAutomation = () => {
 
     useEffect(() => {
         if (selectedLoa) {
-            axios.get(`http://localhost:5000/api/data/project-details?loa_id=${selectedLoa}`)
+            axios.get(`${process.env.REACT_APP_API_URL}/api/data/project-details?loa_id=${selectedLoa}`)
                 .then(res => setProjectData(res.data));
         } else {
             setProjectData([]);
@@ -41,7 +41,7 @@ const AsblAutomation = () => {
 
     // 🔥 RESTORED: Template Download Function
     const handleDownloadTemplate = () => {
-        window.location.href = 'http://localhost:5000/api/data/download-asbl-template';
+        window.location.href = `${process.env.REACT_APP_API_URL}/api/data/download-asbl-template`;
     };
 
     const handleManualSave = async () => {
@@ -49,7 +49,7 @@ const AsblAutomation = () => {
     
     setLoading(true);
     try {
-        const res = await axios.post('http://localhost:5000/api/data/update-manual-asbl', {
+        const res = await axios.post(`${process.env.REACT_APP_API_URL}/api/data/update-manual-asbl`, {
             loa_id: selectedLoa,
             updates: projectData // Saari rows bhej rahe hain
         });
@@ -57,7 +57,7 @@ const AsblAutomation = () => {
         alert(res.data.message);
         
         // 🔥 Refresh local table data to confirm sync
-        const refresh = await axios.get(`http://localhost:5000/api/data/project-details?loa_id=${selectedLoa}`);
+        const refresh = await axios.get(`${process.env.REACT_APP_API_URL}/api/data/project-details?loa_id=${selectedLoa}`);
         setProjectData(refresh.data);
         
     } catch (err) {
@@ -71,11 +71,11 @@ const AsblAutomation = () => {
         if (!pasteData.trim()) return alert("Paste data first!");
         setLoading(true);
         try {
-            const res = await axios.post('http://localhost:5000/api/data/process-asbl-update', { rawText: pasteData });
+            const res = await axios.post(`${process.env.REACT_APP_API_URL}/api/data/process-asbl-update`, { rawText: pasteData });
             alert(res.data.message);
             setPasteData('');
             if (selectedLoa) {
-                const refresh = await axios.get(`http://localhost:5000/api/data/project-details?loa_id=${selectedLoa}`);
+                const refresh = await axios.get(`${process.env.REACT_APP_API_URL}/api/data/project-details?loa_id=${selectedLoa}`);
                 setProjectData(refresh.data);
             }
         } catch (err) { alert(err.response?.data?.error || "Update failed"); }

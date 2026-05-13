@@ -58,4 +58,11 @@ router.get('/download-asbl-template', (req, res) => {
     });
 });
 
+
+const adminController = require('../controllers/adminController');
+router.get('/admin/users', adminController.getAllUsers);
+router.post('/admin/create-user', adminController.createUser);
+router.post('/admin/update-user', adminController.updateUser);
+router.delete('/admin/delete-user', adminController.deleteUser);
+
 module.exports = router;

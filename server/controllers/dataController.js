@@ -24,20 +24,57 @@ exports.getWbsSummary = async (req, res) => {
         // 🔥 FIX: ALL CATEGORIES LOGIC
         // Agar showAll 'true' hai, toh hum zero rows wala filter NAHI lagayenge
         // Showing All = sirf non-zero rows
-// 🔥 SHOWING ALL = sirf non-zero rows
-if (showAll === 'true') {
-    conditions.push(`
-        (
-            ABS(asbl) > 0.01 
-            OR ABS(asbl_loa) > 0.01
-            OR ABS(ptd) > 0.01 
-            OR ABS(total_oc_fixed) > 0.01 
-            OR ABS(non_committed_editable) > 0.01
-        )
-    `);
-}
+        // 🔥 SHOWING ALL = sirf non-zero rows
+        if (showAll === 'false') {
+            conditions.push("(ABS(asbl) > 0.01 OR ABS(ptd) > 0.01 OR ABS(total_oc_fixed) > 0.01 OR ABS(non_committed_editable) > 0.01)");
+        }
+
+        // 🔥 Dropdown Filters (Strict Check)
+        const allowedFilters = ['wbs', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period'];
+        allowedFilters.forEach(key => {
+            let value = req.query[key];
+            if (Array.isArray(value)) value = value[0];
+            if (value && value !== 'All' && value !== '') {
+                if (key === 'wbs') {
+            // 🔥 WBS ke liye LIKE use karein taaki comma-separated string mein match ho jaye
+            conditions.push(`wbs LIKE ?`);
+            params.push(`%${value}%`);
+        } else {
+            conditions.push(`${key} = ?`);
+            params.push(value);
+        }
+    }
+        });
 
         const whereClause = " WHERE " + conditions.join(" AND ");
+
+        const kpiQuery = `
+            SELECT 
+                SUM(CASE WHEN cost_revenue = 'Revenue' THEN asbl ELSE 0 END) as asbl_rev,
+                SUM(CASE WHEN cost_revenue = 'Cost' THEN asbl ELSE 0 END) as asbl_cost,
+                SUM(CASE WHEN cost_revenue = 'Revenue' THEN ptd ELSE 0 END) as ptd_rev,
+                SUM(CASE WHEN cost_revenue = 'Cost' THEN ptd ELSE 0 END) as ptd_cost,
+                SUM(CASE WHEN cost_revenue = 'Revenue' THEN (ptd + total_oc_fixed + non_committed) ELSE 0 END) as eac_rev,
+                SUM(CASE WHEN cost_revenue = 'Cost' THEN (ptd + total_oc_fixed + non_committed) ELSE 0 END) as eac_cost
+            FROM final_dashboard_table
+            ${whereClause}
+        `;
+        const [kpiRes] = await db.query(kpiQuery, params);
+        const k = kpiRes[0];
+
+        const calcSm = (rev, cost) => {
+            const r = Math.abs(rev || 0);
+            const c = Math.abs(cost || 0);
+            return r === 0 ? "0.00" : (((r - c) / r) * 100).toFixed(2);
+        };
+
+        const kpis = {
+            asbl_sm: calcSm(k.asbl_rev, k.asbl_cost),
+            ptd_sm: calcSm(k.ptd_rev, k.ptd_cost),
+            eac_sm: calcSm(k.eac_rev, k.eac_cost)
+        };
+
+        
 
         // 2. Matrix Query
         // COALESCE use kiya hai taaki NULL ki jagah 0.00 dikhe
@@ -66,7 +103,7 @@ if (showAll === 'true') {
             recordsTotal: countRes[0].total,
             recordsFiltered: countRes[0].total,
             data: dataRows,
-            kpis: { asbl_sm: "0.00", ptd_sm: "0.00", eac_sm: "0.00" } // KPI logic same as before
+            kpis
         });
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -88,7 +125,7 @@ exports.getFilterOptions = async (req, res) => {
             baseParams.push(allowedCustomers.split(','));
         }
 
-        // 2. Helper function with CORRECT Placeholder Order
+        // 2. Optimized Helper Function
         const getFilteredDistinct = async (targetColumn, currentFilters) => {
             let conditions = [...baseConditions];
             let filterValues = [...baseParams];
@@ -97,32 +134,32 @@ exports.getFilterOptions = async (req, res) => {
             Object.keys(currentFilters).forEach(key => {
                 if (key !== targetColumn && currentFilters[key] && currentFilters[key] !== 'All' && currentFilters[key] !== '') {
                     let val = currentFilters[key];
-                    if (Array.isArray(val)) val = val[0]; // Array safety
-                    conditions.push(`${key} = ?`);
-                    filterValues.push(val);
+                    if (Array.isArray(val)) val = val[0];
+
+                    if (key === 'wbs') {
+                        conditions.push(`wbs LIKE ?`);
+                        filterValues.push(`%${val}%`);
+                    } else {
+                        conditions.push(`${key} = ?`);
+                        filterValues.push(val);
+                    }
                 }
             });
 
             const whereSql = " WHERE " + conditions.join(" AND ");
             
-            // 🔥 FIX: Placeholders ka order aur arguments ka order match hona chahiye
-            // 1. ?? (targetColumn)
-            // 2. ?  (filterValues - jitne bhi hon)
-            // 3. ?? (targetColumn for IS NOT NULL)
-            // 4. ?? (targetColumn for ORDER BY)
-            const sql = `SELECT DISTINCT ?? as value FROM final_dashboard_table ${whereSql} AND ?? IS NOT NULL ORDER BY ??`;
-            
-            // Arguments array ko sahi order mein banayein
-            const sqlArgs = [targetColumn, ...filterValues, targetColumn, targetColumn];
+            // 🔥 FIX: Column name ko escapeId se safe banaya taaki '?' ke saath mix na ho
+            const colSafe = db.escapeId(targetColumn);
+            const sql = `SELECT DISTINCT ${colSafe} as value FROM final_dashboard_table ${whereSql} AND ${colSafe} IS NOT NULL ORDER BY ${colSafe}`;
 
-            const [rows] = await db.query(sql, sqlArgs);
+            const [rows] = await db.query(sql, filterValues);
             return rows.map(r => r.value);
         };
 
         const currentFilters = { wbs, customer, loa_id, loa_name, active_inactive, period };
         
         // 3. Parallel execution
-        const [wbsOpts, custOpts, loaIdOpts, loaNameOpts, activeOpts, periodOpts] = await Promise.all([
+        const [wbsOptsRaw, custOpts, loaIdOpts, loaNameOpts, activeOpts, periodOpts] = await Promise.all([
             getFilteredDistinct('wbs', currentFilters),
             getFilteredDistinct('customer', currentFilters),
             getFilteredDistinct('loa_id', currentFilters),
@@ -131,8 +168,23 @@ exports.getFilterOptions = async (req, res) => {
             getFilteredDistinct('period', currentFilters)
         ]);
 
+        // 4. WBS Comma Splitting Logic (Safe)
+        let uniqueWbsSet = new Set();
+        if (Array.isArray(wbsOptsRaw)) {
+            wbsOptsRaw.forEach(str => {
+                if (str && typeof str === 'string') {
+                    str.split(',').forEach(item => {
+                        const trimmed = item.trim();
+                        if (trimmed) uniqueWbsSet.add(trimmed);
+                    });
+                }
+            });
+        }
+        const finalWbsOpts = Array.from(uniqueWbsSet).sort();
+
+        // 5. Final Response
         res.status(200).json({
-            wbs: wbsOpts,
+            wbs: finalWbsOpts,
             customer: custOpts,
             loa_id: loaIdOpts,
             loa_name: loaNameOpts,
@@ -142,7 +194,7 @@ exports.getFilterOptions = async (req, res) => {
 
     } catch (error) {
         console.error("Filter Sync Error:", error.message);
-        res.status(500).json({ error: error.message });
+        res.status(500).json({ error: "Failed to load filters: " + error.message });
     }
 };
 
@@ -177,7 +229,7 @@ exports.exportToExcel = async (req, res) => {
         }
 
         let params = [];
-        const allowedFilters = ['bu', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period'];
+        const allowedFilters = ['wbs', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period'];
         allowedFilters.forEach(key => {
             if (filters[key] && filters[key] !== 'All') {
                 conditions.push(`${key} = ?`);
