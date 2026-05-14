@@ -14,7 +14,7 @@ const FilterBar = ({ filters, options, onFilterChange, onReset }) => {
     ];
 
 
-        useEffect(() => {
+    useEffect(() => {
     const selects = $('.select2-dropdown').select2({
         width: '100%',
         placeholder: "Search..."

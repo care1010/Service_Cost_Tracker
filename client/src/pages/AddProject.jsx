@@ -35,10 +35,10 @@ const AddProject = () => {
             <div className="bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-100">
                 <div className="p-8 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
                     <div>
-                        <h2 className="text-2xl font-black text-slate-800 tracking-tight">Excel Data Automation</h2>
-                        <p className="text-slate-400 text-xs font-medium mt-1 uppercase tracking-widest">Copy from Excel & Paste Below</p>
+                        <h2 className="text-2xl font-black text-slate-800 tracking-tight">Add Project or WBS Addition in existing Project</h2>
+                        <p className="text-slate-400 text-xs font-medium mt-1 uppercase tracking-widest">Copy the data as per the defined template & paste below to Add Project or WBS </p>
                     </div>
-                    {/* 🔥 EXPORT TEMPLATE BUTTON */}
+                    {/* EXPORT TEMPLATE BUTTON */}
                     <button 
                         onClick={handleDownloadTemplate}
                         className="bg-sky-600 hover:bg-sky-700 text-white px-6 py-2.5 rounded-2xl text-xs font-bold transition-all shadow-lg shadow-sky-100 flex items-center gap-2"
@@ -62,7 +62,7 @@ const AddProject = () => {
                         disabled={loading}
                         className="px-12 py-4 rounded-2xl font-bold text-sm bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-100 transition-all active:scale-95"
                     >
-                        🚀 Process & Save Data
+                        Save
                     </button>
                     <button onClick={() => setPasteData('')} className="bg-white text-slate-500 px-8 py-4 rounded-2xl font-bold text-sm border border-slate-200 hover:bg-slate-100 transition-all">
                         Clear

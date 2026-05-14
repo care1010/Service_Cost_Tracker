@@ -7,8 +7,8 @@ const Sidebar = ({ activeTab, setActiveTab, user, onLogout }) => {
   const [openMenu, setOpenMenu] = useState(false);
 
   const menuItems = [
-    { id: 'summary', label: 'Summary View' },
     { id: 'dashboard', label: 'Dashboard' },
+    { id: 'summary', label: 'Summary View' },
     // { id: 'loa-view', label: 'Loa Wise View' },
     // Inhe sirf admin ya super_admin ko dikhao
     ...(user?.type !== 'user' ? [

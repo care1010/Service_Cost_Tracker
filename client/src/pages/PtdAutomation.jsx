@@ -33,7 +33,7 @@ const PtdAutomation = () => {
         <div className="p-8 bg-white rounded-3xl shadow-xl max-w-2xl mx-auto mt-10 border border-slate-100">
             <h2 className="text-2xl font-black text-slate-800 mb-6 flex items-center gap-3">
                 <span className="bg-blue-600 p-2 rounded-xl text-white text-sm">⚙️</span>
-                PTD Data Automation
+                Upload PTD Data
             </h2>
 
             <div className="border-2 border-dashed border-slate-200 rounded-3xl p-10 text-center hover:border-blue-400 transition-all bg-slate-50">
@@ -50,7 +50,7 @@ const PtdAutomation = () => {
                 disabled={loading}
                 className={`w-full mt-8 py-4 rounded-2xl font-bold text-white shadow-lg transition-all ${loading ? 'bg-slate-400' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-100'}`}
             >
-                {loading ? "Processing..." : "🚀 Start Automation Process"}
+                {loading ? "Processing..." : "Upload"}
             </button>
 
             {status && <p className="mt-4 text-center text-sm font-medium text-blue-600">{status}</p>}

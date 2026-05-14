@@ -65,4 +65,10 @@ router.post('/admin/create-user', adminController.createUser);
 router.post('/admin/update-user', adminController.updateUser);
 router.delete('/admin/delete-user', adminController.deleteUser);
 
+router.post('/clear-draft', dataController.clearDraftChanges);
+router.get('/export-review', dataController.exportReviewExcel);
+router.post('/finalize-changes', dataController.finalizeChanges);
+
+router.get('/check-pending-changes', dataController.checkPendingChanges);
+
 module.exports = router;

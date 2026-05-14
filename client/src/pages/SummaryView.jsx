@@ -5,11 +5,12 @@ import FilterBar from '../components/FilterBar';
 import KpiCards from '../components/KpiCards';
 import AsblModal from '../components/AsblModal';
 import ReviewChanges from './ReviewChanges';
+import Swal from 'sweetalert2';
 
 const SummaryView = ({ user }) => {
     // 1. SAARE STATES (Hamesha sabse upar)
     const [filters, setFilters] = useState({
-        wbs: 'All', customer: 'All', loa_id: 'All', loa_name: 'All', active_inactive: 'All', period: 'All'
+        wbs: 'All', customer: 'All', loa_id: 'All', loa_name: 'All', active_inactive: 'Active', period: 'All'
     });
     const [options, setOptions] = useState({});
     const [kpiData, setKpiData] = useState(null);
@@ -17,6 +18,29 @@ const SummaryView = ({ user }) => {
     const [showAll, setShowAll] = useState(false); 
     const [loading, setLoading] = useState(false);
     const [isReviewMode, setIsReviewMode] = useState(false);
+
+    // 🔥 1. Review Button Click Handler
+    const handleReviewClick = async () => {
+        try {
+            const res = await axios.get('http://localhost:5000/api/data/check-pending-changes');
+            
+            if (res.data.count > 0) {
+                setIsReviewMode(true); // Agar changes hain toh Review page par bhejien
+            } else {
+                // 🔥 2. No Changes Popup
+                Swal.fire({
+                    icon: 'info',
+                    title: 'No Changes',
+                    text: 'No changes to show on Review.',
+                    confirmButtonColor: '#3b82f6',
+                    background: '#ffffff',
+                    customClass: { popup: 'rounded-[2rem]' }
+                });
+            }
+        } catch (err) {
+            console.error("Check failed", err);
+        }
+    };
 
     // 2. SAARE EFFECTS (Hooks order maintain karne ke liye)
     // SummaryView.jsx mein fetchOptions ko update karein
@@ -145,10 +169,16 @@ const SummaryView = ({ user }) => {
     <span className="text-[10px] font-bold uppercase">{showAll ? 'Showing All' : 'All Categories'}</span>
 </button>
 
-                    <button onClick={() => setIsReviewMode(true)} className="bg-amber-500 hover:bg-amber-600 text-white px-5 rounded-3xl shadow-lg flex flex-col items-center justify-center transition-all min-w-[100px]">
+                    {/* 🔥 3. ROLE CHECK: Sirf Admin/Super Admin ko dikhega */}
+                {(user?.type === 'admin' || user?.type === 'super_admin') && (
+                    <button 
+                        onClick={handleReviewClick} 
+                        className="bg-amber-500 hover:bg-amber-600 text-white px-5 rounded-3xl shadow-lg flex flex-col items-center justify-center transition-all min-w-[100px]"
+                    >
                         <span className="text-xl mb-1">🔍</span>
                         <span className="text-[10px] font-bold uppercase">Review</span>
                     </button>
+                )}
 
                     <button onClick={handleFullRefresh} className="bg-slate-800 hover:bg-black text-white px-5 rounded-3xl shadow-lg flex flex-col items-center justify-center transition-all min-w-[100px]">
                         <span className="text-xl mb-1">🔄</span>

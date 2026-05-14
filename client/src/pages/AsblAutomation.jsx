@@ -20,7 +20,7 @@ const AsblAutomation = () => {
 
     useEffect(() => {
         const selectEl = $('#loa-select');
-        selectEl.select2({ placeholder: "Search LOA ID...", width: '100%', allowClear: true })
+        selectEl.select2({ placeholder: "Search LOA Name...", width: '100%', allowClear: true })
             .on('change', (e) => setSelectedLoa(e.target.value));
     }, [loaOptions]);
 
@@ -98,14 +98,14 @@ const AsblAutomation = () => {
             <div className="bg-white rounded-[2rem] shadow-lg p-6 border border-slate-100">
                 <h2 className="text-lg font-black mb-4 flex items-center gap-2">
                     <span className="w-2 h-5 bg-emerald-500 rounded-full"></span>
-                    ASBL Bulk Paste
+                    Update ASBL
                 </h2>
 
                 <button 
                         onClick={handleDownloadTemplate}
                         className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-2"
                     >
-                        📥 Export ASBL Template
+                        📥 Export Template
                     </button>
 
                 <textarea className="w-full h-32 p-4 rounded-2xl border border-slate-200 bg-slate-50 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" placeholder="Paste from Excel..." value={pasteData} onChange={(e) => setPasteData(e.target.value)}></textarea>
@@ -143,7 +143,7 @@ const AsblAutomation = () => {
                                     <th className="p-4 font-bold border-r border-slate-700">LOA ID / Name</th>
                                     <th className="p-4 font-bold border-r border-slate-700">Cost/Revenue</th>
                                     <th className="p-4 font-bold border-r border-slate-700">Category</th>
-                                    <th className="p-4 text-right w-40">ASBL (Editable)</th>
+                                    <th className="p-4 text-right w-40">ASBL</th>
                                 </tr>
                             </thead>
                             <tbody>

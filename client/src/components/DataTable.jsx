@@ -6,9 +6,18 @@ import 'datatables.net-rowgroup-dt';
 import 'datatables.net-dt/css/dataTables.dataTables.css';
 import './DataTable.css';
 
-const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate }) => {
+const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButton = true, showClearButton = false }) => {
     const tableRef = useRef(null);
     const dataTableInstance = useRef(null);
+
+    const handleClear = async () => {
+        if (!window.confirm("This will reset ALL your unsaved edits. Continue?")) return;
+        try {
+            await axios.post(`${process.env.REACT_APP_API_URL}/api/data/clear-draft`);
+            alert("Draft cleared successfully!");
+            if (dataTableInstance.current) dataTableInstance.current.ajax.reload();
+        } catch (err) { alert("Clear failed"); }
+    };
 
     const fmt = (val) => {
         const num = parseFloat(val) || 0;
@@ -45,14 +54,20 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate }) => {
             const $input = $(this);
             const $row = $input.closest('tr');
             $input.addClass('is-changed').css('border-color', '#eab308');
+
+            // Review page par 1 extra column (Old NC) hai, isliye offset 1 hoga
+            const offset = showClearButton ? 1 : 0;
+
             const asbl = parseFloat($row.find('td:nth-child(7)').text().replace(/,/g, '')) || 0;
             const ptd = parseFloat($row.find('td:nth-child(9)').text().replace(/,/g, '')) || 0;
             const oc = parseFloat($row.find('td:nth-child(10)').text().replace(/,/g, '')) || 0;
             const nc = parseFloat($input.val()) || 0;
             const newEac = ptd + oc + nc;
             const newVar = asbl - newEac;
-            $row.find('td:nth-child(12)').text(fmt(newEac));
-            $row.find('td:nth-child(13)').text(fmt(newVar));
+
+            // 🔥 EAC aur Variance ko update karein (Input box ko touch nahi karenge)
+            $row.find(`td:nth-child(${12 + offset})`).text(fmt(newEac));
+            $row.find(`td:nth-child(${13 + offset})`).text(fmt(newVar));
         });
 
         dataTableInstance.current = $(tableRef.current).DataTable({
@@ -91,7 +106,14 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate }) => {
                             const current = parseFloat(data) || 0;
                             const isModified = Math.abs(current - original) > 0.01;
                             const highlightClass = isModified ? 'bg-blue-50 border-blue-400 text-blue-700' : 'border-slate-200';
-                            return `<input type="number" class="nc-input w-24 p-1 border-2 ${highlightClass} text-right font-bold rounded-lg shadow-sm" value="${current}" data-loa="${row.loa_name}" data-cat="${row.categories}" title="Original: ${original}">`;
+
+                            // Hamesha input return karein taaki edit bana rahe
+                            return `<input type="number" 
+                                    class="nc-input w-24 p-1 border-2 ${highlightClass} text-right font-bold rounded-lg shadow-sm" 
+                                    value="${current}" 
+                                    data-loa="${row.loa_name}" 
+                                    data-cat="${row.categories}" 
+                                    step="any">`;
                         }
                     }
                     if (col.field === 'eac' || col.field === 'eac_vs_asbl' || (type === 'display' && !isNaN(data) && !metadataFields.includes(col.field))) {
@@ -110,6 +132,7 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate }) => {
                     const ptd = calculateSum(rows, 'ptd');
                     const oc = calculateSum(rows, 'open_commitment');
                     const nc = calculateSum(rows, 'non_committed');
+                    const nc_orig = calculateSum(rows, 'non_committed_original'); // 🔥 Naya Sum
                     const eac = ptd + oc + nc;
                     const varTotal = asbl - eac;
 
@@ -126,6 +149,7 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate }) => {
                                 <td class="text-right font-bold text-slate-900">${fmt(asbl_loa)}</td>
                                 <td class="text-right font-bold text-slate-900">${fmt(ptd)}</td>
                                 <td class="text-right font-bold text-slate-900">${fmt(oc)}</td>
+                                ${showClearButton ? `<td class="text-right font-bold text-slate-900">${fmt(nc_orig)}</td>` : ''} <!-- 🔥 Review Page Extra Cell -->
                                 <td class="text-right font-bold text-slate-900">${fmt(nc)}</td>
                                 <td class="text-right font-bold text-slate-900">${fmt(eac)}</td>
                                 <td class="text-right font-bold text-slate-900">${fmt(varTotal)}</td>
@@ -145,6 +169,7 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate }) => {
                                 <td class="text-right font-bold"></td>
                                 <td class="text-right font-bold text-slate-700">${fmt(ptd)}</td>
                                 <td class="text-right font-bold text-slate-700">${fmt(oc)}</td>
+                                ${showClearButton ? `<td class="text-right font-bold text-slate-700">${fmt(nc_orig)}</td>` : ''} <!-- 🔥 Review Page Extra Cell -->
                                 <td class="text-right font-bold text-slate-700">${fmt(nc)}</td>
                                 <td class="text-right font-bold text-slate-700">${fmt(eac)}</td>
                                 <td class="text-right font-bold text-slate-700">${fmt(varTotal)}</td>
@@ -204,8 +229,8 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate }) => {
         };
     }, []);
 
-    // 🔥 ajax.reload() ko call karne se backend ka getWbsSummary dubara chalega
-        // aur naye kpis calculate hoke aayenge
+    // ajax.reload() ko call karne se backend ka getWbsSummary dubara chalega
+    // aur naye kpis calculate hoke aayenge
     useEffect(() => {
         if (dataTableInstance.current) dataTableInstance.current.ajax.url(apiUrl).load();
     }, [apiUrl, filters]); 
@@ -214,9 +239,19 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate }) => {
         <div className="matrix-wrapper bg-white p-6 rounded-[2rem] shadow-2xl border border-gray-100">
             <div className="flex justify-between items-center mb-6 border-b pb-4">
                 <h2 className="text-xl font-black text-slate-800">{title}</h2>
-                <button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-xl font-bold text-xs shadow-lg flex items-center gap-2 transition-all active:scale-95">
-                    💾 Save Draft Changes
-                </button>
+                <div className="flex gap-3">
+                    {/* 🔥 Condition based buttons */}
+                    {showSaveButton && (
+                        <button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-xl font-bold text-xs shadow-lg transition-all">
+                            💾 Save Draft Changes
+                        </button>
+                    )}
+                    {showClearButton && (
+                        <button onClick={handleClear} className="bg-slate-100 text-slate-500 hover:bg-rose-500 hover:text-white px-6 py-2 rounded-xl font-bold text-xs transition-all border border-slate-200">
+                            🗑️ Clear All Edits
+                        </button>
+                    )}
+                </div>
             </div>
             <table ref={tableRef} className="display nowrap pbi-table" style={{ width: '100%' }}></table>
         </div>

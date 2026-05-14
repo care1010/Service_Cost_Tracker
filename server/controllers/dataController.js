@@ -7,6 +7,9 @@ exports.getWbsSummary = async (req, res) => {
         const { draw, start, length, search, showAll, type, allowedCustomers } = req.query; 
         const startIdx = parseInt(start) || 0;
         const limitIdx = parseInt(length) || 10;
+        
+        //search enable
+        const searchValue = req.query.search?.value || '';
 
         // 1. Base Conditions
         let conditions = [
@@ -14,6 +17,30 @@ exports.getWbsSummary = async (req, res) => {
             "cost_revenue <> 'NTC'"
         ];
         let params = [];
+
+        // 🔥 SEARCH LOGIC (all columns except all digits value)
+        if (searchValue) {
+
+            conditions.push(`
+                (
+                    bu LIKE ?
+                    OR customer LIKE ?
+                    OR loa_name LIKE ?
+                    OR loa_id LIKE ?
+                    OR categories LIKE ?
+                )
+            `);
+
+        const searchPattern = `%${searchValue}%`;
+
+            params.push(
+                searchPattern,
+                searchPattern,
+                searchPattern,
+                searchPattern,
+                searchPattern
+            );
+        }
 
         // RLS Logic
         if (type === 'user' && allowedCustomers) {
@@ -46,7 +73,7 @@ exports.getWbsSummary = async (req, res) => {
     }
         });
 
-        const whereClause = " WHERE " + conditions.join(" AND ");
+        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
         const kpiQuery = `
             SELECT 
@@ -289,6 +316,69 @@ exports.exportToExcel = async (req, res) => {
     }
 };
 
+//Review Changes page k liye function export excel or claer data
+// 1. Draft saaf karne ka function
+exports.clearDraftChanges = async (req, res) => {
+    try {
+        // Dono tables mein editable value ko original ke barabar kar dein
+        await db.query("UPDATE final_dashboard_table SET non_committed_editable = non_committed");
+        await db.query("UPDATE summary SET non_committed_editable = non_committed");
+        
+        res.status(200).json({ message: "Draft cleared! All values reset to original." });
+    } catch (error) { res.status(500).json({ error: error.message }); }
+};
+
+// 2. Review Page specifically export karne ke liye
+exports.exportReviewExcel = async (req, res) => {
+    try {
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename=Review_Changes_Export.xlsx`);
+        
+        const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: res });
+        const worksheet = workbook.addWorksheet('Review Data');
+        
+        worksheet.columns = [
+            { header: 'BU', key: 'bu', width: 10 },
+            { header: 'Customer', key: 'customer', width: 25 },
+            { header: 'LOA Name', key: 'loa_name', width: 35 },
+            { header: 'LOA ID', key: 'loa_id', width: 35 },
+            { header: 'Cost/Revenue', key: 'cost_revenue', width: 35 },
+            { header: 'Category', key: 'categories', width: 25 },
+            { header: 'ASBL', key: 'asbl', width: 15 },
+            { header: 'ASBL LOA', key: 'asbl_loa', width: 25 },
+            { header: 'PTD', key: 'ptd', width: 25 },
+            { header: 'Open Commitment', key: 'open_commitment', width: 25 },
+            { header: 'Original Non Committed', key: 'non_committed_original', width: 15 },
+            { header: 'Edited Non Committed', key: 'non_committed', width: 15 },
+            { header: 'EAC', key: 'eac', width: 15 },
+            { header: 'EAC vs ASBL', key: 'eac_vs_asbl', width: 15 }
+        ];
+
+        // Wahi logic jo Review Page ke table mein hai
+        const query = `
+            SELECT 
+                bu, customer, loa_id, loa_name, cost_revenue, categories,
+                MAX(asbl) as asbl, 
+                MAX(asbl_loa) as asbl_loa, 
+                SUM(ptd) as ptd, 
+                MAX(total_oc_fixed) as open_commitment, 
+                MAX(non_committed) as non_committed_original,
+                MAX(non_committed_editable) as non_committed,
+                (SUM(ptd) + MAX(total_oc_fixed) + MAX(non_committed_editable)) as eac,
+                (MAX(asbl) - (SUM(ptd) + MAX(total_oc_fixed) + MAX(non_committed_editable))) as eac_vs_asbl
+            FROM final_dashboard_table
+            WHERE categories != 'Revenue' 
+            AND ABS(non_committed - non_committed_editable) > 0.01
+            GROUP BY bu, customer, loa_id, loa_name, cost_revenue, categories
+            ORDER BY loa_name ASC, cost_revenue ASC
+        `;
+
+        const [rows] = await db.query(query);
+        rows.forEach(row => worksheet.addRow(row).commit());
+        await workbook.commit();
+    } catch (error) { res.status(500).send("Export failed"); }
+};
+
 
 
 // 1. Distinct Categories fetch karein
@@ -466,19 +556,58 @@ exports.getReviewChanges = async (req, res) => {
 // 2. Final Save (Commit): Editable value ko original mein move karein
 exports.finalizeChanges = async (req, res) => {
     try {
-        // A. Summary table update karein
-        await db.query("UPDATE summary SET non_committed = non_committed_editable WHERE ABS(non_committed - non_committed_editable) > 0.01");
-        
-        // B. Dashboard table update karein
-        await db.query("UPDATE final_dashboard_table SET non_committed = non_committed_editable WHERE ABS(non_committed - non_committed_editable) > 0.01");
-        
-        // C. EAC aur Variance recalculate karein (Kyunki non_committed badla hai)
+        // 1. Pehle check karein ki kitni rows badli hain
+        const [changedRows] = await db.query(
+            "SELECT loa_id FROM final_dashboard_table WHERE ABS(non_committed - non_committed_editable) > 0.01"
+        );
+
+        if (changedRows.length === 0) {
+            return res.status(200).json({ message: "No changes found to finalize." });
+        }
+
+        // 2. 🔥 STEP 1: Summary table mein 'non_committed' ko update karein
+        await db.query(`
+            UPDATE summary 
+            SET non_committed = non_committed_editable 
+            WHERE ABS(non_committed - non_committed_editable) > 0.01
+        `);
+
+        // 3. 🔥 STEP 2: Dashboard table mein 'non_committed' (Original) ko update karein
+        await db.query(`
+            UPDATE final_dashboard_table 
+            SET non_committed = non_committed_editable 
+            WHERE ABS(non_committed - non_committed_editable) > 0.01
+        `);
+
+        // 4. 🔥 STEP 3: EAC aur Variance ko recalculate karein (Sabse Zaroori)
+        // EAC = PTD + OC + New Finalized Non-Committed
         await db.query(`
             UPDATE final_dashboard_table 
             SET eac = (ptd + open_commitment_KEUR + non_committed),
                 eac_vs_asbl = (asbl - (ptd + open_commitment_KEUR + non_committed))
         `);
 
-        res.status(200).json({ message: "All changes finalized and synced successfully!" });
-    } catch (error) { res.status(500).json({ error: error.message }); }
+        res.status(200).json({ message: "✅ All changes finalized! Summary View is now updated." });
+
+    } catch (error) {
+        console.error("Finalize Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+// function to check if there are pending changes (for enabling/disabling Finalize button on frontend)
+exports.checkPendingChanges = async (req, res) => {
+    try {
+        // Check karein ki kya koi aisi row hai jahan original aur editable value alag hai
+        const [rows] = await db.query(`
+            SELECT COUNT(*) as count 
+            FROM final_dashboard_table 
+            WHERE categories != 'Revenue' 
+            AND ABS(non_committed - non_committed_editable) > 0.01
+        `);
+        
+        res.status(200).json({ count: rows[0].count });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 };
