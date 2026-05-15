@@ -36,11 +36,11 @@ const handleLogout = () => {
 
       <main className="flex-1 ml-64 p-8 bg-[#fcfcfd] min-h-screen overflow-x-hidden">
         
-        <div className="mb-8">
-          <h1 className="text-3xl font-extrabold text-slate-800 tracking-tight">
-            Financial Services <span className="text-blue-600">Cost Tracker Platform</span>
-          </h1>
-        </div>
+        <div className="mb-8 text-center">
+    <h1 className="text-3xl font-extrabold text-slate-800 tracking-tight">
+        Financial Services <span className="text-blue-600">Cost Tracker Platform</span>
+    </h1>
+</div>
 
         {/* Dynamic Content */}
         {activeTab === 'summary' && <SummaryView user={user} />}

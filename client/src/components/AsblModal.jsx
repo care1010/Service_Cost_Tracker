@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { HiOutlineDocumentDownload } from "react-icons/hi";
 
 const AsblModal = ({ isOpen, onClose, onSubmit }) => {
     const [pasteData, setPasteData] = useState('');
@@ -16,11 +17,22 @@ const AsblModal = ({ isOpen, onClose, onSubmit }) => {
                 {/* Header */}
                 <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                     <h2 className="text-xl font-black text-slate-800 tracking-tight">Paste Your Excel Data Here</h2>
-                    <button 
+                    <button
                         onClick={handleDownloadTemplate}
-                        className="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-all shadow-lg shadow-sky-100"
+                        className="group text-white px-4 py-2 rounded-2xl shadow-md 
+                        flex items-center gap-2 transition-all duration-300 
+                        hover:scale-105 hover:shadow-xl ml-4"
+                        style={{
+                            background: 'linear-gradient(135deg, #4169e1, #3157c9)',
+                        }}
                     >
-                        📄 Export Template
+                        <span className="text-lg transition-transform duration-300 group-hover:-translate-y-[1px]">
+                            <HiOutlineDocumentDownload />
+                        </span>
+
+                        <span className="text-sm font-black">
+                            Export Template
+                        </span>
                     </button>
                 </div>
 

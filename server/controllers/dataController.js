@@ -57,7 +57,7 @@ exports.getWbsSummary = async (req, res) => {
         }
 
         // 🔥 Dropdown Filters (Strict Check)
-        const allowedFilters = ['wbs', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period'];
+        const allowedFilters = ['bu', 'wbs', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period'];
         allowedFilters.forEach(key => {
             let value = req.query[key];
             if (Array.isArray(value)) value = value[0];
@@ -141,7 +141,7 @@ exports.getWbsSummary = async (req, res) => {
 // --- 2. getFilterOptions mein loa_name ki list add karein ---
 exports.getFilterOptions = async (req, res) => {
     try {
-        const { type, allowedCustomers, wbs, customer, loa_id, loa_name, active_inactive, period } = req.query;
+        const { type, allowedCustomers, bu, wbs, customer, loa_id, loa_name, active_inactive, period } = req.query;
 
         // 1. Base Conditions
         let baseConditions = ["categories NOT IN ('Local Materials', 'Not to considered')", "cost_revenue <> 'NTC'"];
@@ -183,10 +183,11 @@ exports.getFilterOptions = async (req, res) => {
             return rows.map(r => r.value);
         };
 
-        const currentFilters = { wbs, customer, loa_id, loa_name, active_inactive, period };
+        const currentFilters = { bu, wbs, customer, loa_id, loa_name, active_inactive, period };
         
         // 3. Parallel execution
-        const [wbsOptsRaw, custOpts, loaIdOpts, loaNameOpts, activeOpts, periodOpts] = await Promise.all([
+        const [buOpts, wbsOptsRaw, custOpts, loaIdOpts, loaNameOpts, activeOpts, periodOpts] = await Promise.all([
+            getFilteredDistinct('bu', currentFilters),
             getFilteredDistinct('wbs', currentFilters),
             getFilteredDistinct('customer', currentFilters),
             getFilteredDistinct('loa_id', currentFilters),
@@ -211,6 +212,7 @@ exports.getFilterOptions = async (req, res) => {
 
         // 5. Final Response
         res.status(200).json({
+            bu: buOpts,
             wbs: finalWbsOpts,
             customer: custOpts,
             loa_id: loaIdOpts,
@@ -256,7 +258,7 @@ exports.exportToExcel = async (req, res) => {
         }
 
         let params = [];
-        const allowedFilters = ['wbs', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period'];
+        const allowedFilters = ['bu', 'wbs', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period'];
         allowedFilters.forEach(key => {
             if (filters[key] && filters[key] !== 'All') {
                 conditions.push(`${key} = ?`);

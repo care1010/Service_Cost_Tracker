@@ -2,6 +2,11 @@ import React from 'react';
 import axios from 'axios';
 import DataTable from '../components/DataTable';
 import $ from 'jquery';
+import { 
+    HiOutlineDownload,
+    HiOutlineArrowLeft,
+    HiOutlineLightningBolt
+} from "react-icons/hi";
 
 const ReviewChanges = ({ onBack }) => {
     const handleFinalize = async () => {
@@ -47,7 +52,7 @@ const ReviewChanges = ({ onBack }) => {
         { header: 'ASBL', field: 'asbl' },
         { header: 'ASBL LOA', field: 'asbl_loa' },
         { header: 'PTD', field: 'ptd' },
-        { header: 'Open Com.', field: 'open_commitment' },
+        { header: 'Open Commitment (KEUR)', field: 'open_commitment' },
         // old non committed for comparison
         { header: 'Old Non Committed', field: 'non_committed_original' },
         // { header: 'Non Committed', field: 'non_committed_editable' }, // 🔥 Editable column
@@ -58,20 +63,76 @@ const ReviewChanges = ({ onBack }) => {
 
     return (
         <div className="p-6 bg-[#fcfcfd] min-h-screen">
-            <div className="flex justify-between items-center mb-8 bg-white p-6 rounded-[2rem] shadow-sm border border-orange-100">
+            <div className="flex justify-between items-center mb-8 bg-white p-6 rounded-[2rem] shadow-sm border border-slate-150">
                 <div>
-                    <h2 className="text-2xl font-black text-slate-800">Review <span className="text-orange-500">Draft Changes</span></h2>
-                    <p className="text-slate-400 text-[10px] uppercase font-bold tracking-widest">Showing only modified rows (Excluding Revenue)</p>
+                    <h2 className="text-2xl font-black text-slate-800">Non-Committed Changes Summary</h2>
+                    <p className="text-slate-400 text-[10px] uppercase font-bold tracking-widest">Showing only modified Non-Committed rows (Excluding Revenue)</p>
                 </div>
                 <div className="flex gap-3">
-                    {/* 🔥 Naya Export Button */}
-                    <button onClick={handleExportReview} className="bg-emerald-600 text-white px-6 py-2 rounded-xl font-bold text-xs shadow-lg">📥 Export Review</button>
-                    <button onClick={onBack} className="px-6 py-2 rounded-xl font-bold text-xs bg-slate-100 text-slate-500">Back</button>
-                    <button onClick={handleFinalize} className="px-8 py-2 rounded-xl font-bold text-xs bg-orange-500 text-white shadow-lg">🚀 Finalize & Save</button>
+
+                    {/* Back */}
+                    <button
+                        onClick={onBack}
+                        className="group text-white px-4 py-2 rounded-2xl shadow-md 
+                        flex items-center gap-2 transition-all duration-300 
+                        hover:scale-105 hover:shadow-xl"
+                        style={{
+                            background: 'linear-gradient(135deg, #64748b, #475569)',
+                        }}
+                    >
+                        <span className="text-lg transition-transform duration-300 group-hover:-translate-x-[2px]">
+                            <HiOutlineArrowLeft />
+                        </span>
+
+                        <span className="text-sm font-black">
+                            Back
+                        </span>
+                    </button>
+
+                    {/* Export Review */}
+                    <button
+                        onClick={handleExportReview}
+                        className="group text-white px-4 py-2 rounded-2xl shadow-md 
+                        flex items-center gap-2 transition-all duration-300 
+                        hover:scale-105 hover:shadow-xl"
+                        style={{
+                            background: 'linear-gradient(135deg, #4169e1, #3157c9)',
+                        }}
+                    >
+                        <span className="text-lg transition-transform duration-300 group-hover:-translate-y-[1px]">
+                            <HiOutlineDownload />
+                        </span>
+
+                        <span className="text-sm font-black">
+                            Export
+                        </span>
+                    </button>
+
+
+                    {/* Finalize */}
+                    <button
+                        onClick={handleFinalize}
+                        className="group text-white px-4 py-2 rounded-2xl shadow-md 
+                        flex items-center gap-2 transition-all duration-300 
+                        hover:scale-105 hover:shadow-xl"
+                        style={{
+                            background: 'linear-gradient(135deg, #4169e1, #3157c9)',
+                        }}
+                    >
+                        <span className="text-lg transition-transform duration-300 group-hover:scale-110">
+                            <HiOutlineLightningBolt />
+                        </span>
+
+                        <span className="text-sm font-black">
+                            Submit Data
+                        </span>
+                    </button>
+
+
                 </div>
             </div>
 
-            <div className="rounded-[1.5rem] overflow-hidden shadow-xl border border-white bg-white">
+            <div className="rounded-[1.5rem] overflow-hidden shadow-xl border border-slate-100 bg-white">
                 <DataTable 
                     title="" 
                     columns={tableColumns} 

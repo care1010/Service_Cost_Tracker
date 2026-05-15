@@ -3,7 +3,7 @@ const db = require('../config/db');
 // 1. Saare users aur unke mapped customers laana
 exports.getAllUsers = async (req, res) => {
     try {
-        const [users] = await db.query("SELECT id, email, type FROM users");
+        const [users] = await db.query("SELECT id, email, password, type FROM users");
         const [access] = await db.query("SELECT email, customer FROM access");
 
         // Users ke saath unke customers ko group karna
@@ -35,10 +35,10 @@ exports.createUser = async (req, res) => {
 
 // 3. User Update karna
 exports.updateUser = async (req, res) => {
-    const { id, email, type, customers } = req.body;
+    const { id, email, password, type, customers } = req.body;
     try {
         // A. User details update
-        await db.query("UPDATE users SET type = ? WHERE id = ?", [type, id]);
+        await db.query("UPDATE users SET type = ?, password = ? WHERE id = ?", [type, password, id]);
 
         // B. Purani mapping delete karke nayi insert karna (Sync logic)
         await db.query("DELETE FROM access WHERE email = ?", [email]);

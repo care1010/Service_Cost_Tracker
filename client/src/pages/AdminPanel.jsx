@@ -137,9 +137,11 @@ const AdminPanel = () => {
                                     <option value="super_admin">Super Admin</option>
                                 </select>
                             </div>
+
+                            // edit user model
                             {!editMode && (
                                 <div className="flex gap-2">
-                                    <input type="text" className="flex-1 p-3 rounded-xl bg-slate-950 border border-slate-800 text-blue-400 font-mono" value={formData.password} readOnly placeholder="Password" required />
+                                    <input type="text" className="flex-1 p-3 rounded-xl bg-slate-950 border border-slate-800 text-blue-400 font-mono" value={formData.password} readOnly placeholder="Password" required={!editMode} />
                                     <button type="button" onClick={generatePassword} className="bg-blue-600 text-white px-4 rounded-xl font-bold text-xs">Generate</button>
                                 </div>
                             )}

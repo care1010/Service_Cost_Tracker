@@ -6,11 +6,12 @@ import KpiCards from '../components/KpiCards';
 import AsblModal from '../components/AsblModal';
 import ReviewChanges from './ReviewChanges';
 import Swal from 'sweetalert2';
+import { HiOutlineFilter, HiOutlineViewGrid, HiOutlineSearch, HiOutlineRefresh } from "react-icons/hi";
 
 const SummaryView = ({ user }) => {
     // 1. SAARE STATES (Hamesha sabse upar)
     const [filters, setFilters] = useState({
-        wbs: 'All', customer: 'All', loa_id: 'All', loa_name: 'All', active_inactive: 'Active', period: 'All'
+        bu: 'All', wbs: 'All', customer: 'All', loa_id: 'All', loa_name: 'All', active_inactive: 'Active', period: 'All'
     });
     const [options, setOptions] = useState({});
     const [kpiData, setKpiData] = useState(null);
@@ -19,10 +20,10 @@ const SummaryView = ({ user }) => {
     const [loading, setLoading] = useState(false);
     const [isReviewMode, setIsReviewMode] = useState(false);
 
-    // 🔥 1. Review Button Click Handler
+    //  1. Review Button Click Handler
     const handleReviewClick = async () => {
         try {
-            const res = await axios.get('http://localhost:5000/api/data/check-pending-changes');
+            const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/data/check-pending-changes`);
             
             if (res.data.count > 0) {
                 setIsReviewMode(true); // Agar changes hain toh Review page par bhejien
@@ -74,7 +75,7 @@ const SummaryView = ({ user }) => {
     const handleFilterChange = (name, value) => setFilters(prev => ({ ...prev, [name]: value }));
     
     const handleReset = () => setFilters({ 
-        wbs: 'All', customer: 'All', loa_id: 'All', loa_name: 'All', active_inactive: 'All', period: 'All' 
+        bu: 'All', wbs: 'All', customer: 'All', loa_id: 'All', loa_name: 'All', active_inactive: 'Active', period: 'All' 
     });
 
     const handleKpiUpdate = useCallback((data) => {
@@ -125,7 +126,7 @@ const SummaryView = ({ user }) => {
         { header: 'ASBL', field: 'asbl' },
         { header: 'ASBL LOA', field: 'asbl_loa' },
         { header: 'PTD', field: 'ptd' },
-        { header: 'Open Com.', field: 'open_commitment' },
+        { header: 'Open Commitment (KEUR)', field: 'open_commitment' },
         { header: 'Non Committed', field: 'non_committed' },
         { header: 'EAC', field: 'eac' },
         { header: 'EAC vs ASBL', field: 'eac_vs_asbl' }
@@ -156,34 +157,98 @@ const SummaryView = ({ user }) => {
                 </div>
                 
                 <div className="flex gap-3">
-                    <button onClick={handleFullExport} className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 rounded-3xl shadow-lg flex flex-col items-center justify-center transition-all min-w-[100px]">
-                        <span className="text-xl mb-1">📥</span>
-                        <span className="text-[10px] font-bold uppercase">Export</span>
-                    </button>
-
-
-                    <button onClick={() => setShowAll(!showAll)}
-    className={`px-5 rounded-3xl shadow-lg flex flex-col items-center justify-center transition-all ${showAll ? 'bg-orange-500 text-white' : 'bg-white text-slate-600 border border-slate-200'}`}
->
-    <span className="text-xl mb-1">{showAll ? '🎯' : '📂'}</span>
-    <span className="text-[10px] font-bold uppercase">{showAll ? 'Showing All' : 'All Categories'}</span>
-</button>
-
-                    {/* 🔥 3. ROLE CHECK: Sirf Admin/Super Admin ko dikhega */}
-                {(user?.type === 'admin' || user?.type === 'super_admin') && (
-                    <button 
-                        onClick={handleReviewClick} 
-                        className="bg-amber-500 hover:bg-amber-600 text-white px-5 rounded-3xl shadow-lg flex flex-col items-center justify-center transition-all min-w-[100px]"
+                    {/* Export Excel - Sabko dikhega */}
+                    <button
+                        onClick={handleFullExport}
+                        className="group text-white px-4 py-2 rounded-2xl shadow-md 
+                        flex items-center gap-2 transition-all duration-300 
+                        hover:scale-105 hover:shadow-xl"
+                        style={{
+                            background: 'linear-gradient(135deg, #4169e1, #3157c9)',
+                        }}
                     >
-                        <span className="text-xl mb-1">🔍</span>
-                        <span className="text-[10px] font-bold uppercase">Review</span>
-                    </button>
-                )}
+                        <span className="text-lg transition-transform duration-300 group-hover:-translate-y-[1px]">
+                            📥
+                        </span>
 
-                    <button onClick={handleFullRefresh} className="bg-slate-800 hover:bg-black text-white px-5 rounded-3xl shadow-lg flex flex-col items-center justify-center transition-all min-w-[100px]">
-                        <span className="text-xl mb-1">🔄</span>
-                        <span className="text-[10px] font-bold uppercase">Full Sync</span>
+                        <div className="flex flex-col leading-tight text-left">
+                            
+                            <span className="text-sm font-black">
+                                Export
+                            </span>
+                        </div>
                     </button>
+
+                    {/* Toggle Categories - Sabko dikhega */}
+                    <button
+                        onClick={() => setShowAll(!showAll)}
+                        className="group text-white px-4 py-2 rounded-2xl shadow-md 
+                        flex items-center gap-2 transition-all duration-300 
+                        hover:scale-105 hover:shadow-xl"
+                        style={{
+                            background: showAll
+                                ? 'linear-gradient(135deg, #f97316, #ea580c)'   // Orange when active
+                                : 'linear-gradient(135deg, #4169e1, #3157c9)', // Blue when inactive
+                        }}
+                    >
+                        <span className="text-lg transition-transform duration-300 group-hover:-translate-y-[1px]">
+                            {showAll ? <HiOutlineFilter /> : <HiOutlineViewGrid />}
+                        </span>
+
+                        <div className="flex flex-col leading-tight text-left">
+                            <span className="text-sm font-black">
+                                {showAll ? 'Active Categories' : 'All Categories'}
+                            </span>
+                        </div>
+                    </button>
+
+                {/*  ROLE CHECK: Sirf Admin/Super Admin ko dikhega */}
+                    {(user?.type === 'admin' || user?.type === 'super_admin') && (
+                        <>
+                        {/* Review Changes Button */}
+                            <button
+                                onClick={handleReviewClick}
+                                className="group text-white px-4 py-2 rounded-2xl shadow-md 
+                                flex items-center gap-2 transition-all duration-300 
+                                hover:scale-105 hover:shadow-xl"
+                                style={{
+                                    background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                                }}
+                            >
+                                <span className="text-lg transition-transform duration-300 group-hover:-translate-y-[1px]">
+                                    <HiOutlineSearch />
+                                </span>
+
+                                <div className="flex flex-col leading-tight text-left">
+                                    <span className="text-sm font-black">
+                                        Review
+                                    </span>
+                                </div>
+                            </button>
+
+                            {/* Full Sync Button */}
+                            <button
+                                onClick={handleFullRefresh}
+                                className="group text-white px-4 py-2 rounded-2xl shadow-md 
+                                flex items-center gap-2 transition-all duration-300 
+                                hover:scale-105 hover:shadow-xl"
+                                style={{
+                                    background: 'linear-gradient(135deg, #1e293b, #000000)',
+                                }}
+                            >
+                                <span className="text-lg transition-transform duration-300 group-hover:rotate-180">
+                                    <HiOutlineRefresh />
+                                </span>
+
+                                <div className="flex flex-col leading-tight text-left">
+                                    <span className="text-sm font-black">
+                                        Full Sync
+                                    </span>
+                                </div>
+                            </button>
+                        </>
+                    )}
+                    
                 </div>
             </div>
 

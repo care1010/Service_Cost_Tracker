@@ -8,6 +8,10 @@ const PtdAutomation = () => {
 
     const handleFileChange = (e) => setFile(e.target.files[0]);
 
+    const handleDownloadTemplate = () => {
+        window.location.href = `${process.env.REACT_APP_API_URL}/api/data/download-ptd-template`;
+    };
+
     const handleUpload = async () => {
         if (!file) return alert("Please select a file first!");
         
@@ -30,11 +34,20 @@ const PtdAutomation = () => {
     };
 
     return (
-        <div className="p-8 bg-white rounded-3xl shadow-xl max-w-2xl mx-auto mt-10 border border-slate-100">
+        <div className="p-8 bg-white rounded-3xl shadow-xl max-w-2xl mx-auto mt-20 border border-slate-100">
             <h2 className="text-2xl font-black text-slate-800 mb-6 flex items-center gap-3">
                 <span className="bg-blue-600 p-2 rounded-xl text-white text-sm">⚙️</span>
                 Upload PTD Data
             </h2>
+
+            {/* RIGHT SIDE BUTTON */}
+            <button
+                onClick={handleDownloadTemplate}
+                className="px-5 py-2 rounded-2xl font-bold text-xs text-blue-600 bg-blue-50 border border-blue-200 shadow-sm whitespace-nowrap transition-all duration-200 ease-in-out transform hover:scale-105 hover:bg-blue-100 active:scale-95"
+            >
+                📥 Export Template
+            </button>
+            <p className="text-slate-600 text-base mt-2 mb-7">NOTE: If any error occurred while uploading the PTD data, please refer to the template provided to avoid mismatch of column headers. </p>
 
             <div className="border-2 border-dashed border-slate-200 rounded-3xl p-10 text-center hover:border-blue-400 transition-all bg-slate-50">
                 <input type="file" onChange={handleFileChange} className="hidden" id="ptd-file" accept=".xlsx, .xls" />
@@ -45,10 +58,14 @@ const PtdAutomation = () => {
                 </label>
             </div>
 
-            <button 
+            <button
                 onClick={handleUpload}
                 disabled={loading}
-                className={`w-full mt-8 py-4 rounded-2xl font-bold text-white shadow-lg transition-all ${loading ? 'bg-slate-400' : 'bg-blue-600 hover:bg-blue-700 shadow-blue-100'}`}
+                className={`mt-8 w-[30%] mx-auto block py-4 rounded-2xl font-bold text-white shadow-lg transition-all duration-200 ease-in-out transform hover:scale-105 active:scale-95
+                ${loading 
+                    ? 'bg-slate-400 cursor-not-allowed shadow-none' 
+                    : 'bg-blue-600 hover:bg-blue-700 shadow-blue-100'
+                }`}
             >
                 {loading ? "Processing..." : "Upload"}
             </button>

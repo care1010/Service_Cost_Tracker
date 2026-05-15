@@ -3,6 +3,8 @@ import axios from 'axios';
 import $ from 'jquery';
 import 'select2';
 import 'select2/dist/css/select2.min.css';
+import { HiOutlineDocumentDownload } from "react-icons/hi";
+import './AsblAutomation.css';
 
 const AsblAutomation = () => {
     const [pasteData, setPasteData] = useState('');
@@ -95,88 +97,302 @@ const AsblAutomation = () => {
             )}
 
             {/* SECTION 1: PASTE AREA */}
-            <div className="bg-white rounded-[2rem] shadow-lg p-6 border border-slate-100">
-                <h2 className="text-lg font-black mb-4 flex items-center gap-2">
-                    <span className="w-2 h-5 bg-emerald-500 rounded-full"></span>
-                    Update ASBL
-                </h2>
+            <div className="bg-white/95 backdrop-blur-md rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.05)] 
+            p-6 border border-slate-100 transition-all duration-300">
 
-                <button 
+                {/* Header */}
+                <div className="flex items-center justify-between mb-5">
+
+                    <div>
+                        <h2 className="text-2xl font-black text-slate-800 flex items-center gap-3">
+                            <span className="w-2 h-6 bg-emerald-500 rounded-full"></span>
+                            Update <span className="text-emerald-600">ASBL</span>
+                        </h2>
+                    </div>
+
+                    {/* Export Template Button */}
+                    <button
                         onClick={handleDownloadTemplate}
-                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-2"
+                        className="group text-white px-4 py-2 rounded-2xl shadow-md 
+                        flex items-center gap-2 transition-all duration-300 
+                        hover:scale-105 hover:shadow-xl"
+                        style={{
+                            background: 'linear-gradient(135deg, #4169e1, #3157c9)',
+                        }}
                     >
-                        📥 Export Template
+                        <span className="text-lg transition-transform duration-300 group-hover:-translate-y-[1px]">
+                            <HiOutlineDocumentDownload />
+                        </span>
+
+                        <span className="text-sm font-black">
+                            Export Template
+                        </span>
                     </button>
 
-                <textarea className="w-full h-32 p-4 rounded-2xl border border-slate-200 bg-slate-50 text-sm outline-none focus:ring-2 focus:ring-blue-500/20" placeholder="Paste from Excel..." value={pasteData} onChange={(e) => setPasteData(e.target.value)}></textarea>
-                <button onClick={handleBulkUpdate} className="mt-4 bg-emerald-600 text-white px-8 py-2.5 rounded-xl font-bold shadow-lg hover:bg-emerald-700 transition-all">🚀 Process Paste</button>
-                
+                </div>
+
+                {/* Info Box */}
+                <div className="bg-amber-50 border border-amber-100 rounded-2xl px-4 py-3 mb-5">
+                    <p className="text-[15px] text-amber-700 leading-relaxed">
+                        <span className="font-black uppercase">
+                            Note:
+                        </span>{" "}
+                        Please use the exported template before uploading or pasting ASBL data.
+                    </p>
+                </div>
+
+                {/* Paste Instruction */}
+                <div className="mb-3">
+                    <span className="text-slate-700 text-sm font-bold uppercase tracking-wide">
+                        Option-1:
+                    </span>
+
+                    <span className="text-slate-500 text-sm mt-1">
+                         `Paste the copied Excel data below to process bulk ASBL updates.
+                    </span>
+                </div>
+
+                {/* Textarea */}
+                <textarea
+                    className="w-full h-36 p-4 rounded-[1.5rem] border border-slate-200 
+                    bg-slate-50 text-sm outline-none transition-all duration-300
+                    focus:ring-4 focus:ring-blue-500/10 focus:border-blue-400
+                    placeholder:text-slate-400"
+                    placeholder="Paste Excel data here..."
+                    value={pasteData}
+                    onChange={(e) => setPasteData(e.target.value)}
+                />
+
+                {/* Process Button */}
+                <div className="flex justify-end mt-5">
+                    <button
+                        onClick={handleBulkUpdate}
+                        className="group text-white px-5 py-2.5 rounded-2xl shadow-md 
+                        flex items-center gap-2 transition-all duration-300 
+                        hover:scale-105 hover:shadow-xl"
+                        style={{
+                            background: 'linear-gradient(135deg, #10b981, #059669)',
+                        }}
+                    >
+                        <span className="text-lg transition-transform duration-300 group-hover:translate-x-[2px]">
+                            🚀
+                        </span>
+
+                        <span className="text-sm font-black">
+                            Process Paste
+                        </span>
+                    </button>
+                </div>
+
             </div>
 
             {/* SECTION 2: EDITABLE MATRIX */}
-            <div className="bg-white rounded-[2rem] shadow-lg p-8 border border-slate-100">
-                <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-                    <div className="w-full md:w-1/3">
-                        <select id="loa-select" className="select2-dropdown">
-                            <option value="">Select Project...</option>
-                            {loaOptions.map(id => <option key={id} value={id}>{id}</option>)}
-                        </select>
-                    </div>
-                    
-                    <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-2xl border border-slate-100">
-                        <button onClick={() => setShowAll(!showAll)} className={`px-6 py-2 rounded-xl text-xs font-bold transition-all ${showAll ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:bg-slate-200'}`}>
-                            {showAll ? "Showing All 54" : "Showing Active Only"}
-                        </button>
-                        {projectData.length > 0 && (
-                            <button onClick={handleManualSave} className="bg-slate-800 text-white px-6 py-2 rounded-xl text-xs font-bold shadow-lg hover:bg-black transition-all">
-                                💾 Save Changes
-                            </button>
-                        )}
-                    </div>
-                </div>
+                {/* SECTION 2: EDITABLE MATRIX */}
+                <div className="bg-white/95 backdrop-blur-md rounded-[2rem] 
+                shadow-[0_8px_30px_rgb(0,0,0,0.05)] p-6 border border-slate-100">
 
-                {displayData.length > 0 ? (
-                    <div className="overflow-hidden rounded-2xl border border-slate-200 shadow-sm">
-                        <table className="w-full text-left text-[11px] border-collapse">
-                            <thead className="bg-slate-800 text-white uppercase tracking-wider">
-                                <tr>
-                                    <th className="p-4 font-bold border-r border-slate-700">LOA ID / Name</th>
-                                    <th className="p-4 font-bold border-r border-slate-700">Cost/Revenue</th>
-                                    <th className="p-4 font-bold border-r border-slate-700">Category</th>
-                                    <th className="p-4 text-right w-40">ASBL</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {displayData.map((row, i) => (
-                                    <tr key={i} className="border-b border-slate-100 hover:bg-blue-50/50 transition-colors">
-                                        {/* 🔥 METADATA LOGIC: Hamesha pehli visible row mein dikhega */}
-                                        <td className="p-4 font-black text-blue-900 bg-slate-50/50 border-r border-slate-100">
-                                            {i === 0 ? `${row.loa_id} - ${row.loa_name}` : ""}
-                                        </td>
-                                        <td className="p-4 font-bold text-slate-500 border-r border-slate-100">
-                                            {i === 0 || row.cost_revenue !== displayData[i-1].cost_revenue ? row.cost_revenue : ""}
-                                        </td>
-                                        <td className="p-4 text-slate-600 font-medium border-r border-slate-100">{row.categories}</td>
-                                        <td className="p-2 text-right bg-white">
-                                            <input 
-                                                type="number" 
-                                                step="0.01" // 🔥 Decimal support
-                                                value={row.asbl} 
-                                                onChange={(e) => handleAsblChange(projectData.indexOf(row), e.target.value)}
-                                                className="w-full p-2 border border-slate-200 rounded-lg text-right font-mono font-bold text-blue-600 focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
-                                            />
-                                        </td>
+                    {/* Header */}
+                    <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-5 mb-6">
+
+                        <div>
+                            
+
+                            <p className="text-slate-600 text-sm mt-3 leading-relaxed">
+                                <span className="text-slate-700 text-sm font-bold uppercase tracking-wide">
+                                    OPTION-2:
+                                </span>{" "}
+
+                                Select the <span className="font-bold text-blue-600">LOA Name</span>
+                                from the dropdown below to update ASBL values manually.
+
+                                <br />
+
+                                <span className="text-slate-500 text-[13px]">
+                                    The table will initially display only active categories.
+                                    Use the toggle button to switch between active-only and all categories view.
+                                </span>
+                            </p>
+                        </div>
+
+                        {/* Right Controls */}
+                        <div className="flex flex-col md:flex-row items-center gap-3 w-full lg:w-auto">
+
+                            {/* Project Dropdown */}
+                            <div className="w-full md:w-[260px]">
+                                <select id="loa-select" className="select2-dropdown">
+                                    <option value="">Select Project...</option>
+
+                                    {loaOptions.map(id => (
+                                        <option key={id} value={id}>
+                                            {id}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Toggle + Save */}
+                            <div className="flex items-center gap-3 bg-slate-50 p-2 rounded-2xl border border-slate-100">
+
+                                {/* Toggle Button */}
+                                <button
+                                    onClick={() => setShowAll(!showAll)}
+                                    className="group text-white px-4 py-2 rounded-xl shadow-sm 
+                                    flex items-center gap-2 transition-all duration-300 
+                                    hover:scale-105 hover:shadow-md"
+                                    style={{
+                                        background: 'linear-gradient(135deg, #4169e1, #3157c9)',
+                                    }}
+                                >
+                                    <span className="text-sm">
+                                        {showAll ? "📂" : "📊"}
+                                    </span>
+
+                                    <span className="text-[11px] font-black uppercase tracking-wide">
+                                        {showAll ? "Showing All" : "Active Only"}
+                                    </span>
+                                </button>
+
+                                {/* Save Button */}
+                                {projectData.length > 0 && (
+                                    <button
+                                        onClick={handleManualSave}
+                                        className="group text-white px-4 py-2 rounded-xl shadow-sm 
+                                        flex items-center gap-2 transition-all duration-300 
+                                        hover:scale-105 hover:shadow-md"
+                                        style={{
+                                            background: 'linear-gradient(135deg, #10b981, #059669)',
+                                        }}
+                                    >
+                                        <span className="text-sm">
+                                            💾
+                                        </span>
+
+                                        <span className="text-[11px] font-black uppercase tracking-wide">
+                                            Save Changes
+                                        </span>
+                                    </button>
+                                )}
+
+                            </div>
+
+                        </div>
+                    </div>
+
+                    {/* Table */}
+                    {displayData.length > 0 ? (
+
+                        <div className="overflow-hidden rounded-[1.5rem] border border-slate-200 shadow-sm">
+
+                            <table className="w-full text-left text-[14px] border-collapse">
+
+                                <thead className="bg-gradient-to-r from-slate-800 to-slate-700 text-white uppercase tracking-wider">
+                                    <tr>
+                                        <th className="p-4 font-black border-r border-slate-700">
+                                            LOA ID / Name
+                                        </th>
+
+                                        <th className="p-4 font-black border-r border-slate-700">
+                                            Cost/Revenue
+                                        </th>
+
+                                        <th className="p-4 font-black border-r border-slate-700">
+                                            Category
+                                        </th>
+
+                                        <th className="p-4 text-center w-40 font-black">
+                                            ASBL
+                                        </th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                ) : (
-                    <div className="text-center py-24 text-slate-300 italic border-2 border-dashed border-slate-100 rounded-[2rem]">
-                        Select a project to view and edit ASBL values
-                    </div>
-                )}
-            </div>
+                                </thead>
+
+                                <tbody>
+
+                                    {displayData.map((row, i) => (
+
+                                        <tr
+                                            key={i}
+                                            className="border-b border-slate-100 
+                                            hover:bg-blue-50/40 transition-all duration-200"
+                                        >
+
+                                            {/* LOA */}
+                                            <td className="p-4 font-black text-blue-900 bg-slate-50/50 border-r border-slate-100">
+
+                                                {i === 0
+                                                    ? `${row.loa_id} - ${row.loa_name}`
+                                                    : ""
+                                                }
+
+                                            </td>
+
+                                            {/* Cost Revenue */}
+                                            <td className="p-4 font-bold text-slate-500 border-r border-slate-100">
+
+                                                {i === 0 || row.cost_revenue !== displayData[i - 1].cost_revenue
+                                                    ? row.cost_revenue
+                                                    : ""
+                                                }
+
+                                            </td>
+
+                                            {/* Category */}
+                                            <td className="p-4 text-slate-600 font-semibold border-r border-slate-100">
+                                                {row.categories}
+                                            </td>
+
+                                            {/* Input */}
+                                            <td className="p-2 text-right bg-white">
+
+                                                <input
+                                                    type="number"
+                                                    step="0.01"
+                                                    value={row.asbl}
+                                                    onChange={(e) =>
+                                                        handleAsblChange(
+                                                            projectData.indexOf(row),
+                                                            e.target.value
+                                                        )
+                                                    }
+
+                                                    className="w-full p-2.5 border border-slate-200 
+                                                    rounded-xl text-right font-mono font-black 
+                                                    text-blue-600 bg-slate-50
+                                                    focus:border-blue-500 focus:ring-4 
+                                                    focus:ring-blue-100 outline-none transition-all"
+                                                />
+
+                                            </td>
+
+                                        </tr>
+                                    ))}
+
+                                </tbody>
+
+                            </table>
+
+                        </div>
+
+                    ) : (
+
+                        <div className="text-center py-24 border-2 border-dashed 
+                        border-slate-200 rounded-[2rem] bg-slate-50/50">
+
+                            <div className="text-5xl mb-4">
+                                📊
+                            </div>
+
+                            <p className="text-slate-400 text-lg font-bold">
+                                No Project Selected
+                            </p>
+
+                            <p className="text-slate-300 text-sm mt-2">
+                                Select a project to view and edit ASBL values
+                            </p>
+
+                        </div>
+
+                    )}
+                </div>
         </div>
     );
 };

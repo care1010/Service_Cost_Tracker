@@ -8,17 +8,26 @@ const KpiCards = ({ data }) => {
     ];
 
     return (
-        <div className="grid grid-cols-3 gap-4 h-full">
+        <div className="flex gap-3 h-full">
             {cards.map((card, i) => (
                 <div
                     key={i}
-                    className="group bg-white p-4 rounded-[2rem] shadow-sm border border-slate-50 flex flex-col justify-center relative overflow-hidden transition-transform duration-300 hover:scale-105"
+                    className="group bg-white px-4 py-2 rounded-2xl shadow-sm border border-slate-100 
+                    flex items-center justify-between min-w-[180px] relative overflow-hidden 
+                    transition-all duration-300 hover:scale-105"
                 >
-                    <div className={`absolute -right-2 -top-2 w-12 h-12 rounded-full ${card.bg} opacity-40`}></div>
-                    <span className="text-grey-400 text-[13px] font-bold uppercase tracking-widest mb-1">
+                    {/* Background Circle */}
+                    <div
+                        className={`absolute -right-3 -top-3 w-10 h-10 rounded-full ${card.bg} opacity-40`}
+                    ></div>
+
+                    {/* Label */}
+                    <span className="text-grey-500 text-[13px] font-semibold uppercase tracking-wide z-10">
                         {card.label}
                     </span>
-                    <span className={`text-2xl font-black ${card.color}`}>
+
+                    {/* Value */}
+                    <span className={`text-xl font-black ${card.color} z-10`}>
                         {card.value}%
                     </span>
                 </div>

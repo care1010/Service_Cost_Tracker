@@ -35,13 +35,14 @@ const AddProject = () => {
             <div className="bg-white rounded-[2.5rem] shadow-2xl overflow-hidden border border-slate-100">
                 <div className="p-8 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
                     <div>
-                        <h2 className="text-2xl font-black text-slate-800 tracking-tight">Add Project or WBS Addition in existing Project</h2>
-                        <p className="text-slate-400 text-xs font-medium mt-1 uppercase tracking-widest">Copy the data as per the defined template & paste below to Add Project or WBS </p>
+                        <h2 className="text-2xl font-black text-slate-600">Add Project or WBS Addition in existing Project</h2>
+                        <br></br>
+                        <p className="text-orange-400 text-sm font-medium mt-1">NOTE:- Copy the data as per the defined template & paste below to Add Project or WBS </p>
                     </div>
                     {/* EXPORT TEMPLATE BUTTON */}
-                    <button 
+                    <button
                         onClick={handleDownloadTemplate}
-                        className="bg-sky-600 hover:bg-sky-700 text-white px-6 py-2.5 rounded-2xl text-xs font-bold transition-all shadow-lg shadow-sky-100 flex items-center gap-2"
+                        className="bg-blue-600 hover:bg-blue-600 text-white px-6 py-2.5 rounded-2xl text-10px font-bold shadow-lg shadow-sky-100 flex items-center gap-2 transition-all duration-200 ease-in-out transform hover:scale-105 active:scale-95"
                     >
                         📥 Export Template
                     </button>
@@ -57,14 +58,18 @@ const AddProject = () => {
                 </div>
 
                 <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex justify-center gap-6">
-                    <button 
+                    <button
                         onClick={handleProcess}
                         disabled={loading}
-                        className="px-12 py-4 rounded-2xl font-bold text-sm bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-100 transition-all active:scale-95"
+                        className="px-12 py-4 rounded-2xl font-bold text-sm bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-100 transition-all duration-200 ease-in-out transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         Save
                     </button>
-                    <button onClick={() => setPasteData('')} className="bg-white text-slate-500 px-8 py-4 rounded-2xl font-bold text-sm border border-slate-200 hover:bg-slate-100 transition-all">
+
+                    <button
+                        onClick={() => setPasteData('')}
+                        className="px-8 py-4 rounded-2xl font-bold text-sm bg-slate-200 text-slate-600 border border-slate-200 hover:bg-slate-100 hover:text-slate-700 shadow-sm transition-all duration-200 ease-in-out transform hover:scale-105 active:scale-95"
+                    >
                         Clear
                     </button>
                 </div>

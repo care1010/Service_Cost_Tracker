@@ -1,0 +1,9 @@
+.select2-container--default .select2-selection--single .select2-selection__clear {
+    height: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    margin-right: 35px !important;
+    margin-top: 0 !important;
+    font-size: 14px !important;
+    color: #64748b !important;
+}

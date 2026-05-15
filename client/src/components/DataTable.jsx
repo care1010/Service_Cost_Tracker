@@ -5,10 +5,16 @@ import 'datatables.net-dt';
 import 'datatables.net-rowgroup-dt';
 import 'datatables.net-dt/css/dataTables.dataTables.css';
 import './DataTable.css';
+import { HiOutlineSave } from "react-icons/hi";
+import Swal from 'sweetalert2';
+import { HiOutlineTrash } from "react-icons/hi";
 
 const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButton = true, showClearButton = false }) => {
     const tableRef = useRef(null);
     const dataTableInstance = useRef(null);
+
+    // 1. Naya state: Button ko enable/disable karne ke liye
+    const [canSave, setCanSave] = React.useState(false);
 
     const handleClear = async () => {
         if (!window.confirm("This will reset ALL your unsaved edits. Continue?")) return;
@@ -41,6 +47,9 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
         try {
             await axios.post(`${process.env.REACT_APP_API_URL}/api/data/update-non-committed`, { updates });
             alert("✅ Changes saved to Draft!");
+            // 🔥 2. Save hone ke baad button wapas disable karein
+            setCanSave(false);
+
             $('.nc-input').removeClass('is-changed').css('border-color', '#e2e8f0');
             if (dataTableInstance.current) dataTableInstance.current.ajax.reload(null, false);
         } catch (err) { alert("❌ Save failed"); }
@@ -236,19 +245,49 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
     }, [apiUrl, filters]); 
 
     return (
-        <div className="matrix-wrapper bg-white p-6 rounded-[2rem] shadow-2xl border border-gray-100">
+        <div className="matrix-wrapper bg-white p-2 rounded-[2rem] shadow-2xl border border-gray-100">
             <div className="flex justify-between items-center mb-6 border-b pb-4">
                 <h2 className="text-xl font-black text-slate-800">{title}</h2>
                 <div className="flex gap-3">
                     {/* 🔥 Condition based buttons */}
                     {showSaveButton && (
-                        <button onClick={handleSave} className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-xl font-bold text-xs shadow-lg transition-all">
-                            💾 Save Draft Changes
+                        <button
+                            onClick={handleSave}
+                            className="group text-white px-5 py-2.5 rounded-2xl shadow-md 
+                            flex items-center gap-2 transition-all duration-300 
+                            hover:scale-105 hover:shadow-xl mr-4"
+                            style={{
+                                background: 'linear-gradient(135deg, #4682b4, #35648d)',
+                            }}
+                        >
+                            <span className="text-lg transition-transform duration-300 group-hover:-translate-y-[1px]">
+                                <HiOutlineSave />
+                            </span>
+
+                            <div className="flex flex-col leading-tight text-left">
+                                <span className="text-sm font-black">
+                                    Save
+                                </span>
+                            </div>
                         </button>
                     )}
                     {showClearButton && (
-                        <button onClick={handleClear} className="bg-slate-100 text-slate-500 hover:bg-rose-500 hover:text-white px-6 py-2 rounded-xl font-bold text-xs transition-all border border-slate-200">
-                            🗑️ Clear All Edits
+                        <button
+                            onClick={handleClear}
+                            className="group text-white px-4 py-2 rounded-2xl shadow-md 
+                            flex items-center gap-2 transition-all duration-300 
+                            hover:scale-105 hover:shadow-xl mr-5 mt-1"
+                            style={{
+                                background: 'linear-gradient(135deg, #ef4444, #dc2626)',
+                            }}
+                        >
+                            <span className="text-lg transition-transform duration-300 group-hover:scale-110">
+                                <HiOutlineTrash />
+                            </span>
+
+                            <span className="text-sm font-black">
+                                Clear All
+                            </span>
                         </button>
                     )}
                 </div>
