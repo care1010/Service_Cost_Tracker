@@ -723,6 +723,24 @@ exports.getLoaAnalytics = async (req, res) => {
 
 };
 
+exports.getFinalDashboardTable = async (req, res) => {
+    try {
+        const [rows] = await db.query(`
+            SELECT 
+                bu AS BU,
+                asbl AS ASBL_LOA,
+                ptd AS PTD,
+                open_commitment AS Open_Commitment,
+                eac AS EAC,
+                (eac - asbl) AS EAC_VS_ASBL
+            FROM final_dashboard_table
+        `);
+
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
 
 // 1. Sirf badli hui rows fetch karein
 exports.getReviewChanges = async (req, res) => {

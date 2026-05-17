@@ -75,4 +75,6 @@ router.post('/finalize-changes', dataController.finalizeChanges);
 
 router.get('/check-pending-changes', dataController.checkPendingChanges);
 
+router.get('/final-dashboard-table', dataController.getFinalDashboardTable);
+
 module.exports = router;
