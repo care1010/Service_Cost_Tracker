@@ -228,7 +228,7 @@ exports.getFilterOptions = async (req, res) => {
 };
 
 
-// 2. 🔥 Naya Update Function (Dono tables ke liye)
+// 2. Naya Update Function (Dono tables ke liye)
 exports.updateNonCommitted = async (req, res) => {
     const { updates } = req.body;
     try {
@@ -482,38 +482,245 @@ exports.fullRefresh = async (req, res) => {
     }
 };
 
-// 1. BU Wise Aggregation
-exports.getBuAnalytics = async (req, res) => {
+
+// 1. Dashboard Filters
+exports.getDashboardFilters = async (req, res) => {
     try {
-        const sql = `
-            SELECT bu, 
-                   SUM(asbl) as asbl, 
-                   SUM(ptd) as ptd, 
-                   SUM(eac) as eac 
-            FROM final_dashboard_table 
-            WHERE categories NOT IN ('Local Materials', 'Not to considered')
-            GROUP BY bu`;
-        const [rows] = await db.query(sql);
-        res.status(200).json(rows);
-    } catch (error) { res.status(500).json({ error: error.message }); }
+
+        const [periodRows] = await db.query(`
+            SELECT DISTINCT period
+            FROM final_dashboard_table
+            WHERE period IS NOT NULL
+            ORDER BY period DESC
+        `);
+
+        const [customerRows] = await db.query(`
+            SELECT DISTINCT customer
+            FROM final_dashboard_table
+            WHERE customer IS NOT NULL
+            AND customer <> ''
+            ORDER BY customer ASC
+        `);
+
+        // Example: 2026-P1 → 2026
+        const years = [
+            ...new Set(
+                periodRows.map(r => r.period?.split('-')[0])
+            )
+        ].sort((a, b) => b - a);
+
+        const periods = periodRows.map(r => r.period);
+
+        const customers = customerRows.map(
+            r => r.customer
+        );
+
+        res.status(200).json({
+            years,
+            periods,
+            customers
+        });
+
+    } catch (error) {
+        res.status(500).json({
+            error: error.message
+        });
+    }
 };
 
-// 2. LOA Name Wise Aggregation (Top 10 Projects for better visibility)
-exports.getLoaAnalytics = async (req, res) => {
+// 2. Filtered BU Analytics
+exports.getBuAnalytics = async (req, res) => {
+
     try {
+
+        const { years, periods, customers } = req.query;
+
+        let conditions = [
+            "categories NOT IN ('Local Materials', 'Not to considered')",
+            "cost_revenue <> 'NTC'",
+            "cost_revenue = 'Cost'"
+        ];
+
+        let params = [];
+
+        // MULTI YEAR FILTER
+
+        if (years) {
+
+            const yearArray = years.split(',');
+
+            const yearConditions = yearArray.map(() =>
+                "period LIKE ?"
+            );
+
+            conditions.push(`(${yearConditions.join(' OR ')})`);
+
+            params.push(
+                ...yearArray.map(y => `${y}-%`)
+            );
+
+        }
+
+        // MULTI PERIOD FILTER
+
+        if (periods) {
+
+            const periodArray = periods.split(',');
+
+            const placeholders =
+                periodArray.map(() => '?').join(',');
+
+            conditions.push(
+                `period IN (${placeholders})`
+            );
+
+            params.push(...periodArray);
+
+        }
+
+        // MULTI CUSTOMER FILTER
+
+        if (customers) {
+
+            const customerArray =
+                customers.split(',');
+
+            const placeholders =
+                customerArray.map(() => '?').join(',');
+
+            conditions.push(
+                `customer IN (${placeholders})`
+            );
+
+            params.push(...customerArray);
+
+        }
+
+        const whereSql =
+            " WHERE " + conditions.join(" AND ");
+
         const sql = `
-            SELECT loa_name, 
-                   SUM(asbl) as asbl, 
-                   SUM(ptd) as ptd, 
-                   SUM(eac) as eac 
-            FROM final_dashboard_table 
-            WHERE categories NOT IN ('Local Materials', 'Not to considered')
-            GROUP BY loa_name 
-            ORDER BY asbl DESC 
-            LIMIT 10`; // Sirf Top 10 dikhayenge taaki graph messy na ho
-        const [rows] = await db.query(sql);
+
+            SELECT
+                bu,
+                SUM(asbl) AS asbl,
+                SUM(ptd) AS ptd,
+                SUM(eac) AS eac
+
+            FROM final_dashboard_table
+
+            ${whereSql}
+
+            GROUP BY bu
+
+        `;
+
+        const [rows] =
+            await db.query(sql, params);
+
         res.status(200).json(rows);
-    } catch (error) { res.status(500).json({ error: error.message }); }
+
+    } catch (error) {
+
+        res.status(500).json({
+            error: error.message
+        });
+
+    }
+
+};
+
+// 3. Filtered LOA Analytics
+exports.getLoaAnalytics = async (req, res) => {
+
+    try {
+
+        const { years, periods, showAll } = req.query;
+
+        const limitSql =
+            showAll === 'true'
+                ? ''
+                : 'LIMIT 10';
+
+        let conditions = [
+            "categories NOT IN ('Local Materials', 'Not to considered')",
+            "cost_revenue <> 'NTC'",
+            "cost_revenue = 'Cost'"
+        ];
+
+        let params = [];
+
+        // MULTI YEAR FILTER
+
+        if (years) {
+
+            const yearArray = years.split(',');
+
+            const yearConditions = yearArray.map(() =>
+                "period LIKE ?"
+            );
+
+            conditions.push(`(${yearConditions.join(' OR ')})`);
+
+            params.push(
+                ...yearArray.map(y => `${y}-%`)
+            );
+
+        }
+
+        // MULTI PERIOD FILTER
+
+        if (periods) {
+
+            const periodArray = periods.split(',');
+
+            const placeholders =
+                periodArray.map(() => '?').join(',');
+
+            conditions.push(
+                `period IN (${placeholders})`
+            );
+
+            params.push(...periodArray);
+
+        }
+
+        const whereSql =
+            " WHERE " + conditions.join(" AND ");
+
+        const sql = `
+
+    SELECT
+        loa_name,
+        SUM(asbl) AS asbl,
+        SUM(ptd) AS ptd,
+        SUM(eac) AS eac
+
+    FROM final_dashboard_table
+
+    ${whereSql}
+
+    GROUP BY loa_name
+
+    ORDER BY asbl DESC
+
+    ${limitSql}
+
+`;
+
+        const [rows] =
+            await db.query(sql, params);
+
+        res.status(200).json(rows);
+
+    } catch (error) {
+
+        res.status(500).json({
+            error: error.message
+        });
+
+    }
+
 };
 
 

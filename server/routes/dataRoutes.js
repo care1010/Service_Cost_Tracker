@@ -11,6 +11,7 @@ const asblController = require('../controllers/asblController');
 const authController = require('../controllers/authController');
 
 
+
 // In teeno routes ke naam controller ke function se match hone chahiye
 router.get('/wbs-summary', dataController.getWbsSummary);
 router.get('/filter-options', dataController.getFilterOptions); // Is line ki wajah se crash ho raha tha
@@ -29,7 +30,10 @@ router.get('/download-template', (req, res) => {
 
 router.post('/login', authController.login);
 
+router.get('/dashboard-filters', dataController.getDashboardFilters);
+
 router.get('/analytics-bu', dataController.getBuAnalytics);
+
 router.get('/analytics-loa', dataController.getLoaAnalytics);
 
 router.post('/full-refresh', dataController.fullRefresh);
