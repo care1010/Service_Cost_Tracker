@@ -3,18 +3,7 @@ import axios from 'axios';
 import { DataGrid } from '@mui/x-data-grid';
 import * as XLSX from "xlsx";
 import { saveAs } from 'file-saver';
-
-import {
-    BarChart,
-    Bar,
-    XAxis,
-    YAxis,
-    CartesianGrid,
-    Tooltip,
-    Legend,
-    ResponsiveContainer,
-    LabelList
-} from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList } from 'recharts';
 
 const Dashboard = () => {
 
@@ -133,27 +122,17 @@ const exportToExcel = () => {
     // =========================================
 
     useEffect(() => {
-
         const fetchFilters = async () => {
-
             try {
-
                 const res = await axios.get(
                     `${process.env.REACT_APP_API_URL}/api/data/dashboard-filters`
                 );
-
                 setFilterOptions(res.data);
-
             } catch (err) {
-
                 console.error(err);
-
             }
-
         };
-
         fetchFilters();
-
     }, []);
 
     // =========================================
@@ -161,11 +140,8 @@ const exportToExcel = () => {
     // =========================================
 
     useEffect(() => {
-
         const fetchData = async () => {
-
             try {
-
                 setLoading(true);
 
                 const years = selectedYears.join(',');
@@ -188,62 +164,42 @@ const exportToExcel = () => {
                 setLoaData(loaRes.data);
 
             } catch (err) {
-
                 console.error(err);
-
             } finally {
-
                 setLoading(false);
-
             }
-
         };
-
         fetchData();
-
-    }, [selectedYears, selectedPeriods, showAllLoa]);
+    }, [selectedYears, selectedPeriods, showAllLoa, selectedCustomers]);
 
     // =========================================
     // YEAR CHANGE
     // =========================================
 
     const handleYearChange = (year, checked) => {
-
         let updatedYears = [];
-
         if (checked) {
-
             updatedYears = [...selectedYears, year];
-
         } else {
-
             updatedYears = selectedYears.filter(
                 (y) => y !== year
             );
-
         }
 
         setSelectedYears(updatedYears);
 
         // AUTO SYNC PERIODS
-
         if (updatedYears.length > 0) {
-
             const syncedPeriods =
                 filterOptions.periods.filter((p) =>
                     updatedYears.some((y) =>
                         p.startsWith(y)
                     )
                 );
-
             setSelectedPeriods(syncedPeriods);
-
         } else {
-
             setSelectedPeriods([]);
-
         }
-
     };
 
     // =========================================
@@ -251,41 +207,27 @@ const exportToExcel = () => {
     // =========================================
 
     const handlePeriodChange = (period, checked) => {
-
         let updatedPeriods = [];
-
         if (checked) {
-
             updatedPeriods = [
                 ...selectedPeriods,
                 period
             ];
-
         } else {
-
             updatedPeriods =
                 selectedPeriods.filter(
                     (p) => p !== period
                 );
-
         }
-
         setSelectedPeriods(updatedPeriods);
-
         const syncedYears = [
-
             ...new Set(
-
                 updatedPeriods.map(
                     (p) => p.split('-')[0]
                 )
-
             )
-
         ];
-
         setSelectedYears(syncedYears);
-
     };
 
 const filteredLoaOptions = loaData.filter((item) =>
@@ -303,25 +245,18 @@ const displayLoaData = showAllLoa
         <div className="p-6 bg-slate-100 min-h-screen space-y-6">
 
             {/* HEADER */}
-
             <div className="bg-white rounded-[2rem] shadow-lg p-6 border border-slate-200">
-
                 <div className="flex flex-col lg:flex-row lg:justify-between gap-8">
-
                     <div>
-
                         <h1 className="text-3xl font-black text-slate-800">
                             Executive Analytics
                         </h1>
-
                         <p className="text-slate-400 text-sm mt-1">
                             Business Unit & Project Analysis
                         </p>
-
                     </div>
 
                     {/* FILTERS */}
-
                     <div className="flex flex-col md:flex-row gap-5">
 
                         {/* 1. Customer Filter */}
