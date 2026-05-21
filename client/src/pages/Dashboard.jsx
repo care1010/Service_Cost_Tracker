@@ -10,7 +10,8 @@ const Dashboard = () => {
     const [buData, setBuData] = useState([]);
     const [loaData, setLoaData] = useState([]);
 
-    const [filterOptions, setFilterOptions] = useState({ years: [], periods: [], customers: []});
+    // FILTER OPTIONS for YEARS, PERIODS, CUSTOMERS
+    const [filterOptions, setFilterOptions] = useState({ years: [], periods: [], customers: [], loa_names: []});
 
     const [selectedYears, setSelectedYears] = useState([]);
     const [selectedPeriods, setSelectedPeriods] = useState([]);
@@ -37,28 +38,62 @@ const Dashboard = () => {
     const loaFilterRef = useRef();
 
     const [tableData, setTableData] = useState([]);
+    const [tableView, setTableView] = useState('bu');
 
+// fetching table data for BU and Cost
 useEffect(() => {
   fetchTableData();
-}, []);
+}, [tableView]);
 
 const fetchTableData = async () => {
-  try {
-    const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/final-dashboard-table`);
-    setTableData(res.data);
-  } catch (err) {
-    console.log('Error fetching table:', err);
-  }
-};
 
-const columns = [
-  { field: 'BU', headerName: 'BU', flex: 1 },
-  { field: 'ASBL_LOA', headerName: 'ASBL LOA', flex: 1 },
-  { field: 'PTD', headerName: 'PTD', flex: 1 },
-  { field: 'Open_Commitment', headerName: 'Open Commitment', flex: 1 },
-  { field: 'EAC', headerName: 'EAC', flex: 1 },
-  { field: 'EAC_VS_ASBL', headerName: 'EAC VS ASBL', flex: 1 },
-];
+  try {
+
+    const endpoint =
+      tableView === 'bu'
+        ? 'final-dashboard-table'
+        : 'cost-view-table';
+
+    const res = await axios.get(
+      `${process.env.REACT_APP_API_URL}/api/data/${endpoint}`
+    );
+
+    setTableData(res.data);
+
+  } catch (err) {
+
+    console.log(
+      'Error fetching table:',
+      err
+    );
+
+  }
+
+};
+const columnsToShow =
+  tableView === 'bu'
+    ? [
+        'bu',
+        'asbl',
+        'asbl_loa',
+        'ptd',
+        'open_commitment',
+        'non_committed',
+        'eac',
+        'eac_vs_asbl'
+      ]
+    : [
+        'loa_name',
+        'asbl',
+        'asbl_loa',
+        'ptd',
+        'open_commitment',
+        'non_committed',
+        'eac',
+        'eac_vs_asbl'
+      ];
+
+<DataGrid rows={tableData} columns={columnsToShow} getRowId={(row) => row.BU}/>
 
 const exportToExcel = () => {
   const worksheet = XLSX.utils.json_to_sheet(tableData);
@@ -122,10 +157,30 @@ const exportToExcel = () => {
     // =========================================
 
     useEffect(() => {
-        const fetchFilters = async () => {
-            try {
+    const fetchFilters = async () => {
+        try {
+                const years =
+                    selectedYears.join(',');
+
+                const periods =
+                    selectedPeriods.join(',');
+
+                const customers =
+                    selectedCustomers.join(',');
+
+                const loa_names =
+                    selectedLoas.join(',');
+
                 const res = await axios.get(
-                    `${process.env.REACT_APP_API_URL}/api/data/dashboard-filters`
+                    `${process.env.REACT_APP_API_URL}/api/data/dashboard-filters`,
+                    {
+                        params: {
+                            years,
+                            periods,
+                            customers,
+                            loa_names
+                        }
+                    }
                 );
                 setFilterOptions(res.data);
             } catch (err) {
@@ -133,7 +188,12 @@ const exportToExcel = () => {
             }
         };
         fetchFilters();
-    }, []);
+    }, [
+        selectedYears,
+        selectedPeriods,
+        selectedCustomers,
+        selectedLoas
+    ]);
 
     // =========================================
     // FETCH DATA
@@ -147,15 +207,16 @@ const exportToExcel = () => {
                 const years = selectedYears.join(',');
                 const periods = selectedPeriods.join(',');
                 const customers = selectedCustomers.join(',');
+                const loa_names = selectedLoas.join(',');
 
                 const [buRes, loaRes] = await Promise.all([
 
                     axios.get(
-                        `${process.env.REACT_APP_API_URL}/api/data/analytics-bu?years=${years}&periods=${periods}&customers=${customers}`
+                        `${process.env.REACT_APP_API_URL}/api/data/analytics-bu?years=${years}&periods=${periods}&customers=${customers}&loa_names=${loa_names}&showAll=${showAllLoa}`
                     ),
 
                     axios.get(
-                        `${process.env.REACT_APP_API_URL}/api/data/analytics-loa?years=${years}&periods=${periods}&showAll=${showAllLoa}`
+                        `${process.env.REACT_APP_API_URL}/api/data/analytics-loa?years=${years}&periods=${periods}&customers=${customers}&loa_names=${loa_names}&showAll=${showAllLoa}`
                     )
 
                 ]);
@@ -170,7 +231,7 @@ const exportToExcel = () => {
             }
         };
         fetchData();
-    }, [selectedYears, selectedPeriods, showAllLoa, selectedCustomers]);
+    }, [selectedYears, selectedPeriods, selectedCustomers, selectedLoas, showAllLoa]);
 
     // =========================================
     // YEAR CHANGE
@@ -954,7 +1015,6 @@ const displayLoaData = showAllLoa
                                 fill="#8b5cf6"
                                 name="EAC"
                             >
-
                                 <LabelList
                                     dataKey="eac"
                                     position="right"
@@ -967,72 +1027,111 @@ const displayLoaData = showAllLoa
                                         fill: '#1e293b'
                                     }}
                                 />
-
                             </Bar>
-
                         </BarChart>
-
                     </ResponsiveContainer>
-
                 </div>
-
             </div>
 
             <div className="mt-6 bg-white p-4 rounded-xl shadow">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-lg font-bold">Final Dashboard Table</h2>
+                    
+                    {/* Toggle Button for BU lvele table and Cost level table view */}
+                    <button
+                        onClick={() =>
+                            setTableView(
+                            tableView === 'bu'
+                                ? 'cost'
+                                : 'bu'
+                            )
+                        }
+                        className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
+                        >
+                        {
+                            tableView === 'bu'
+                            ? 'Cost View Table'
+                            : 'BU View Table'
+                        }
+                    </button>
 
-  <div className="flex justify-between items-center mb-4">
-    <h2 className="text-lg font-bold">Final Dashboard Table</h2>
+                    <button
+                        onClick={exportToExcel}
+                        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                        >
+                        Export Excel
+                    </button>
+                </div>
 
-    <button
-      onClick={exportToExcel}
-      className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-    >
-      Export Excel
-    </button>
-  </div>
+    <div className="overflow-auto max-h-[500px] border border-gray-200 rounded-xl">
+        <table className="min-w-full border border-gray-200 text-sm">
 
-  <div className="overflow-x-auto">
-    <table className="min-w-full border border-gray-200 text-sm">
+        <thead className="bg-gray-100 sticky top-0 z-10">
+            <tr>
 
-      <thead className="bg-gray-100">
-        <tr>
-          <th className="border px-3 py-2 text-left">BU</th>
-          <th className="border px-3 py-2 text-left">ASBL LOA</th>
-          <th className="border px-3 py-2 text-left">PTD</th>
-          <th className="border px-3 py-2 text-left">Open Commitment</th>
-          <th className="border px-3 py-2 text-left">EAC</th>
-          <th className="border px-3 py-2 text-left">EAC VS ASBL</th>
-        </tr>
-      </thead>
+                {columnsToShow.map((col) => (
 
-      <tbody>
-        {tableData && tableData.length > 0 ? (
-          tableData.map((row, index) => (
-            <tr key={index} className="hover:bg-gray-50">
+                <th
+                    key={col}
+                    className="border px-3 py-2 text-left"
+                >
+                    {
+                    col
+                        .replaceAll('_', ' ')
+                        .toUpperCase()
+                    }
+                </th>
 
-              <td className="border px-3 py-2">{row.BU}</td>
-              <td className="border px-3 py-2">{row.ASBL_LOA}</td>
-              <td className="border px-3 py-2">{row.PTD}</td>
-              <td className="border px-3 py-2">{row.Open_Commitment}</td>
-              <td className="border px-3 py-2">{row.EAC}</td>
-
-              <td className="border px-3 py-2">
-                {row.EAC_VS_ASBL}
-              </td>
+                ))}
 
             </tr>
-          ))
-        ) : (
-          <tr>
-            <td colSpan="6" className="text-center py-4 text-gray-500">
-              No Data Found
-            </td>
-          </tr>
-        )}
-      </tbody>
+        </thead>
 
-    </table>
-  </div>
+            <tbody>
+
+                {tableData &&
+                tableData.length > 0 ? (
+
+                    tableData.map((row, index) => (
+
+                    <tr
+                        key={index}
+                        className="hover:bg-gray-50"
+                    >
+
+                        {columnsToShow.map((col) => (
+
+                        <td
+                            key={col}
+                            className="border px-3 py-2"
+                        >
+                            {row[col]}
+                        </td>
+
+                        ))}
+
+                    </tr>
+
+                    ))
+
+                ) : (
+
+                    <tr>
+
+                    <td
+                        colSpan={columnsToShow.length}
+                        className="text-center py-4 text-gray-500"
+                    >
+                        No Data Found
+                    </td>
+
+                    </tr>
+
+                )}
+
+                </tbody>
+        </table>
+    </div>
 
 </div>
 

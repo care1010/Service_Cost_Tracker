@@ -75,6 +75,10 @@ router.post('/finalize-changes', dataController.finalizeChanges);
 
 router.get('/check-pending-changes', dataController.checkPendingChanges);
 
+// Dashboard table Cost view & BU View related routes
 router.get('/final-dashboard-table', dataController.getFinalDashboardTable);
+
+router.get('/cost-view-table', dataController.getCostViewTable);
+
 
 module.exports = router;
