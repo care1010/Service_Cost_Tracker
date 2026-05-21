@@ -925,7 +925,7 @@ exports.getFinalDashboardTable = async (req, res) => {
     }
 };
 
-// 2. LOA-wise detailed table (Review Changes page ke liye)
+// 2. LOA-wise detailed table
 exports.getCostViewTable = async (req, res) => {
 
     try {
@@ -1020,6 +1020,106 @@ exports.getCostViewTable = async (req, res) => {
             error: error.message
         });
     }
+};
+
+// CUSTOMER VIEW TABLE
+
+exports.getCustomerViewTable = async (req, res) => {
+
+    try {
+
+        const conditions = [
+            "categories NOT IN ('Local Materials', 'Not to considered')",
+            "cost_revenue <> 'NTC'",
+            "cost_revenue = 'Cost'"
+        ];
+
+        const whereSql =
+            "WHERE " + conditions.join(" AND ");
+
+        const sql = `
+
+            SELECT
+                customer,
+
+                ROUND(SUM(asbl), 2) AS asbl,
+
+                ROUND(SUM(asbl_loa), 2) AS asbl_loa,
+
+                ROUND(SUM(ptd), 2) AS ptd,
+
+                ROUND(SUM(open_commitment), 2) AS open_commitment,
+
+                ROUND(SUM(non_committed), 2) AS non_committed,
+
+                ROUND(SUM(eac), 2) AS eac,
+
+                ROUND(SUM(eac_vs_asbl), 2) AS eac_vs_asbl
+
+            FROM (
+
+                SELECT
+
+                    customer,
+
+                    MAX(asbl) AS asbl,
+
+                    MAX(asbl_loa) AS asbl_loa,
+
+                    SUM(ptd) AS ptd,
+
+                    MAX(total_oc_fixed) AS open_commitment,
+
+                    MAX(non_committed_editable) AS non_committed,
+
+                    (
+                        SUM(ptd)
+                        + MAX(total_oc_fixed)
+                        + MAX(non_committed_editable)
+                    ) AS eac,
+
+                    (
+                        MAX(asbl)
+                        -
+                        (
+                            SUM(ptd)
+                            + MAX(total_oc_fixed)
+                            + MAX(non_committed_editable)
+                        )
+                    ) AS eac_vs_asbl
+
+                FROM final_dashboard_table
+
+                ${whereSql}
+
+                GROUP BY
+                    customer,
+                    loa_id,
+                    loa_name,
+                    cost_revenue,
+                    categories
+
+            ) x
+
+            GROUP BY customer
+
+            ORDER BY asbl DESC
+        `;
+
+        const [rows] = await db.query(sql);
+
+        res.json(rows);
+
+    } catch (error) {
+
+        console.error(error);
+
+        res.status(500).json({
+            error: error.message
+        });
+
+    }
+
 };
 
 

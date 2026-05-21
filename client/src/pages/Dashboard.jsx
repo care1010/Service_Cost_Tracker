@@ -42,36 +42,52 @@ const Dashboard = () => {
 
 // fetching table data for BU and Cost
 useEffect(() => {
-  fetchTableData();
+    fetchTableData();
 }, [tableView]);
 
 const fetchTableData = async () => {
 
-  try {
+    try {
 
-    const endpoint =
-      tableView === 'bu'
-        ? 'final-dashboard-table'
-        : 'cost-view-table';
+        let endpoint = '';
 
-    const res = await axios.get(
-      `${process.env.REACT_APP_API_URL}/api/data/${endpoint}`
-    );
+        // BU TABLE
+        if (tableView === 'bu') {
+            endpoint = 'final-dashboard-table';
+        }
 
-    setTableData(res.data);
+        // LOA TABLE
+        else if (tableView === 'loa') {
+            endpoint = 'cost-view-table';
+        }
 
-  } catch (err) {
+        // CUSTOMER TABLE
+        else if (tableView === 'customer') {
+            endpoint = 'customer-view-table';
+        }
 
-    console.log(
-      'Error fetching table:',
-      err
-    );
+        const res = await axios.get(
+            `${process.env.REACT_APP_API_URL}/api/data/${endpoint}`
+        );
 
-  }
+        setTableData(res.data);
+
+    } catch (err) {
+
+        console.log(
+            'Error fetching table:',
+            err
+        );
+
+    }
 
 };
+
+
 const columnsToShow =
-  tableView === 'bu'
+
+    tableView === 'bu'
+
     ? [
         'bu',
         'asbl',
@@ -81,8 +97,11 @@ const columnsToShow =
         'non_committed',
         'eac',
         'eac_vs_asbl'
-      ]
-    : [
+    ]
+
+    : tableView === 'loa'
+
+    ? [
         'loa_name',
         'asbl',
         'asbl_loa',
@@ -91,7 +110,18 @@ const columnsToShow =
         'non_committed',
         'eac',
         'eac_vs_asbl'
-      ];
+    ]
+
+    : [
+        'customer',
+        'asbl',
+        'asbl_loa',
+        'ptd',
+        'open_commitment',
+        'non_committed',
+        'eac',
+        'eac_vs_asbl'
+    ];
 
 <DataGrid rows={tableData} columns={columnsToShow} getRowId={(row) => row.BU}/>
 
@@ -1038,22 +1068,57 @@ const displayLoaData = showAllLoa
                     <h2 className="text-lg font-bold">Final Dashboard Table</h2>
                     
                     {/* Toggle Button for BU lvele table and Cost level table view */}
+                    <div className="flex gap-3">
+
+                    {/* BU VIEW */}
+
                     <button
-                        onClick={() =>
-                            setTableView(
-                            tableView === 'bu'
-                                ? 'cost'
-                                : 'bu'
-                            )
-                        }
-                        className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700"
-                        >
-                        {
-                            tableView === 'bu'
-                            ? 'Cost View Table'
-                            : 'BU View Table'
-                        }
+                        onClick={() => setTableView('bu')}
+                        className={`
+                            px-5 py-2 rounded-xl text-sm font-bold transition-all duration-200
+
+                            ${tableView === 'bu'
+                                ? 'bg-blue-700 text-white shadow-lg scale-105'
+                                : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                            }
+                        `}
+                    >
+                        BU View
                     </button>
+
+                    {/* LOA VIEW */}
+
+                    <button
+                        onClick={() => setTableView('loa')}
+                        className={`
+                            px-5 py-2 rounded-xl text-sm font-bold transition-all duration-200
+
+                            ${tableView === 'loa'
+                                ? 'bg-green-700 text-white shadow-lg scale-105'
+                                : 'bg-green-100 text-green-700 hover:bg-green-200'
+                            }
+                        `}
+                    >
+                        LOA View
+                    </button>
+
+                    {/* CUSTOMER VIEW */}
+
+                    <button
+                        onClick={() => setTableView('customer')}
+                        className={`
+                            px-5 py-2 rounded-xl text-sm font-bold transition-all duration-200
+
+                            ${tableView === 'customer'
+                                ? 'bg-purple-700 text-white shadow-lg scale-105'
+                                : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                            }
+                        `}
+                    >
+                        Customer View
+                    </button>
+
+                </div>
 
                     <button
                         onClick={exportToExcel}
