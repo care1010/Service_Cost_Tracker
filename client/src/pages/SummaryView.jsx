@@ -11,7 +11,7 @@ import { HiOutlineFilter, HiOutlineViewGrid, HiOutlineSearch, HiOutlineRefresh }
 const SummaryView = ({ user }) => {
     // 1. SAARE STATES (Hamesha sabse upar)
     const [filters, setFilters] = useState({
-        bu: 'All', wbs: 'All', customer: 'All', loa_id: 'All', loa_name: 'All', active_inactive: 'Active', period: 'All'
+        bu: 'All', customer: 'All', loa_id: 'All', loa_name: 'All',  wbs: 'All', active_inactive: 'Active', period: 'All'
     });
     const [options, setOptions] = useState({});
     const [kpiData, setKpiData] = useState(null);
@@ -75,7 +75,7 @@ const SummaryView = ({ user }) => {
     const handleFilterChange = (name, value) => setFilters(prev => ({ ...prev, [name]: value }));
     
     const handleReset = () => setFilters({ 
-        bu: 'All', wbs: 'All', customer: 'All', loa_id: 'All', loa_name: 'All', active_inactive: 'Active', period: 'All' 
+        bu: 'All', customer: 'All', loa_id: 'All', loa_name: 'All', wbs: 'All', active_inactive: 'Active', period: 'All' 
     });
 
     const handleKpiUpdate = useCallback((data) => {

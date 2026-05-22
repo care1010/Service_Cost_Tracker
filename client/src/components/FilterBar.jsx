@@ -8,10 +8,10 @@ const FilterBar = ({ filters, options, onFilterChange, onReset }) => {
 
     const filterConfigs = [
         { label: 'BU', name: 'bu' },
-        { label: 'WBS', name: 'wbs' },
         { label: 'Customer', name: 'customer' },
         { label: 'LOA ID', name: 'loa_id' },
         { label: 'LOA Name', name: 'loa_name' },
+        { label: 'WBS', name: 'wbs' },
         { label: 'Active/Inactive', name: 'active_inactive' },
         { label: 'Period', name: 'period' },
     ];

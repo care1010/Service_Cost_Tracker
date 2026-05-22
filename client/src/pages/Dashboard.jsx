@@ -130,6 +130,7 @@ const columnsToShow =
     : tableView === 'loa'
 
     ? [
+        'customer',
         'loa_name',
         'asbl',
         'asbl_loa',

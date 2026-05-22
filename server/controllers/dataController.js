@@ -998,88 +998,85 @@ exports.getCostViewTable = async (req, res) => {
 
     try {
         const sql = `
-            SELECT
-                loa_name,
-                ROUND(SUM(asbl), 2) AS asbl,
-                ROUND(SUM(asbl_loa), 2)
-                AS asbl_loa,
+    SELECT
+        customer,
+        loa_name,
 
-                ROUND(SUM(ptd), 2)
-                AS ptd,
+        ROUND(SUM(asbl), 2) AS asbl,
 
-                ROUND(SUM(open_commitment), 2)
-                AS open_commitment,
+        ROUND(SUM(asbl_loa), 2) AS asbl_loa,
 
-                ROUND(SUM(non_committed), 2)
-                AS non_committed,
+        ROUND(SUM(ptd), 2) AS ptd,
 
-                ROUND(SUM(eac), 2)
-                AS eac,
+        ROUND(SUM(open_commitment), 2) AS open_commitment,
 
-                ROUND(SUM(eac_vs_asbl), 2)
-                AS eac_vs_asbl
+        ROUND(SUM(non_committed), 2) AS non_committed,
 
-            FROM (
+        ROUND(SUM(eac), 2) AS eac,
 
-                SELECT
+        ROUND(SUM(eac_vs_asbl), 2) AS eac_vs_asbl
 
-                    loa_name,
-                    customer,
-                    loa_id,
-                    cost_revenue,
-                    categories,
+    FROM (
 
-                    COALESCE(MAX(asbl), 0)
-                    AS asbl,
+        SELECT
 
-                    COALESCE(MAX(asbl_loa), 0)
-                    AS asbl_loa,
+            loa_name,
+            customer,
+            loa_id,
+            cost_revenue,
+            categories,
 
+            COALESCE(MAX(asbl), 0) AS asbl,
+
+            COALESCE(MAX(asbl_loa), 0) AS asbl_loa,
+
+            COALESCE(SUM(ptd), 0) AS ptd,
+
+            COALESCE(MAX(total_oc_fixed), 0) AS open_commitment,
+
+            COALESCE(MAX(non_committed_editable), 0) AS non_committed,
+
+            (
+                COALESCE(SUM(ptd), 0)
+                + COALESCE(MAX(total_oc_fixed), 0)
+                + COALESCE(MAX(non_committed_editable), 0)
+            ) AS eac,
+
+            (
+                COALESCE(MAX(asbl), 0)
+                -
+                (
                     COALESCE(SUM(ptd), 0)
-                    AS ptd,
+                    + COALESCE(MAX(total_oc_fixed), 0)
+                    + COALESCE(MAX(non_committed_editable), 0)
+                )
+            ) AS eac_vs_asbl
 
-                    COALESCE(MAX(total_oc_fixed), 0)
-                    AS open_commitment,
+        FROM final_dashboard_table
 
-                    COALESCE(MAX(non_committed_editable), 0)
-                    AS non_committed,
+        WHERE
+            categories NOT IN (
+                'Local Materials',
+                'Not to considered'
+            )
+            AND cost_revenue <> 'NTC'
 
-                    (
-                        COALESCE(SUM(ptd), 0)
-                        + COALESCE(MAX(total_oc_fixed), 0)
-                        + COALESCE(MAX(non_committed_editable), 0)
-                    ) AS eac,
+        GROUP BY
+            loa_name,
+            customer,
+            loa_id,
+            cost_revenue,
+            categories
 
-                    (
-                        COALESCE(MAX(asbl), 0)
-                        -
-                        (
-                            COALESCE(SUM(ptd), 0)
-                            + COALESCE(MAX(total_oc_fixed), 0)
-                            + COALESCE(MAX(non_committed_editable), 0)
-                        )
-                    ) AS eac_vs_asbl
+    ) x
 
-                FROM final_dashboard_table
+    GROUP BY
+        customer,
+        loa_name
 
-                WHERE
-                    categories NOT IN (
-                        'Local Materials',
-                        'Not to considered'
-                    )
-                    AND cost_revenue <> 'NTC'
-
-                GROUP BY
-                    loa_name,
-                    customer,
-                    loa_id,
-                    cost_revenue,
-                    categories
-
-            ) x
-            GROUP BY loa_name
-            ORDER BY asbl DESC
-        `;
+    ORDER BY
+        SUM(asbl) DESC
+`;
         const [rows] = await db.query(sql);
         res.json(rows);
     } catch (error) {
