@@ -75,13 +75,6 @@ router.post('/finalize-changes', dataController.finalizeChanges);
 
 router.get('/check-pending-changes', dataController.checkPendingChanges);
 
-// Dashboard table Cost view & BU View related routes
-// router.get('/final-dashboard-table', dataController.getFinalDashboardTable);
-
-// router.get('/cost-view-table', dataController.getCostViewTable);
-// router.get('/loa-view-table', dataController.getLoaViewTable);
-// router.get('/customer-view-table', dataController.getCustomerViewTable);
-
 router.get(
     '/final-dashboard-table',
     dataController.getFinalDashboardTable
@@ -96,5 +89,18 @@ router.get(
     '/customer-view-table',
     dataController.getCustomerViewTable
 );
+
+router.get(
+    '/bu-customer-view-table',
+    dataController.getBuCustomerViewTable
+);
+
+router.get(
+    '/customer-bu-view-table',
+    dataController.getCustomerBuViewTable
+);
+
+router.post('/drilldown', dataController.getDrillDownData);
+router.get('/export-drilldown', dataController.exportDrillDown);
 
 module.exports = router;

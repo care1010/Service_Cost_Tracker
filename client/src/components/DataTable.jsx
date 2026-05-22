@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import $ from 'jquery';
 import axios from 'axios';
 import 'datatables.net-dt';
@@ -8,13 +8,16 @@ import './DataTable.css';
 import { HiOutlineSave } from "react-icons/hi";
 import Swal from 'sweetalert2';
 import { HiOutlineTrash } from "react-icons/hi";
+import { useNavigate } from 'react-router-dom';
 
 const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButton = true, showClearButton = false }) => {
     const tableRef = useRef(null);
     const dataTableInstance = useRef(null);
+    
+    const navigate = useNavigate();
 
     // 1. Naya state: Button ko enable/disable karne ke liye
-    const [canSave, setCanSave] = React.useState(false);
+    const [canSave, setCanSave] = useState(false);
 
     const handleClear = async () => {
         if (!window.confirm("This will reset ALL your unsaved edits. Continue?")) return;
@@ -125,8 +128,25 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
                                     step="any">`;
                         }
                     }
-                    if (col.field === 'eac' || col.field === 'eac_vs_asbl' || (type === 'display' && !isNaN(data) && !metadataFields.includes(col.field))) {
-                        return fmt(data);
+                    const drillFields = [
+                        'ptd',
+                        'open_commitment',
+                    ];
+
+                    if (type === 'display' && drillFields.includes(col.field)) {
+
+                        return `
+                            <span
+                                class="drill-link text-blue-600 font-bold cursor-pointer hover:underline"
+                                data-field="${col.field}"
+                                data-uniquekey="${row.unique_key}"
+                                data-loa="${row.loa_name}"
+                                data-category="${row.categories}"
+                                data-value="${data}"
+                            >
+                                ${fmt(data)}
+                            </span>
+                        `;
                     }
                     return data;
                 }
@@ -226,6 +246,25 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
                         icon.text('➖');
                     }
                     dataTableInstance.current.columns.adjust();
+                });
+                // DRILL THROUGH CLICK EVENT
+                table.find('tbody').off('click', '.drill-link').on('click', '.drill-link', function (e) {
+
+                    e.stopPropagation();
+
+                    const field = $(this).data('field');
+                    const uKey = $(this).data('uniquekey'); // 🔥 Key yahan se uthayi
+
+                    const row = {
+                        unique_key: uKey, // 🔥 Unique Key pakdi
+                        loa_name: $(this).data('loa'),
+                        category: $(this).data('category'),
+                        value: $(this).data('value')
+                    };
+
+                    console.log("Navigating to drilldown with key:", uKey); // Browser console mein dikhega
+                    navigate('/drilldown', { state: { field, row } });
+
                 });
             }
         });

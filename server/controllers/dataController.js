@@ -105,6 +105,7 @@ exports.getWbsSummary = async (req, res) => {
         const matrixQuery = `
             SELECT 
                 bu, customer, loa_id, loa_name, cost_revenue, categories,
+                MAX(unique_key) as unique_key, -- 🔥 YEH LINE ADD KAREIN (Taaki key frontend tak jaye)
                 COALESCE(MAX(asbl), 0) as asbl, 
                 COALESCE(MAX(asbl_loa), 0) as asbl_loa, 
                 COALESCE(SUM(ptd), 0) as ptd, 
@@ -131,6 +132,73 @@ exports.getWbsSummary = async (req, res) => {
         });
     } catch (error) {
         res.status(500).json({ error: error.message });
+    }
+};
+
+exports.getDrillDownData = async (req, res) => {
+    try {
+        const { field, row } = req.body;
+        const uKey = row?.unique_key;
+
+        if (!uKey) {
+            return res.status(400).json({ error: "Unique Key is missing in request" });
+        }
+
+        let sql = '';
+        // 1. PTD Drilldown
+        if (field === 'ptd') {
+            sql = `SELECT * FROM v_cj74_transformed WHERE unique_key = ?`;
+        } 
+        // 2. Open Commitment Drilldown
+        else if (field === 'open_commitment') {
+            sql = `SELECT * FROM v_cji5_transformed WHERE unique_key = ?`;
+        }
+
+        const [rows] = await db.query(sql, [uKey]);
+        res.json(rows);
+
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+exports.exportDrillDown = async (req, res) => {
+    try {
+        const { field, unique_key } = req.query;
+        if (!unique_key) return res.status(400).send("Missing Unique Key");
+
+        let sql = '';
+        // Filename se special characters saaf karein
+        const safeKey = unique_key.replace(/[^a-z0-9]/gi, '_');
+        const fileName = field === 'ptd' ? `PTD_${safeKey}.xlsx` : `OC_${safeKey}.xlsx`;
+
+        if (field === 'ptd') {
+            sql = `SELECT * FROM v_cj74_transformed WHERE unique_key = ?`;
+        } else {
+            sql = `SELECT * FROM v_cji5_transformed WHERE unique_key = ?`;
+        }
+
+        const [rows] = await db.query(sql, [unique_key]);
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        // 🔥 FIX: Filename ko quotes mein dala taaki commas issue na karein
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+
+        const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: res });
+        const worksheet = workbook.addWorksheet('Details');
+
+        if (rows.length > 0) {
+            worksheet.columns = Object.keys(rows[0]).map(key => ({ 
+                header: key.replace(/_/g, ' ').toUpperCase(), 
+                key: key 
+            }));
+            rows.forEach(row => worksheet.addRow(row).commit());
+        }
+
+        await workbook.commit();
+    } catch (error) { 
+        console.error(error);
+        res.status(500).send("Export failed"); 
     }
 };
 
@@ -1113,6 +1181,197 @@ exports.getCustomerViewTable = async (req, res) => {
     } catch (error) {
 
         console.error(error);
+
+        res.status(500).json({
+            error: error.message
+        });
+
+    }
+
+};
+
+// BU + CUSTOMER VIEW
+
+exports.getBuCustomerViewTable = async (req, res) => {
+
+    try {
+
+        const sql = `
+            SELECT
+                bu,
+                customer,
+
+                ROUND(SUM(asbl), 2) AS asbl,
+                ROUND(SUM(asbl_loa), 2) AS asbl_loa,
+                ROUND(SUM(ptd), 2) AS ptd,
+                ROUND(SUM(open_commitment), 2) AS open_commitment,
+                ROUND(SUM(non_committed), 2) AS non_committed,
+                ROUND(SUM(eac), 2) AS eac,
+                ROUND(SUM(eac_vs_asbl), 2) AS eac_vs_asbl
+
+            FROM (
+
+                SELECT
+
+                    bu,
+                    customer,
+                    loa_id,
+                    loa_name,
+                    cost_revenue,
+                    categories,
+
+                    MAX(asbl) AS asbl,
+                    MAX(asbl_loa) AS asbl_loa,
+                    SUM(ptd) AS ptd,
+                    MAX(total_oc_fixed) AS open_commitment,
+                    MAX(non_committed_editable) AS non_committed,
+
+                    (
+                        SUM(ptd)
+                        + MAX(total_oc_fixed)
+                        + MAX(non_committed_editable)
+                    ) AS eac,
+
+                    (
+                        MAX(asbl)
+                        -
+                        (
+                            SUM(ptd)
+                            + MAX(total_oc_fixed)
+                            + MAX(non_committed_editable)
+                        )
+                    ) AS eac_vs_asbl
+
+                FROM final_dashboard_table
+
+                WHERE
+                    categories NOT IN (
+                        'Local Materials',
+                        'Not to considered'
+                    )
+                    AND cost_revenue <> 'NTC'
+                    AND cost_revenue = 'Cost'
+
+                GROUP BY
+                    bu,
+                    customer,
+                    loa_id,
+                    loa_name,
+                    cost_revenue,
+                    categories
+
+            ) x
+
+            GROUP BY
+                bu,
+                customer
+
+            ORDER BY
+                bu ASC,
+                asbl DESC
+        `;
+
+        const [rows] = await db.query(sql);
+
+        res.json(rows);
+
+    } catch (error) {
+
+        res.status(500).json({
+            error: error.message
+        });
+
+    }
+
+};
+
+// CUSTOMER + BU VIEW
+
+exports.getCustomerBuViewTable = async (req, res) => {
+
+    try {
+
+        const sql = `
+            SELECT
+
+                customer,
+                bu,
+
+                ROUND(SUM(asbl), 2) AS asbl,
+                ROUND(SUM(asbl_loa), 2) AS asbl_loa,
+                ROUND(SUM(ptd), 2) AS ptd,
+                ROUND(SUM(open_commitment), 2) AS open_commitment,
+                ROUND(SUM(non_committed), 2) AS non_committed,
+                ROUND(SUM(eac), 2) AS eac,
+                ROUND(SUM(eac_vs_asbl), 2) AS eac_vs_asbl
+
+            FROM (
+
+                SELECT
+
+                    customer,
+                    bu,
+                    loa_id,
+                    loa_name,
+                    cost_revenue,
+                    categories,
+
+                    MAX(asbl) AS asbl,
+                    MAX(asbl_loa) AS asbl_loa,
+                    SUM(ptd) AS ptd,
+                    MAX(total_oc_fixed) AS open_commitment,
+                    MAX(non_committed_editable) AS non_committed,
+
+                    (
+                        SUM(ptd)
+                        + MAX(total_oc_fixed)
+                        + MAX(non_committed_editable)
+                    ) AS eac,
+
+                    (
+                        MAX(asbl)
+                        -
+                        (
+                            SUM(ptd)
+                            + MAX(total_oc_fixed)
+                            + MAX(non_committed_editable)
+                        )
+                    ) AS eac_vs_asbl
+
+                FROM final_dashboard_table
+
+                WHERE
+                    categories NOT IN (
+                        'Local Materials',
+                        'Not to considered'
+                    )
+                    AND cost_revenue <> 'NTC'
+                    AND cost_revenue = 'Cost'
+
+                GROUP BY
+                    customer,
+                    bu,
+                    loa_id,
+                    loa_name,
+                    cost_revenue,
+                    categories
+
+            ) x
+
+            GROUP BY
+                customer,
+                bu
+
+            ORDER BY
+                customer ASC,
+                asbl DESC
+        `;
+
+        const [rows] = await db.query(sql);
+
+        res.json(rows);
+
+    } catch (error) {
 
         res.status(500).json({
             error: error.message

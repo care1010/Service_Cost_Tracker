@@ -66,6 +66,14 @@ const fetchTableData = async () => {
             endpoint = 'customer-view-table';
         }
 
+        else if (tableView === 'bu-customer') {
+            endpoint = 'bu-customer-view-table';
+        }
+
+        else if (tableView === 'customer-bu') {
+            endpoint = 'customer-bu-view-table';
+        }
+
         const res = await axios.get(
             `${process.env.REACT_APP_API_URL}/api/data/${endpoint}`
         );
@@ -86,6 +94,8 @@ const fetchTableData = async () => {
 
 const columnsToShow =
 
+    // BU VIEW
+
     tableView === 'bu'
 
     ? [
@@ -99,6 +109,24 @@ const columnsToShow =
         'eac_vs_asbl'
     ]
 
+    // BU + CUSTOMER VIEW
+
+    : tableView === 'bu-customer'
+
+    ? [
+        'bu',
+        'customer',
+        'asbl',
+        'asbl_loa',
+        'ptd',
+        'open_commitment',
+        'non_committed',
+        'eac',
+        'eac_vs_asbl'
+    ]
+
+    // LOA VIEW
+
     : tableView === 'loa'
 
     ? [
@@ -111,6 +139,24 @@ const columnsToShow =
         'eac',
         'eac_vs_asbl'
     ]
+
+    // CUSTOMER + BU VIEW
+
+    : tableView === 'customer-bu'
+
+    ? [
+        'customer',
+        'bu',
+        'asbl',
+        'asbl_loa',
+        'ptd',
+        'open_commitment',
+        'non_committed',
+        'eac',
+        'eac_vs_asbl'
+    ]
+
+    // CUSTOMER VIEW
 
     : [
         'customer',
@@ -1068,58 +1114,92 @@ const displayLoaData = showAllLoa
                     <h2 className="text-lg font-bold">Final Dashboard Table</h2>
                     
                     {/* Toggle Button for BU lvele table and Cost level table view */}
-                    <div className="flex gap-3">
+                    <div className="flex gap-3 flex-wrap">
 
-                    {/* BU VIEW */}
+                        {/* BU TOGGLE */}
 
-                    <button
-                        onClick={() => setTableView('bu')}
-                        className={`
-                            px-5 py-2 rounded-xl text-sm font-bold transition-all duration-200
-
-                            ${tableView === 'bu'
-                                ? 'bg-blue-700 text-white shadow-lg scale-105'
-                                : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                        <button
+                            onClick={() =>
+                                setTableView(
+                                    tableView === 'bu'
+                                        ? 'bu-customer'
+                                        : 'bu'
+                                )
                             }
-                        `}
-                    >
-                        BU View
-                    </button>
+                            className={`
+                                px-5 py-2 rounded-xl text-sm font-bold transition-all duration-200
 
-                    {/* LOA VIEW */}
+                                ${
+                                    tableView === 'bu'
+                                    || tableView === 'bu-customer'
 
-                    <button
-                        onClick={() => setTableView('loa')}
-                        className={`
-                            px-5 py-2 rounded-xl text-sm font-bold transition-all duration-200
+                                        ? 'bg-blue-700 text-white shadow-lg scale-105'
 
-                            ${tableView === 'loa'
-                                ? 'bg-green-700 text-white shadow-lg scale-105'
-                                : 'bg-green-100 text-green-700 hover:bg-green-200'
+                                        : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                }
+                            `}
+                        >
+
+                            {
+                                tableView === 'bu'
+                                    ? 'BU + Customer View'
+                                    : 'BU Only View'
                             }
-                        `}
-                    >
-                        LOA View
-                    </button>
 
-                    {/* CUSTOMER VIEW */}
+                        </button>
 
-                    <button
-                        onClick={() => setTableView('customer')}
-                        className={`
-                            px-5 py-2 rounded-xl text-sm font-bold transition-all duration-200
+                        {/* LOA VIEW */}
 
-                            ${tableView === 'customer'
-                                ? 'bg-purple-700 text-white shadow-lg scale-105'
-                                : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                        <button
+                            onClick={() => setTableView('loa')}
+                            className={`
+                                px-5 py-2 rounded-xl text-sm font-bold transition-all duration-200
+
+                                ${
+                                    tableView === 'loa'
+
+                                        ? 'bg-green-700 text-white shadow-lg scale-105'
+
+                                        : 'bg-green-100 text-green-700 hover:bg-green-200'
+                                }
+                            `}
+                        >
+                            LOA View
+                        </button>
+
+                        {/* CUSTOMER TOGGLE */}
+
+                        <button
+                            onClick={() =>
+                                setTableView(
+                                    tableView === 'customer'
+                                        ? 'customer-bu'
+                                        : 'customer'
+                                )
                             }
-                        `}
-                    >
-                        Customer View
-                    </button>
+                            className={`
+                                px-5 py-2 rounded-xl text-sm font-bold transition-all duration-200
 
-                </div>
+                                ${
+                                    tableView === 'customer'
+                                    || tableView === 'customer-bu'
 
+                                        ? 'bg-purple-700 text-white shadow-lg scale-105'
+
+                                        : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                                }
+                            `}
+                        >
+
+                            {
+                                tableView === 'customer'
+                                    ? 'Customer + BU View'
+                                    : 'Customer Only View'
+                            }
+
+                        </button>
+
+                    </div>
                     <button
                         onClick={exportToExcel}
                         className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"

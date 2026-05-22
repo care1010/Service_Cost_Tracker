@@ -125,8 +125,8 @@ const SummaryView = ({ user }) => {
         { header: 'Category', field: 'categories' },
         { header: 'ASBL', field: 'asbl' },
         { header: 'ASBL LOA', field: 'asbl_loa' },
-        { header: 'PTD', field: 'ptd' },
-        { header: 'Open Commitment (KEUR)', field: 'open_commitment' },
+        { header: 'PTD', field: 'ptd', clickable: true },
+        { header: 'Open Commitment (KEUR)', field: 'open_commitment', clickable: true },
         { header: 'Non Committed', field: 'non_committed' },
         { header: 'EAC', field: 'eac' },
         { header: 'EAC vs ASBL', field: 'eac_vs_asbl' }
