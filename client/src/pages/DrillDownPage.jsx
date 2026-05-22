@@ -33,7 +33,24 @@ const DrillDownPage = () => {
         )
     );
 
-    const totalValue = filteredData.reduce((sum, item) => sum + (parseFloat(item.val_in_obj_crcy || item.open_commitment_KEUR || 0)), 0);
+
+    // 🔥 UPDATED SUM LOGIC
+    const calculateTotal = () => {
+        const rawSum = filteredData.reduce((sum, item) => {
+            if (field === 'ptd') {
+                // PTD ke liye 'val_in_rc' ka sum lena hai
+                return sum + (parseFloat(item.val_in_rc) || 0);
+            } else {
+                // Open Commitment ke liye existing logic (KEUR column)
+                return sum + (parseFloat(item.open_commitment_KEUR || 0));
+            }
+        }, 0);
+
+        // 🔥 PTD ke liye 1000 se divide karein, Open Com ke liye wahi rehne dein
+        return field === 'ptd' ? (rawSum / 1000) : rawSum;
+    };
+
+    const totalValue = calculateTotal();
 
     return (
         <div className="p-8 bg-[#f8fafc] min-h-screen font-sans">
@@ -80,9 +97,11 @@ const DrillDownPage = () => {
                     <p className="text-[13px] font-bold text-slate-400 uppercase">Filtered Sum</p>
                     <p className="text-lg font-black text-blue-600">{totalValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
                 </div>
-                <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
-                    <p className="text-[13px] font-bold text-slate-400 uppercase">Status</p>
-                    <p className="text-lg font-black text-emerald-500 uppercase">LIVE</p>
+                <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+                    <p className="text-[13px] font-bold text-slate-400 uppercase">Project Name</p>
+                    <p className="text-[13px] font-black text-emerald-600 uppercase truncate" title={row?.loa_name}>
+                        {row?.loa_name || 'N/A'}
+                    </p>
                 </div>
             </div>
 
