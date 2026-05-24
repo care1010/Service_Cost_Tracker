@@ -5,7 +5,9 @@ import * as XLSX from "xlsx";
 import { saveAs } from 'file-saver';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList } from 'recharts';
 
-const Dashboard = () => {
+const Dashboard = ({ user }) => {
+
+    const [activeFilter, setActiveFilter] = useState('');
 
     const [buData, setBuData] = useState([]);
     const [loaData, setLoaData] = useState([]);
@@ -39,6 +41,8 @@ const Dashboard = () => {
 
     const [tableData, setTableData] = useState([]);
     const [tableView, setTableView] = useState('bu');
+
+    const allowedCustomers = user?.allowedCustomers || [];
 
 // fetching table data for BU and Cost
 useEffect(() => {
@@ -75,9 +79,18 @@ const fetchTableData = async () => {
         }
 
         const res = await axios.get(
-            `${process.env.REACT_APP_API_URL}/api/data/${endpoint}`
+            `${process.env.REACT_APP_API_URL}/api/data/${endpoint}`,
+            {
+                params: {
+                    type: user?.type,
+                    allowedCustomers:
+                        allowedCustomers.join(',')
+                }
+            }
         );
-
+console.log(user);
+console.log(user?.allowedCustomers);
+console.log(typeof user?.allowedCustomers);
         setTableData(res.data);
 
     } catch (err) {
@@ -131,6 +144,7 @@ const columnsToShow =
 
     ? [
         'customer',
+        'loa_id',
         'loa_name',
         'asbl',
         'asbl_loa',
@@ -255,7 +269,10 @@ const exportToExcel = () => {
                             years,
                             periods,
                             customers,
-                            loa_names
+                            loa_names,
+                            type: user?.type,
+                            allowedCustomers:
+                            allowedCustomers.join(',')
                         }
                     }
                 );
@@ -289,11 +306,35 @@ const exportToExcel = () => {
                 const [buRes, loaRes] = await Promise.all([
 
                     axios.get(
-                        `${process.env.REACT_APP_API_URL}/api/data/analytics-bu?years=${years}&periods=${periods}&customers=${customers}&loa_names=${loa_names}&showAll=${showAllLoa}`
+                        `${process.env.REACT_APP_API_URL}/api/data/analytics-bu`,
+                        {
+                            params: {
+                                years,
+                                periods,
+                                customers,
+                                loa_names,
+                                showAll: showAllLoa,
+                                type: user?.type,
+                                allowedCustomers:
+                                allowedCustomers.join(',')
+                            }
+                        }
                     ),
 
                     axios.get(
-                        `${process.env.REACT_APP_API_URL}/api/data/analytics-loa?years=${years}&periods=${periods}&customers=${customers}&loa_names=${loa_names}&showAll=${showAllLoa}`
+                        `${process.env.REACT_APP_API_URL}/api/data/analytics-loa`,
+                        {
+                            params: {
+                                years,
+                                periods,
+                                customers,
+                                loa_names,
+                                showAll: showAllLoa,
+                                type: user?.type,
+                                allowedCustomers:
+                                allowedCustomers.join(',')
+                            }
+                        }
                     )
 
                 ]);
@@ -374,6 +415,15 @@ const filteredLoaOptions = loaData.filter((item) =>
         .includes(loaSearch.toLowerCase())
 );
 
+const resetAllFilters = () => {
+    setSelectedYears([]);
+    setSelectedPeriods([]);
+    setSelectedCustomers([]);
+    setSelectedLoas([]);
+    setLoaSearch('');
+    setShowAllLoa(false);
+};
+
 const displayLoaData = showAllLoa
     ? loaData
     : loaData.slice(0, 10);
@@ -387,7 +437,7 @@ const displayLoaData = showAllLoa
                 <div className="flex flex-col lg:flex-row lg:justify-between gap-8">
                     <div>
                         <h1 className="text-3xl font-black text-slate-800">
-                            Executive Analytics
+                            Charts Analytics
                         </h1>
                         <p className="text-slate-400 text-sm mt-1">
                             Business Unit & Project Analysis
@@ -396,7 +446,6 @@ const displayLoaData = showAllLoa
 
                     {/* FILTERS */}
                     <div className="flex flex-col md:flex-row gap-5">
-
                         {/* 1. Customer Filter */}
                         <div ref={customerRef} className="relative w-[260px]">
 
@@ -729,13 +778,194 @@ const displayLoaData = showAllLoa
 
                         </div>
 
+                        <button
+                            onClick={resetAllFilters}
+                            className="h-[52px] mt-6 px-5 rounded-2xl bg-red-500 text-white text-sm font-bold shadow-md hover:bg-red-600 transition-all
+                            "
+                        >Reset Filters
+                        </button>
+
                     </div>
 
                 </div>
 
             </div>
 
-            {/* BU GRAPH */}
+            
+            {user?.type !== 'user' && (
+            <div className="mt-6 bg-white p-4 rounded-xl shadow">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-lg font-bold">Final Dashboard Table</h2>
+                    
+                    {/* Toggle Button for BU lvele table and Cost level table view */}
+                    <div className="flex gap-3 flex-wrap">
+
+                        {/* BU TOGGLE */}
+
+                        <button
+                            onClick={() =>
+                                setTableView(
+                                    tableView === 'bu'
+                                        ? 'bu-customer'
+                                        : 'bu'
+                                )
+                            }
+                            className={`
+                                px-5 py-2 rounded-xl text-sm font-bold transition-all duration-200
+
+                                ${
+                                    tableView === 'bu'
+                                    || tableView === 'bu-customer'
+
+                                        ? 'bg-blue-700 text-white shadow-lg scale-105'
+
+                                        : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                }
+                            `}
+                        >
+
+                            {
+                                tableView === 'bu'
+                                    ? 'BU + Customer View'
+                                    : 'BU Only View'
+                            }
+
+                        </button>
+
+                        {/* LOA VIEW */}
+
+                        <button
+                            onClick={() => setTableView('loa')}
+                            className={`
+                                px-5 py-2 rounded-xl text-sm font-bold transition-all duration-200
+
+                                ${
+                                    tableView === 'loa'
+
+                                        ? 'bg-green-700 text-white shadow-lg scale-105'
+
+                                        : 'bg-green-100 text-green-700 hover:bg-green-200'
+                                }
+                            `}
+                        >
+                            LOA View
+                        </button>
+
+                        {/* CUSTOMER TOGGLE */}
+
+                        <button
+                            onClick={() =>
+                                setTableView(
+                                    tableView === 'customer'
+                                        ? 'customer-bu'
+                                        : 'customer'
+                                )
+                            }
+                            className={`
+                                px-5 py-2 rounded-xl text-sm font-bold transition-all duration-200
+
+                                ${
+                                    tableView === 'customer'
+                                    || tableView === 'customer-bu'
+
+                                        ? 'bg-purple-700 text-white shadow-lg scale-105'
+
+                                        : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                                }
+                            `}
+                        >
+
+                            {
+                                tableView === 'customer'
+                                    ? 'Customer + BU View'
+                                    : 'Customer Only View'
+                            }
+
+                        </button>
+
+                    </div>
+                    <button
+                        onClick={exportToExcel}
+                        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                        >
+                        Export Excel
+                    </button>
+                </div>
+
+    <div className="overflow-auto max-h-[500px] border border-gray-200 rounded-xl">
+        <table className="min-w-full border border-gray-200 text-sm">
+
+        <thead className="bg-gray-100 sticky top-0 z-10">
+            <tr>
+
+                {columnsToShow.map((col) => (
+
+                <th
+                    key={col}
+                    className="border px-3 py-2 text-left"
+                >
+                    {
+                    col
+                        .replaceAll('_', ' ')
+                        .toUpperCase()
+                    }
+                </th>
+
+                ))}
+
+            </tr>
+        </thead>
+
+            <tbody>
+
+                {tableData &&
+                tableData.length > 0 ? (
+
+                    tableData.map((row, index) => (
+
+                    <tr
+                        key={index}
+                        className="hover:bg-gray-50"
+                    >
+
+                        {columnsToShow.map((col) => (
+
+                        <td
+                            key={col}
+                            className="border px-3 py-2"
+                        >
+                            {row[col]}
+                        </td>
+
+                        ))}
+
+                    </tr>
+
+                    ))
+
+                ) : (
+
+                    <tr>
+
+                    <td
+                        colSpan={columnsToShow.length}
+                        className="text-center py-4 text-gray-500"
+                    >
+                        No Data Found
+                    </td>
+
+                    </tr>
+
+                )}
+
+                </tbody>
+        </table>
+    </div>
+
+</div>
+)}
+
+{/* BU GRAPH */}
 
             <div className="bg-white rounded-[2rem] shadow-lg p-6 relative">
 
@@ -755,7 +985,7 @@ const displayLoaData = showAllLoa
 
                 <div className="w-full h-[420px] min-w-0">
 
-                    <ResponsiveContainer width="100%" height="100%">
+                    <ResponsiveContainer width="100%" height="100%" minWidth={300}>
 
                         <BarChart data={buData}>
 
@@ -996,7 +1226,7 @@ const displayLoaData = showAllLoa
 
                 <div className="w-full max-h-[700px] overflow-y-auto pr-2">
 
-                    <ResponsiveContainer width="100%" height={showAllLoa ? loaData.length * 55: 700}>
+                    <ResponsiveContainer width="100%" minWidth={300} height={showAllLoa ? loaData.length * 55: 700}>
 
                         <BarChart
                             data={
@@ -1109,177 +1339,6 @@ const displayLoaData = showAllLoa
                     </ResponsiveContainer>
                 </div>
             </div>
-
-            <div className="mt-6 bg-white p-4 rounded-xl shadow">
-                <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-lg font-bold">Final Dashboard Table</h2>
-                    
-                    {/* Toggle Button for BU lvele table and Cost level table view */}
-                    <div className="flex gap-3 flex-wrap">
-
-                        {/* BU TOGGLE */}
-
-                        <button
-                            onClick={() =>
-                                setTableView(
-                                    tableView === 'bu'
-                                        ? 'bu-customer'
-                                        : 'bu'
-                                )
-                            }
-                            className={`
-                                px-5 py-2 rounded-xl text-sm font-bold transition-all duration-200
-
-                                ${
-                                    tableView === 'bu'
-                                    || tableView === 'bu-customer'
-
-                                        ? 'bg-blue-700 text-white shadow-lg scale-105'
-
-                                        : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                                }
-                            `}
-                        >
-
-                            {
-                                tableView === 'bu'
-                                    ? 'BU + Customer View'
-                                    : 'BU Only View'
-                            }
-
-                        </button>
-
-                        {/* LOA VIEW */}
-
-                        <button
-                            onClick={() => setTableView('loa')}
-                            className={`
-                                px-5 py-2 rounded-xl text-sm font-bold transition-all duration-200
-
-                                ${
-                                    tableView === 'loa'
-
-                                        ? 'bg-green-700 text-white shadow-lg scale-105'
-
-                                        : 'bg-green-100 text-green-700 hover:bg-green-200'
-                                }
-                            `}
-                        >
-                            LOA View
-                        </button>
-
-                        {/* CUSTOMER TOGGLE */}
-
-                        <button
-                            onClick={() =>
-                                setTableView(
-                                    tableView === 'customer'
-                                        ? 'customer-bu'
-                                        : 'customer'
-                                )
-                            }
-                            className={`
-                                px-5 py-2 rounded-xl text-sm font-bold transition-all duration-200
-
-                                ${
-                                    tableView === 'customer'
-                                    || tableView === 'customer-bu'
-
-                                        ? 'bg-purple-700 text-white shadow-lg scale-105'
-
-                                        : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
-                                }
-                            `}
-                        >
-
-                            {
-                                tableView === 'customer'
-                                    ? 'Customer + BU View'
-                                    : 'Customer Only View'
-                            }
-
-                        </button>
-
-                    </div>
-                    <button
-                        onClick={exportToExcel}
-                        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-                        >
-                        Export Excel
-                    </button>
-                </div>
-
-    <div className="overflow-auto max-h-[500px] border border-gray-200 rounded-xl">
-        <table className="min-w-full border border-gray-200 text-sm">
-
-        <thead className="bg-gray-100 sticky top-0 z-10">
-            <tr>
-
-                {columnsToShow.map((col) => (
-
-                <th
-                    key={col}
-                    className="border px-3 py-2 text-left"
-                >
-                    {
-                    col
-                        .replaceAll('_', ' ')
-                        .toUpperCase()
-                    }
-                </th>
-
-                ))}
-
-            </tr>
-        </thead>
-
-            <tbody>
-
-                {tableData &&
-                tableData.length > 0 ? (
-
-                    tableData.map((row, index) => (
-
-                    <tr
-                        key={index}
-                        className="hover:bg-gray-50"
-                    >
-
-                        {columnsToShow.map((col) => (
-
-                        <td
-                            key={col}
-                            className="border px-3 py-2"
-                        >
-                            {row[col]}
-                        </td>
-
-                        ))}
-
-                    </tr>
-
-                    ))
-
-                ) : (
-
-                    <tr>
-
-                    <td
-                        colSpan={columnsToShow.length}
-                        className="text-center py-4 text-gray-500"
-                    >
-                        No Data Found
-                    </td>
-
-                    </tr>
-
-                )}
-
-                </tbody>
-        </table>
-    </div>
-
-</div>
 
         </div>
 

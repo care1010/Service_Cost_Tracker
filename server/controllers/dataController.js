@@ -238,7 +238,7 @@ exports.getFilterOptions = async (req, res) => {
                 }
             });
 
-            const whereSql = " WHERE " + conditions.join(" AND ");
+            const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
             
             // 🔥 FIX: Column name ko escapeId se safe banaya taaki '?' ke saath mix na ho
             const colSafe = db.escapeId(targetColumn);
@@ -555,7 +555,7 @@ exports.getDashboardFilters = async (req, res) => {
             years,
             periods,
             customers,
-            loa_names
+            loa_names,type, allowedCustomers
         } = req.query;
 
         let conditions = [
@@ -567,6 +567,18 @@ exports.getDashboardFilters = async (req, res) => {
         ];
 
         let params = [];
+
+        if (
+            type === 'user'
+            &&
+            allowedCustomers
+        ) {
+            const customerArray = allowedCustomers.split(',');
+            const placeholders = customerArray.map(() => '?').join(',');
+            conditions.push(`customer IN (${placeholders})`
+            );
+            params.push(...customerArray);
+        }
 
         // YEAR FILTER
         if (years) {
@@ -618,8 +630,7 @@ exports.getDashboardFilters = async (req, res) => {
             );
             params.push(...loaArray);
         }
-        const whereSql =
-            "WHERE " + conditions.join(" AND ");
+        const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
         // PERIODS
         const [periodRows] = await db.query(`
@@ -678,7 +689,7 @@ exports.getBuAnalytics = async (req, res) => {
 
     try {
 
-        const { years, periods, customers, loa_names, showAll } = req.query;
+        const { years, periods, customers, loa_names, showAll, type, allowedCustomers } = req.query;
 
         let conditions = [
             "categories NOT IN ('Local Materials', 'Not to considered')",
@@ -687,6 +698,22 @@ exports.getBuAnalytics = async (req, res) => {
         ];
 
         let params = [];
+
+        // ======================
+        // RLS LOGIC
+        // ======================
+
+        if (
+            type === 'user'
+            &&
+            allowedCustomers
+        ) {
+            const customerArray = allowedCustomers.split(',');
+            const placeholders = customerArray.map(() => '?').join(',');
+            conditions.push(`customer IN (${placeholders})`
+            );
+            params.push(...customerArray);
+        }
 
         // MULTI YEAR FILTER
 
@@ -746,8 +773,7 @@ exports.getBuAnalytics = async (req, res) => {
             );
             params.push(...loaArray);
         }
-        const whereSql =
-            " WHERE " + conditions.join(" AND ");
+        const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
         const sql = `
 
@@ -793,7 +819,7 @@ exports.getLoaAnalytics = async (req, res) => {
 
     try {
 
-        const { years, periods, customers, loa_names, showAll } = req.query;
+        const { years, periods, customers, loa_names, showAll, type, allowedCustomers } = req.query;
 
         const limitSql =
             showAll === 'true'
@@ -807,6 +833,22 @@ exports.getLoaAnalytics = async (req, res) => {
         ];
 
         let params = [];
+
+        // ======================
+        // RLS LOGIC
+        // ======================
+
+        if (
+            type === 'user'
+            &&
+            allowedCustomers
+        ) {
+            const customerArray = allowedCustomers.split(',');
+            const placeholders = customerArray.map(() => '?').join(',');
+            conditions.push(`customer IN (${placeholders})`
+            );
+            params.push(...customerArray);
+        }
 
         // MULTI YEAR FILTER
         if (years) {
@@ -876,8 +918,7 @@ exports.getLoaAnalytics = async (req, res) => {
 
         }
 
-        const whereSql =
-            " WHERE " + conditions.join(" AND ");
+        const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
         const sql = `
                 SELECT
@@ -911,22 +952,54 @@ exports.getLoaAnalytics = async (req, res) => {
 
         const [rows] =
             await db.query(sql, params);
-
         res.status(200).json(rows);
-
     } catch (error) {
-
         res.status(500).json({
             error: error.message
         });
-
     }
-
 };
 
-// 1. Final Dashboard ke liye BU-wise aggregated data (Dashboard page ke liye)
+// 3. Final Dashboard ke liye BU-wise aggregated data (Dashboard page ke liye)
 exports.getFinalDashboardTable = async (req, res) => {
     try {
+
+        const { type, allowedCustomers } = req.query;
+
+        let conditions = [
+            "categories NOT IN ('Local Materials', 'Not to considered')",
+            "cost_revenue <> 'NTC'",
+            "cost_revenue = 'Cost'"
+        ];
+
+        let params = [];
+
+        // ======================
+        // RLS LOGIC
+        // ======================
+
+        if (
+            type === 'user'
+            &&
+            allowedCustomers
+        ) {
+
+            const customerArray =
+                allowedCustomers.split(',');
+
+            const placeholders =
+                customerArray.map(() => '?').join(',');
+
+            conditions.push(
+                `customer IN (${placeholders})`
+            );
+
+            params.push(...customerArray);
+
+        }
+
+        const whereSql =
+            `WHERE ${conditions.join(' AND ')}`;
 
         const sql = `
             SELECT
@@ -967,10 +1040,7 @@ exports.getFinalDashboardTable = async (req, res) => {
                         )
                     ) as eac_vs_asbl
                 FROM final_dashboard_table
-                WHERE
-                    categories NOT IN ('Local Materials', 'Not to considered')
-                    AND cost_revenue <> 'NTC'
-                    AND cost_revenue = 'Cost'
+                ${whereSql}
                 GROUP BY
                     bu,
                     customer,
@@ -983,7 +1053,7 @@ exports.getFinalDashboardTable = async (req, res) => {
             ORDER BY bu ASC
         `;
 
-        const [rows] = await db.query(sql);
+        const [rows] = await db.query(sql, params);
         res.json(rows);
     } catch (error) {
         console.error("DB ERROR:", error);
@@ -997,9 +1067,44 @@ exports.getFinalDashboardTable = async (req, res) => {
 exports.getCostViewTable = async (req, res) => {
 
     try {
+
+        const { type, allowedCustomers } = req.query;
+
+        let conditions = [
+            "categories NOT IN ('Local Materials', 'Not to considered')",
+            "cost_revenue <> 'NTC'",
+            "cost_revenue = 'Cost'"
+        ];
+
+        let params = [];
+
+        if (
+            type === 'user'
+            &&
+            allowedCustomers
+        ) {
+
+            const customerArray =
+                allowedCustomers.split(',');
+
+            const placeholders =
+                customerArray.map(() => '?').join(',');
+
+            conditions.push(
+                `customer IN (${placeholders})`
+            );
+
+            params.push(...customerArray);
+
+        }
+
+        const whereSql =
+            `WHERE ${conditions.join(' AND ')}`;
+
         const sql = `
     SELECT
         customer,
+        loa_id,
         loa_name,
 
         ROUND(SUM(asbl), 2) AS asbl,
@@ -1054,12 +1159,7 @@ exports.getCostViewTable = async (req, res) => {
 
         FROM final_dashboard_table
 
-        WHERE
-            categories NOT IN (
-                'Local Materials',
-                'Not to considered'
-            )
-            AND cost_revenue <> 'NTC'
+        ${whereSql}
 
         GROUP BY
             loa_name,
@@ -1072,6 +1172,7 @@ exports.getCostViewTable = async (req, res) => {
 
     GROUP BY
         customer,
+        loa_id,
         loa_name
 
     ORDER BY
@@ -1092,6 +1193,7 @@ exports.getCostViewTable = async (req, res) => {
 exports.getCustomerViewTable = async (req, res) => {
 
     try {
+        const { type, allowedCustomers } = req.query;
 
         const conditions = [
             "categories NOT IN ('Local Materials', 'Not to considered')",
@@ -1099,8 +1201,28 @@ exports.getCustomerViewTable = async (req, res) => {
             "cost_revenue = 'Cost'"
         ];
 
-        const whereSql =
-            "WHERE " + conditions.join(" AND ");
+        let params = [];
+        if (
+            type === 'user'
+            &&
+            allowedCustomers
+        ) {
+
+            const customerArray =
+                allowedCustomers.split(',');
+
+            const placeholders =
+                customerArray.map(() => '?').join(',');
+
+            conditions.push(
+                `customer IN (${placeholders})`
+            );
+
+            params.push(...customerArray);
+
+        }
+
+        const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
         const sql = `
 
@@ -1171,7 +1293,7 @@ exports.getCustomerViewTable = async (req, res) => {
             ORDER BY asbl DESC
         `;
 
-        const [rows] = await db.query(sql);
+        const [rows] = await db.query(sql, params);
 
         res.json(rows);
 
@@ -1193,6 +1315,39 @@ exports.getBuCustomerViewTable = async (req, res) => {
 
     try {
 
+        const { type, allowedCustomers } = req.query;
+
+        let conditions = [
+            "categories NOT IN ('Local Materials', 'Not to considered')",
+            "cost_revenue <> 'NTC'",
+            "cost_revenue = 'Cost'"
+        ];
+
+        let params = [];
+
+        if (
+            type === 'user'
+            &&
+            allowedCustomers
+        ) {
+
+            const customerArray =
+                allowedCustomers.split(',');
+
+            const placeholders =
+                customerArray.map(() => '?').join(',');
+
+            conditions.push(
+                `customer IN (${placeholders})`
+            );
+
+            params.push(...customerArray);
+
+        }
+
+        const whereSql =
+            `WHERE ${conditions.join(' AND ')}`;
+
         const sql = `
             SELECT
                 bu,
@@ -1241,13 +1396,7 @@ exports.getBuCustomerViewTable = async (req, res) => {
 
                 FROM final_dashboard_table
 
-                WHERE
-                    categories NOT IN (
-                        'Local Materials',
-                        'Not to considered'
-                    )
-                    AND cost_revenue <> 'NTC'
-                    AND cost_revenue = 'Cost'
+                ${whereSql}
 
                 GROUP BY
                     bu,
@@ -1268,7 +1417,7 @@ exports.getBuCustomerViewTable = async (req, res) => {
                 asbl DESC
         `;
 
-        const [rows] = await db.query(sql);
+        const [rows] = await db.query(sql, params);
 
         res.json(rows);
 
@@ -1287,6 +1436,39 @@ exports.getBuCustomerViewTable = async (req, res) => {
 exports.getCustomerBuViewTable = async (req, res) => {
 
     try {
+
+        const { type, allowedCustomers } = req.query;
+
+        let conditions = [
+            "categories NOT IN ('Local Materials', 'Not to considered')",
+            "cost_revenue <> 'NTC'",
+            "cost_revenue = 'Cost'"
+        ];
+
+        let params = [];
+
+        if (
+            type === 'user'
+            &&
+            allowedCustomers
+        ) {
+
+            const customerArray =
+                allowedCustomers.split(',');
+
+            const placeholders =
+                customerArray.map(() => '?').join(',');
+
+            conditions.push(
+                `customer IN (${placeholders})`
+            );
+
+            params.push(...customerArray);
+
+        }
+
+        const whereSql =
+            `WHERE ${conditions.join(' AND ')}`;
 
         const sql = `
             SELECT
@@ -1337,13 +1519,7 @@ exports.getCustomerBuViewTable = async (req, res) => {
 
                 FROM final_dashboard_table
 
-                WHERE
-                    categories NOT IN (
-                        'Local Materials',
-                        'Not to considered'
-                    )
-                    AND cost_revenue <> 'NTC'
-                    AND cost_revenue = 'Cost'
+                ${whereSql}
 
                 GROUP BY
                     customer,
@@ -1364,7 +1540,7 @@ exports.getCustomerBuViewTable = async (req, res) => {
                 asbl DESC
         `;
 
-        const [rows] = await db.query(sql);
+        const [rows] = await db.query(sql, params);
 
         res.json(rows);
 

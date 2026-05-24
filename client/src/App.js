@@ -58,7 +58,7 @@ function App() {
               {activeTab === 'add-project' && <AddProject />}
               {activeTab === 'ptd' && <PtdAutomation />}
               {activeTab === 'asbl' && <AsblAutomation />}
-              {activeTab === 'dashboard' && <Dashboard />}
+              {activeTab === 'dashboard' && <Dashboard user={user} />}
               {activeTab === 'admin' && <AdminPanel onBack={() => setActiveTab('summary')} />}
               
               {/* Under Development Placeholder */}

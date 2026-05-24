@@ -16,14 +16,14 @@ const DrillDownPage = () => {
 
     const fetchDrillData = async () => {
         try {
-            const res = await axios.post(`http://localhost:5000/api/data/drilldown`, { field, row });
+            const res = await axios.post(`${process.env.REACT_APP_API_URL}/api/data/drilldown`, { field, row });
             setData(res.data);
         } catch (err) { console.error(err); }
         finally { setLoading(false); }
     };
 
     const handleExport = () => {
-        const url = `http://localhost:5000/api/data/export-drilldown?field=${field}&unique_key=${encodeURIComponent(row.unique_key)}`;
+        const url = `${process.env.REACT_APP_API_URL}/api/data/export-drilldown?field=${field}&unique_key=${encodeURIComponent(row.unique_key)}`;
         window.location.href = url;
     };
 
@@ -90,15 +90,15 @@ const DrillDownPage = () => {
             {/* STATS */}
             <div className="grid grid-cols-3 gap-4 mb-6">
                 <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
-                    <p className="text-[13px] font-bold text-slate-400 uppercase">Filtered Records</p>
+                    <p className="text-[13px] font-bold text-slate-600 uppercase">Filtered Records</p>
                     <p className="text-lg font-black text-slate-800">{filteredData.length}</p>
                 </div>
                 <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
-                    <p className="text-[13px] font-bold text-slate-400 uppercase">Filtered Sum</p>
+                    <p className="text-[13px] font-bold text-slate-600 uppercase">Drill Sum (KEUR)</p>
                     <p className="text-lg font-black text-blue-600">{totalValue.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
                 </div>
                 <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-                    <p className="text-[13px] font-bold text-slate-400 uppercase">Project Name</p>
+                    <p className="text-[13px] font-bold text-slate-600 uppercase">LOA Name</p>
                     <p className="text-[13px] font-black text-emerald-600 uppercase truncate" title={row?.loa_name}>
                         {row?.loa_name || 'N/A'}
                     </p>
