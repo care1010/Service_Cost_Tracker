@@ -84,33 +84,108 @@ exports.processAsblUpdate = async (req, res) => {
 
 // 2. Manual UI Edit Update (Instant)
 exports.updateManualAsbl = async (req, res) => {
-    const { loa_id, updates } = req.body; 
+    const { loa_name, updates } = req.body;
     try {
         const promises = updates.map(item => {
-            // Update Summary
-            db.query("UPDATE summary SET asbl = ? WHERE TRIM(loa_id) = ? AND TRIM(categories) = ?", [item.asbl, loa_id, item.categories]);
-            // Update Dashboard Table Directly
-            return db.query("UPDATE final_dashboard_table SET asbl = ? WHERE TRIM(loa_id) = ? AND TRIM(categories) = ?", [item.asbl, loa_id, item.categories]);
-        });
-        await Promise.all(promises);
-        
-        // Sync EAC/Variance
-        await syncDashboardRow(loa_id);
+            // Update Summary Table
+            db.query(
+                `
+                UPDATE summary
+                SET asbl = ?
+                WHERE TRIM(loa_name) = TRIM(?)
+                AND TRIM(categories) = TRIM(?)
+                `,
+                [
+                    item.asbl,
+                    loa_name,
+                    item.categories
+                ]
+            );
 
-        res.status(200).json({ message: "Manual changes saved instantly!" });
-    } catch (error) { res.status(500).json({ error: error.message }); }
+            // Update Dashboard Table
+            return db.query(
+                `
+                UPDATE final_dashboard_table
+                SET asbl = ?
+                WHERE TRIM(loa_name) = TRIM(?)
+                AND TRIM(categories) = TRIM(?)
+                `,
+                [
+                    item.asbl,
+                    loa_name,
+                    item.categories
+                ]
+            );
+        });
+
+        await Promise.all(promises);
+
+        // Recalculate EAC
+        await db.query(`
+            UPDATE final_dashboard_table
+            SET 
+                eac = (
+                    ptd + open_commitment_KEUR + non_committed
+                ),
+                eac_vs_asbl = (
+                    asbl - (
+                        ptd + open_commitment_KEUR + non_committed
+                    )
+                )
+            WHERE TRIM(loa_name) = TRIM(?)
+        `, [loa_name]);
+        res.status(200).json({
+            message: "Manual changes saved instantly!"
+        });
+    } catch (error) {
+        res.status(500).json({
+            error: error.message
+        });
+    }
 };
 
 // 3. Get Project Details (Same as before)
 exports.getProjectDetails = async (req, res) => {
+
     try {
-        const { loa_id } = req.query;
+
+        const { loa_name } = req.query;
+
         const [rows] = await db.query(`
-            SELECT loa_id, loa_name, cost_revenue, categories, MAX(asbl) as asbl 
-            FROM final_dashboard_table WHERE TRIM(loa_id) = ? 
-            GROUP BY loa_id, loa_name, cost_revenue, categories
-            ORDER BY cost_revenue DESC, categories ASC
-        `, [loa_id]);
+            
+            SELECT 
+                loa_id,
+                loa_name,
+                cost_revenue,
+                categories,
+                MAX(asbl) as asbl
+                FROM final_dashboard_table
+                WHERE TRIM(loa_name) = TRIM(?)
+
+            AND categories NOT IN (
+                'Local Materials',
+                'Not to considered'
+            )
+            AND cost_revenue <> 'NTC'
+            AND cost_revenue = 'Cost'
+
+            GROUP BY
+                loa_id,
+                loa_name,
+                cost_revenue,
+                categories
+            ORDER BY
+                categories ASC
+
+        `, [loa_name]);
+
         res.status(200).json(rows);
-    } catch (error) { res.status(500).json({ error: error.message }); }
+
+    } catch (error) {
+
+        res.status(500).json({
+            error: error.message
+        });
+
+    }
 };

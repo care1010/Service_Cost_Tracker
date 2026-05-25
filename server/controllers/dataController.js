@@ -395,7 +395,7 @@ exports.updateNonCommitted = async (req, res) => {
     } catch (error) { res.status(500).json({ error: error.message }); }
 };
 
-// 3. Excel Export
+// 3. Excel Export function for Summmary View
 exports.exportToExcel = async (req, res) => {
     try {
         const { showAll, collapseView, ...filters } = req.query;
@@ -406,7 +406,7 @@ exports.exportToExcel = async (req, res) => {
             "cost_revenue <> 'NTC'"
         ];
         
-        // Agar 'Show All' (🎯) nahi hai, toh zero rows filter lagayein
+        // Agar 'Show All' nahi hai, toh zero rows filter lagayein
         if (showAll !== 'true') {
             conditions.push("(ABS(asbl) > 0.01 OR ABS(ptd) > 0.01 OR ABS(total_oc_fixed) > 0.01 OR ABS(non_committed) > 0.01)");
         }
@@ -430,20 +430,22 @@ exports.exportToExcel = async (req, res) => {
 if (collapseView === 'true') {
 
     exportQuery = `
-        SELECT 
+        SELECT
             bu,
             customer,
             loa_name,
             loa_id,
 
+            'Cost' as cost_revenue,
+
             SUM(asbl) as asbl,
             SUM(ptd) as ptd,
-            SUM(total_oc_fixed) as open_commitment,
+            SUM(open_commitment) as open_commitment,
             SUM(non_committed) as non_committed,
 
             (
                 SUM(ptd)
-                + SUM(total_oc_fixed)
+                + SUM(open_commitment)
                 + SUM(non_committed)
             ) as eac,
 
@@ -452,13 +454,43 @@ if (collapseView === 'true') {
                 -
                 (
                     SUM(ptd)
-                    + SUM(total_oc_fixed)
+                    + SUM(open_commitment)
                     + SUM(non_committed)
                 )
             ) as eac_vs_asbl
 
-        FROM final_dashboard_table
-        ${whereClause}
+        FROM
+        (
+            SELECT
+                bu,
+                customer,
+                loa_name,
+                loa_id,
+                categories,
+
+                MAX(asbl) as asbl,
+                SUM(ptd) as ptd,
+                MAX(total_oc_fixed) as open_commitment,
+                MAX(non_committed) as non_committed
+
+            FROM final_dashboard_table
+
+            ${whereClause}
+            AND cost_revenue = 'Cost'
+
+            GROUP BY
+                bu,
+                customer,
+                loa_name,
+                loa_id,
+                categories
+        ) x
+
+        WHERE
+            ABS(asbl) > 0.01
+            OR ABS(ptd) > 0.01
+            OR ABS(open_commitment) > 0.01
+            OR ABS(non_committed) > 0.01
 
         GROUP BY
             bu,
@@ -467,19 +499,19 @@ if (collapseView === 'true') {
             loa_id
 
         ORDER BY loa_name ASC
-    `;
+        `;
 
 } else {
 
     // 🔥 EXPAND VIEW EXPORT (Current View)
 
         exportQuery = `
-            SELECT 
+            SELECT
                 bu,
                 customer,
                 loa_name,
                 loa_id,
-                cost_revenue,
+                'Cost' as cost_revenue,
                 categories,
 
                 MAX(asbl) as asbl,
@@ -504,18 +536,27 @@ if (collapseView === 'true') {
                 ) as eac_vs_asbl
 
             FROM final_dashboard_table
+
             ${whereClause}
+            AND cost_revenue = 'Cost'
 
             GROUP BY
                 bu,
                 customer,
-                loa_id,
                 loa_name,
-                cost_revenue,
+                loa_id,
                 categories
 
-            ORDER BY loa_name ASC, cost_revenue ASC
-        `;
+            HAVING
+                ABS(MAX(asbl)) > 0.01
+                OR ABS(SUM(ptd)) > 0.01
+                OR ABS(MAX(total_oc_fixed)) > 0.01
+                OR ABS(MAX(non_committed)) > 0.01
+
+            ORDER BY
+                loa_name ASC,
+                categories ASC
+            `;
     }
 
         // 3. Excel Setup
@@ -532,6 +573,7 @@ if (collapseView === 'true') {
             { header: 'Customer', key: 'customer', width: 25 },
             { header: 'LOA Name', key: 'loa_name', width: 35 },
             { header: 'LOA ID', key: 'loa_id', width: 15 },
+            { header: 'Cost/Revenue', key: 'cost_revenue', width: 15 },
             { header: 'ASBL', key: 'asbl', width: 15 },
             { header: 'PTD', key: 'ptd', width: 15 },
             { header: 'Open Commitment', key: 'open_commitment', width: 15 },
@@ -1619,13 +1661,9 @@ exports.getBuCustomerViewTable = async (req, res) => {
 };
 
 // CUSTOMER + BU VIEW
-
 exports.getCustomerBuViewTable = async (req, res) => {
-
     try {
-
         const { type, allowedCustomers } = req.query;
-
         let conditions = [
             "categories NOT IN ('Local Materials', 'Not to considered')",
             "cost_revenue <> 'NTC'",
@@ -1741,7 +1779,7 @@ exports.getCustomerBuViewTable = async (req, res) => {
 
 };
 
-// 3. Negative LOA Detailed Table
+// 4. Negative LOA Detailed Table
 exports.getNegativeLOATable = async (req, res) => {
 
     try {
@@ -1827,6 +1865,119 @@ ORDER BY eac_vs_asbl ASC
             error: error.message
         });
 
+    }
+};
+
+// 5 CUSTOMER + BU VIEW
+exports.getCustomerBuLoaViewTable = async (req, res) => {
+    try {
+        const { type, allowedCustomers } = req.query;
+        let conditions = [
+            "categories NOT IN ('Local Materials', 'Not to considered')",
+            "cost_revenue <> 'NTC'",
+            "cost_revenue = 'Cost'"
+        ];
+
+        let params = [];
+
+        if (
+            type === 'user'
+            &&
+            allowedCustomers
+        ) {
+
+            const customerArray =
+                allowedCustomers.split(',');
+
+            const placeholders =
+                customerArray.map(() => '?').join(',');
+
+            conditions.push(
+                `customer IN (${placeholders})`
+            );
+
+            params.push(...customerArray);
+
+        }
+
+        const whereSql =
+            `WHERE ${conditions.join(' AND ')}`;
+
+        const sql = `
+            SELECT
+
+                customer,
+                bu,
+                loa_name,
+
+                ROUND(SUM(asbl), 2) AS asbl,
+                ROUND(SUM(asbl_loa), 2) AS asbl_loa,
+                ROUND(SUM(ptd), 2) AS ptd,
+                ROUND(SUM(open_commitment), 2) AS open_commitment,
+                ROUND(SUM(non_committed), 2) AS non_committed,
+                ROUND(SUM(eac), 2) AS eac,
+                ROUND(SUM(eac_vs_asbl), 2) AS eac_vs_asbl
+            FROM (
+                SELECT
+                    customer,
+                    bu,
+                    loa_id,
+                    loa_name,
+                    cost_revenue,
+                    categories,
+
+                    MAX(asbl) AS asbl,
+                    MAX(asbl_loa) AS asbl_loa,
+                    SUM(ptd) AS ptd,
+                    MAX(total_oc_fixed) AS open_commitment,
+                    MAX(non_committed_editable) AS non_committed,
+
+                    (
+                        SUM(ptd)
+                        + MAX(total_oc_fixed)
+                        + MAX(non_committed_editable)
+                    ) AS eac,
+
+                    (
+                        MAX(asbl)
+                        -
+                        (
+                            SUM(ptd)
+                            + MAX(total_oc_fixed)
+                            + MAX(non_committed_editable)
+                        )
+                    ) AS eac_vs_asbl
+
+                FROM final_dashboard_table
+
+                ${whereSql}
+
+                GROUP BY
+                    customer,
+                    bu,
+                    loa_id,
+                    loa_name,
+                    cost_revenue,
+                    categories
+
+            ) x
+
+            GROUP BY
+                customer,
+                bu,
+                loa_name
+
+            ORDER BY
+                customer ASC,
+                asbl DESC
+        `;
+
+        const [rows] = await db.query(sql, params);
+        res.json(rows);
+    } catch (error) {
+        res.status(500).json({
+            error: error.message
+        });
     }
 };
 

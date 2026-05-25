@@ -102,6 +102,11 @@ router.get(
     dataController.getCustomerBuViewTable
 );
 
+router.get(
+    '/customer-bu-loa-view-table',
+    dataController.getCustomerBuLoaViewTable
+);
+
 router.post('/drilldown', dataController.getDrillDownData);
 router.get('/export-drilldown', dataController.exportDrillDown);
 router.get(

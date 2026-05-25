@@ -80,6 +80,9 @@ const fetchTableData = async () => {
         else if (tableView === 'negative-loa') {
             endpoint = 'negative-loa-table';
         }
+        else if (tableView === 'customer-bu-loa') {
+            endpoint = 'customer-bu-loa-view-table';
+        }
 
         const res = await axios.get(
             `${process.env.REACT_APP_API_URL}/api/data/${endpoint}`,
@@ -91,9 +94,6 @@ const fetchTableData = async () => {
                 }
             }
         );
-console.log(user);
-console.log(user?.allowedCustomers);
-console.log(typeof user?.allowedCustomers);
         setTableData(res.data);
 
     } catch (err) {
@@ -102,18 +102,14 @@ console.log(typeof user?.allowedCustomers);
             'Error fetching table:',
             err
         );
-
     }
-
 };
 
 
 const columnsToShow =
 
     // BU VIEW
-
     tableView === 'bu'
-
     ? [
         'bu',
         'asbl',
@@ -126,9 +122,7 @@ const columnsToShow =
     ]
 
     // BU + CUSTOMER VIEW
-
     : tableView === 'bu-customer'
-
     ? [
         'bu',
         'customer',
@@ -142,9 +136,7 @@ const columnsToShow =
     ]
 
     // LOA VIEW
-
     : tableView === 'loa'
-
     ? [
         'customer',
         'loa_id',
@@ -159,9 +151,7 @@ const columnsToShow =
     ]
 
     // CUSTOMER + BU VIEW
-
     : tableView === 'customer-bu'
-
     ? [
         'customer',
         'bu',
@@ -188,8 +178,22 @@ const columnsToShow =
         'eac_vs_asbl'
     ]
 
-    // CUSTOMER VIEW
+    // CUSTOMER + BU _ LOA VIEW
+    : tableView === 'customer-bu-loa'
+    ? [
+        'customer',
+        'bu',
+        'loa_name',
+        'asbl',
+        'asbl_loa',
+        'ptd',
+        'open_commitment',
+        'non_committed',
+        'eac',
+        'eac_vs_asbl'
+    ]
 
+    // CUSTOMER VIEW
     : [
         'customer',
         'asbl',
@@ -913,6 +917,21 @@ const displayLoaData = showAllLoa
                             `}
                         >
                             -ve LOA View
+                        </button>
+
+                        {/* customer-bu-LOA BUTTON */}
+                        <button
+                            onClick={() => setTableView('customer-bu-loa')}
+                            className={`
+                                px-5 py-2 rounded-xl text-sm font-bold transition-all duration-200
+                                ${
+                                    tableView === 'customer-bu-loa'
+                                        ? 'bg-red-700 text-white shadow-lg scale-105'
+                                        : 'bg-red-100 text-red-700 hover:bg-red-200'
+                                }
+                            `}
+                        >
+                            Customer+BU+LOA
                         </button>
 
                     </div>

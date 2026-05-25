@@ -5,6 +5,7 @@ import 'select2';
 import 'select2/dist/css/select2.min.css';
 import { HiOutlineDocumentDownload } from "react-icons/hi";
 import './AsblAutomation.css';
+import Swal from 'sweetalert2';
 
 const AsblAutomation = () => {
     const [pasteData, setPasteData] = useState('');
@@ -16,7 +17,9 @@ const AsblAutomation = () => {
 
     useEffect(() => {
         axios.get(`${process.env.REACT_APP_API_URL}/api/data/filter-options`).then(res => {
-            if (res.data && res.data.loa_id) setLoaOptions(res.data.loa_id);
+            if (res.data && res.data.loa_name) {
+                setLoaOptions(res.data.loa_name);
+            }
         });
     }, []);
 
@@ -28,16 +31,51 @@ const AsblAutomation = () => {
 
     useEffect(() => {
         if (selectedLoa) {
-            axios.get(`${process.env.REACT_APP_API_URL}/api/data/project-details?loa_id=${selectedLoa}`)
-                .then(res => setProjectData(res.data));
+            axios
+                .get(
+                    `${process.env.REACT_APP_API_URL}/api/data/project-details?loa_name=${selectedLoa}`
+                )
+                .then(res => {
+                    setProjectData(res.data);
+                    // 🔥 Check if all ASBL values are zero
+                    const hasActiveValues = res.data.some(
+                        row => Math.abs(row.asbl) > 0.01
+                    );
+
+                    // 🔥 Show alert if no active values
+                    if (!hasActiveValues && res.data.length > 0) {
+                        Swal.fire({
+                            icon: 'info',
+                            title: 'No Active Categories',
+                            html: `
+                                All ASBL values for this LOA are currently 
+                                <b>0 or less than 0.01</b>.
+                                <br/><br/>
+                                Please click the 
+                                <b>"Showing All"</b> toggle button 
+                                to view all categories.
+                            `,
+                            confirmButtonText: 'Got it',
+                            confirmButtonColor: '#4169e1'
+                        });
+                    }
+                });
         } else {
+
             setProjectData([]);
         }
     }, [selectedLoa]);
 
     const handleAsblChange = (index, newValue) => {
-        const updatedData = [...projectData];
-        updatedData[index].asbl = newValue;
+        const updatedData = projectData.map((item, i) => {
+            if (i === index) {
+                return {
+                    ...item,
+                    asbl: newValue
+                };
+            }
+            return item;
+        });
         setProjectData(updatedData);
     };
 
@@ -47,27 +85,50 @@ const AsblAutomation = () => {
     };
 
     const handleManualSave = async () => {
-    if (!selectedLoa) return alert("Please select a project first");
-    
-    setLoading(true);
-    try {
-        const res = await axios.post(`${process.env.REACT_APP_API_URL}/api/data/update-manual-asbl`, {
-            loa_id: selectedLoa,
-            updates: projectData // Saari rows bhej rahe hain
-        });
-        
-        alert(res.data.message);
-        
-        // 🔥 Refresh local table data to confirm sync
-        const refresh = await axios.get(`${process.env.REACT_APP_API_URL}/api/data/project-details?loa_id=${selectedLoa}`);
-        setProjectData(refresh.data);
-        
-    } catch (err) {
-        alert("Save failed: " + (err.response?.data?.error || "Server Error"));
-    } finally {
-        setLoading(false);
-    }
-};
+        if (!selectedLoa) {
+            return alert("Please select a project first");
+        }
+        setLoading(true);
+        try {
+            // 🔥 Save API
+            const res = await axios.post(
+                `${process.env.REACT_APP_API_URL}/api/data/update-manual-asbl`,
+                {
+                    loa_name: selectedLoa,
+                    updates: projectData
+                }
+            );
+            // Immediately fetch fresh updated data
+            const refresh = await axios.get(
+                `${process.env.REACT_APP_API_URL}/api/data/project-details?loa_name=${selectedLoa}`
+            );
+
+            // Update state with fresh DB values
+            const refreshedData = [...refresh.data];
+            // Respect current toggle mode
+            if (!showAll) {
+                const filtered = refreshedData.filter(
+                    row => Math.abs(row.asbl) > 0.01
+                );
+                setProjectData(filtered);
+            } else {
+                setProjectData(refreshedData);
+            }
+            //  Success popup AFTER refresh
+            alert(res.data.message);
+
+        } catch (err) {
+            alert(
+                "Save failed: " +
+                (
+                    err.response?.data?.error ||
+                    "Server Error"
+                )
+            );
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const handleBulkUpdate = async () => {
         if (!pasteData.trim()) return alert("Paste data first!");
@@ -186,7 +247,6 @@ const AsblAutomation = () => {
 
             </div>
 
-            {/* SECTION 2: EDITABLE MATRIX */}
                 {/* SECTION 2: EDITABLE MATRIX */}
                 <div className="bg-white/95 backdrop-blur-md rounded-[2rem] 
                 shadow-[0_8px_30px_rgb(0,0,0,0.05)] p-6 border border-slate-100">
@@ -196,7 +256,6 @@ const AsblAutomation = () => {
 
                         <div>
                             
-
                             <p className="text-slate-600 text-sm mt-3 leading-relaxed">
                                 <span className="text-slate-700 text-sm font-bold uppercase tracking-wide">
                                     OPTION-2:
@@ -222,9 +281,9 @@ const AsblAutomation = () => {
                                 <select id="loa-select" className="select2-dropdown">
                                     <option value="">Select Project...</option>
 
-                                    {loaOptions.map(id => (
-                                        <option key={id} value={id}>
-                                            {id}
+                                    {loaOptions.map(name => (
+                                        <option key={name} value={name}>
+                                            {name}
                                         </option>
                                     ))}
                                 </select>
@@ -248,7 +307,7 @@ const AsblAutomation = () => {
                                     </span>
 
                                     <span className="text-[11px] font-black uppercase tracking-wide">
-                                        {showAll ? "Showing All" : "Active Only"}
+                                        {showAll ? "Active ASBL" : "All Categories"}
                                     </span>
                                 </button>
 
