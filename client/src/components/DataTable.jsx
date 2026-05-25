@@ -10,7 +10,7 @@ import Swal from 'sweetalert2';
 import { HiOutlineTrash } from "react-icons/hi";
 import { useNavigate } from 'react-router-dom';
 
-const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButton = true, showClearButton = false }) => {
+const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButton = true, showClearButton = false, collapseView = false }) => {
     const tableRef = useRef(null);
     const dataTableInstance = useRef(null);
     
@@ -169,7 +169,8 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
                         // 🔥 PARENT ROW (Level 0): Metadata + Totals
                         return $(`
                             <tr class="group-parent">
-                                <td class="pbi-col font-black text-blue-800"><span class="toggle-icon">➕</span> ${rowData.bu}</td>
+                                <td class="pbi-col font-black text-blue-800">${!collapseView ? '<span class="toggle-icon">➕</span>' : ''}
+                                ${rowData.bu}</td>
                                 <td class="font-bold text-slate-700">${rowData.customer}</td>
                                 <td class="font-bold text-slate-700">${group}</td>
                                 <td class="font-bold text-slate-700">${rowData.loa_id}</td>
@@ -185,20 +186,33 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
                             </tr>
                         `);
                     } else {
-                        // 🔥 CHILD ROW (Level 1): Metadata + Cost/Revenue + Totals
+
+                        // Collapse mode me child row render hi mat karo
+                        if (collapseView) {
+                            return null;
+                        }
+
                         return $(`
                             <tr class="group-child">
                                 <td class="text-slate-400">${rowData.bu}</td>
                                 <td class="text-slate-400">${rowData.customer}</td>
                                 <td class="text-slate-400">${rowData.loa_name}</td>
                                 <td class="text-slate-400">${rowData.loa_id}</td>
-                                <td class="pbi-col font-bold text-slate-600"><span class="toggle-icon">➕</span> ${group}</td>
+
+                                <td class="pbi-col font-bold text-slate-600">
+                                    ${!collapseView ? '<span class="toggle-icon">➕</span>' : ''}
+                                    ${group}
+                                </td>
+
                                 <td></td>
+
                                 <td class="text-right font-bold text-slate-700">${fmt(asbl)}</td>
                                 <td class="text-right font-bold"></td>
                                 <td class="text-right font-bold text-slate-700">${fmt(ptd)}</td>
                                 <td class="text-right font-bold text-slate-700">${fmt(oc)}</td>
-                                ${showClearButton ? `<td class="text-right font-bold text-slate-700">${fmt(nc_orig)}</td>` : ''} <!-- 🔥 Review Page Extra Cell -->
+
+                                ${showClearButton ? `<td class="text-right font-bold text-slate-700">${fmt(nc_orig)}</td>` : ''}
+
                                 <td class="text-right font-bold text-slate-700">${fmt(nc)}</td>
                                 <td class="text-right font-bold text-slate-700">${fmt(eac)}</td>
                                 <td class="text-right font-bold text-slate-700">${fmt(varTotal)}</td>
@@ -210,10 +224,28 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
             dom: '<"flex justify-between mb-4"lf>rt<"flex justify-between mt-4"ip>',
             drawCallback: function() {
                 const table = $(tableRef.current);
-                table.find('tbody tr:not(.group-parent)').hide();
+                if (collapseView) {
+
+                    // 🔥 Collapse View
+                    table.find('tbody tr.group-child').hide();
+                    table.find('tbody tr.dtrg-level-2').hide();
+                    table.find('tbody tr:not(.group-parent)').hide();
+
+                } else {
+
+                    // 🔥 Expand View
+                    table.find('tbody tr:not(.group-parent)').hide();
+
+                }
 
                 // Parent Toggle
-                table.find('tbody').off('click', 'tr.group-parent').on('click', 'tr.group-parent', function() {
+                if (!collapseView) {
+                    table.find('tbody')
+                    .off('click', 'tr.group-parent')
+                    .on('click', 'tr.group-parent', function() {
+
+                    // Collapse mode me expand disable
+                    if (collapseView) return;
                     const icon = $(this).find('.toggle-icon');
                     const isExpanded = $(this).hasClass('expanded');
                     const childGroups = $(this).nextUntil('tr.group-parent', 'tr.group-child');
@@ -229,9 +261,16 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
                     }
                     dataTableInstance.current.columns.adjust();
                 });
+            }
 
                 // Child Toggle
-                table.find('tbody').off('click', 'tr.group-child').on('click', 'tr.group-child', function() {
+                if (!collapseView) {
+                    table.find('tbody')
+                    .off('click', 'tr.group-child')
+                    .on('click', 'tr.group-child', function() {
+
+                     // Collapse mode me expand disable
+                    if (collapseView) return;
                     const icon = $(this).find('.toggle-icon');
                     const isExpanded = $(this).hasClass('expanded');
                     const dataRows = $(this).nextUntil('tr.group-child, tr.group-parent');
@@ -247,6 +286,8 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
                     }
                     dataTableInstance.current.columns.adjust();
                 });
+                }
+                
                 // DRILL THROUGH CLICK EVENT
                 table.find('tbody').off('click', '.drill-link').on('click', '.drill-link', function (e) {
 

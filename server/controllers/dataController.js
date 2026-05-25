@@ -135,6 +135,95 @@ exports.getWbsSummary = async (req, res) => {
     }
 };
 
+exports.getWbsSummaryCollapse = async (req, res) => {
+    try {
+
+        const { type, allowedCustomers } = req.query;
+
+        let conditions = [
+            "categories NOT IN ('Local Materials', 'Not to considered')",
+            "cost_revenue <> 'NTC'"
+        ];
+
+        let params = [];
+
+        // RLS
+        if (type === 'user' && allowedCustomers) {
+            conditions.push(`customer IN (?)`);
+            params.push(allowedCustomers.split(','));
+        }
+
+        const whereClause =
+            conditions.length > 0
+                ? `WHERE ${conditions.join(' AND ')}`
+                : '';
+
+        const sql = `
+            SELECT
+                bu,
+                customer,
+                loa_name,
+                loa_id,
+                cost_revenue,
+
+                ROUND(MAX(asbl), 2) AS asbl,
+
+                ROUND(MAX(asbl_loa), 2) AS asbl_loa,
+
+                ROUND(SUM(ptd), 2) AS ptd,
+
+                ROUND(MAX(total_oc_fixed), 2) AS open_commitment,
+
+                ROUND(MAX(non_committed_editable), 2) AS non_committed,
+
+                ROUND(
+                    SUM(ptd)
+                    + MAX(total_oc_fixed)
+                    + MAX(non_committed_editable),
+                2) AS eac,
+
+                ROUND(
+                    MAX(asbl)
+                    -
+                    (
+                        SUM(ptd)
+                        + MAX(total_oc_fixed)
+                        + MAX(non_committed_editable)
+                    ),
+                2) AS eac_vs_asbl
+
+            FROM final_dashboard_table
+
+            ${whereClause}
+
+            GROUP BY
+                bu,
+                customer,
+                loa_name,
+                loa_id,
+                cost_revenue
+
+            ORDER BY loa_name ASC
+        `;
+
+        const [rows] = await db.query(sql, params);
+
+        res.status(200).json({
+            data: rows,
+            recordsTotal: rows.length,
+            recordsFiltered: rows.length
+        });
+
+    } catch (error) {
+
+        res.status(500).json({
+            error: error.message
+        });
+
+    }
+};
+
+
 exports.getDrillDownData = async (req, res) => {
     try {
         const { field, row } = req.body;
@@ -309,7 +398,7 @@ exports.updateNonCommitted = async (req, res) => {
 // 3. Excel Export
 exports.exportToExcel = async (req, res) => {
     try {
-        const { showAll, ...filters } = req.query;
+        const { showAll, collapseView, ...filters } = req.query;
 
         // 1. Filters Setup (Same as UI)
         let conditions = [
@@ -334,28 +423,125 @@ exports.exportToExcel = async (req, res) => {
         const whereClause = " WHERE " + conditions.join(" AND ");
 
         // 2. 🔥 MATRIX EXPORT QUERY (Exactly like UI)
-        const exportQuery = `
+        let exportQuery = '';
+
+
+// 🔥 COLLAPSE VIEW EXPORT
+if (collapseView === 'true') {
+
+    exportQuery = `
+        SELECT 
+            bu,
+            customer,
+            loa_name,
+            loa_id,
+
+            SUM(asbl) as asbl,
+            SUM(ptd) as ptd,
+            SUM(total_oc_fixed) as open_commitment,
+            SUM(non_committed) as non_committed,
+
+            (
+                SUM(ptd)
+                + SUM(total_oc_fixed)
+                + SUM(non_committed)
+            ) as eac,
+
+            (
+                SUM(asbl)
+                -
+                (
+                    SUM(ptd)
+                    + SUM(total_oc_fixed)
+                    + SUM(non_committed)
+                )
+            ) as eac_vs_asbl
+
+        FROM final_dashboard_table
+        ${whereClause}
+
+        GROUP BY
+            bu,
+            customer,
+            loa_name,
+            loa_id
+
+        ORDER BY loa_name ASC
+    `;
+
+} else {
+
+    // 🔥 EXPAND VIEW EXPORT (Current View)
+
+        exportQuery = `
             SELECT 
-                bu, customer, loa_name, loa_id, cost_revenue, categories,
-                MAX(asbl) as asbl, 
-                SUM(ptd) as ptd, 
-                MAX(total_oc_fixed) as open_commitment, 
+                bu,
+                customer,
+                loa_name,
+                loa_id,
+                cost_revenue,
+                categories,
+
+                MAX(asbl) as asbl,
+                SUM(ptd) as ptd,
+                MAX(total_oc_fixed) as open_commitment,
                 MAX(non_committed) as non_committed,
-                (SUM(ptd) + MAX(total_oc_fixed) + MAX(non_committed)) as eac,
-                (MAX(asbl) - (SUM(ptd) + MAX(total_oc_fixed) + MAX(non_committed))) as eac_vs_asbl
+
+                (
+                    SUM(ptd)
+                    + MAX(total_oc_fixed)
+                    + MAX(non_committed)
+                ) as eac,
+
+                (
+                    MAX(asbl)
+                    -
+                    (
+                        SUM(ptd)
+                        + MAX(total_oc_fixed)
+                        + MAX(non_committed)
+                    )
+                ) as eac_vs_asbl
+
             FROM final_dashboard_table
             ${whereClause}
-            GROUP BY bu, customer, loa_id, loa_name, cost_revenue, categories
+
+            GROUP BY
+                bu,
+                customer,
+                loa_id,
+                loa_name,
+                cost_revenue,
+                categories
+
             ORDER BY loa_name ASC, cost_revenue ASC
         `;
+    }
 
         // 3. Excel Setup
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        res.setHeader('Content-Disposition', `attachment; filename=Dashboard_Matrix_Export_${new Date().getTime()}.xlsx`);
+        res.setHeader('Content-Disposition', `attachment; filename=Summary_Export_${new Date().getTime()}.xlsx`);
         
         const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: res });
         const worksheet = workbook.addWorksheet('Matrix Data');
         
+        if (collapseView === 'true') {
+
+        worksheet.columns = [
+            { header: 'BU', key: 'bu', width: 10 },
+            { header: 'Customer', key: 'customer', width: 25 },
+            { header: 'LOA Name', key: 'loa_name', width: 35 },
+            { header: 'LOA ID', key: 'loa_id', width: 15 },
+            { header: 'ASBL', key: 'asbl', width: 15 },
+            { header: 'PTD', key: 'ptd', width: 15 },
+            { header: 'Open Commitment', key: 'open_commitment', width: 15 },
+            { header: 'Non Committed', key: 'non_committed', width: 15 },
+            { header: 'EAC', key: 'eac', width: 15 },
+            { header: 'EAC vs ASBL', key: 'eac_vs_asbl', width: 15 }
+        ];
+
+    } else {
+
         worksheet.columns = [
             { header: 'BU', key: 'bu', width: 10 },
             { header: 'Customer', key: 'customer', width: 25 },
@@ -370,6 +556,7 @@ exports.exportToExcel = async (req, res) => {
             { header: 'EAC', key: 'eac', width: 15 },
             { header: 'EAC vs ASBL', key: 'eac_vs_asbl', width: 15 }
         ];
+    }
 
         const [rows] = await db.query(exportQuery, params);
         rows.forEach(row => {
@@ -1552,6 +1739,95 @@ exports.getCustomerBuViewTable = async (req, res) => {
 
     }
 
+};
+
+// 3. Negative LOA Detailed Table
+exports.getNegativeLOATable = async (req, res) => {
+
+    try {
+
+        const { type, allowedCustomers } = req.query;
+
+        let conditions = [
+            "categories NOT IN ('Local Materials', 'Not to considered')",
+            "cost_revenue <> 'NTC'",
+            "cost_revenue = 'Cost'"
+        ];
+
+        let params = [];
+
+        if (type === 'user' && allowedCustomers) {
+
+            const customerArray = allowedCustomers.split(',');
+            const placeholders = customerArray.map(() => '?').join(',');
+
+            conditions.push(`customer IN (${placeholders})`);
+            params.push(...customerArray);
+        }
+
+        const whereSql = `WHERE ${conditions.join(' AND ')}`;
+
+        const sql = `
+            SELECT
+    bu,
+    customer,
+    loa_id,
+    loa_name,
+    ROUND(SUM(asbl), 2) AS asbl,
+    ROUND(SUM(asbl_loa), 2) AS asbl_loa,
+    ROUND(SUM(ptd), 2) AS ptd,
+    ROUND(SUM(open_commitment), 2) AS open_commitment,
+    ROUND(SUM(non_committed), 2) AS non_committed,
+    ROUND(SUM(eac), 2) AS eac,
+    ROUND(SUM(eac_vs_asbl), 2) AS eac_vs_asbl
+FROM (
+    SELECT
+        bu,
+        loa_name,
+        customer,
+        loa_id,
+        cost_revenue,
+        categories,
+
+        SUM(asbl) AS asbl,
+        SUM(asbl_loa) AS asbl_loa,
+        SUM(ptd) AS ptd,
+        SUM(total_oc_fixed) AS open_commitment,
+        SUM(non_committed_editable) AS non_committed,
+
+        (SUM(ptd) + SUM(total_oc_fixed) + SUM(non_committed_editable)) AS eac,
+
+        (SUM(asbl) - (SUM(ptd) + SUM(total_oc_fixed) + SUM(non_committed_editable))) AS eac_vs_asbl
+
+    FROM final_dashboard_table
+    ${whereSql}
+
+    GROUP BY bu, loa_name, customer, loa_id, cost_revenue, categories
+) x
+
+GROUP BY bu, customer, loa_id, loa_name
+
+HAVING eac_vs_asbl < 0
+
+ORDER BY eac_vs_asbl ASC
+        `;
+
+        const [rows] = await db.query(sql, params);
+
+        res.json(rows);
+
+    } catch (error) {
+
+        console.error("❌ Negative LOA Error:");
+    console.error(error.sqlMessage); // if mysql error
+
+        console.error(error);
+
+        res.status(500).json({
+            error: error.message
+        });
+
+    }
 };
 
 

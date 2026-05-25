@@ -77,6 +77,9 @@ const fetchTableData = async () => {
         else if (tableView === 'customer-bu') {
             endpoint = 'customer-bu-view-table';
         }
+        else if (tableView === 'negative-loa') {
+            endpoint = 'negative-loa-table';
+        }
 
         const res = await axios.get(
             `${process.env.REACT_APP_API_URL}/api/data/${endpoint}`,
@@ -167,6 +170,20 @@ const columnsToShow =
         'ptd',
         'open_commitment',
         'non_committed',
+        'eac',
+        'eac_vs_asbl'
+    ]
+
+    : tableView === 'negative-loa'
+    ? [
+        'bu',
+        'customer',
+        'loa_id',
+        'loa_name',
+        'asbl',
+        'asbl_loa',
+        'ptd',
+        'open_commitment',
         'eac',
         'eac_vs_asbl'
     ]
@@ -881,6 +898,21 @@ const displayLoaData = showAllLoa
                                     : 'Customer Only View'
                             }
 
+                        </button>
+
+                        {/* -ve LOA BUTTON */}
+                        <button
+                            onClick={() => setTableView('negative-loa')}
+                            className={`
+                                px-5 py-2 rounded-xl text-sm font-bold transition-all duration-200
+                                ${
+                                    tableView === 'negative-loa'
+                                        ? 'bg-red-700 text-white shadow-lg scale-105'
+                                        : 'bg-red-100 text-red-700 hover:bg-red-200'
+                                }
+                            `}
+                        >
+                            -ve LOA View
                         </button>
 
                     </div>

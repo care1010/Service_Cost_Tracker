@@ -11,9 +11,11 @@ const asblController = require('../controllers/asblController');
 const authController = require('../controllers/authController');
 
 
-
 // In teeno routes ke naam controller ke function se match hone chahiye
 router.get('/wbs-summary', dataController.getWbsSummary);
+router.get(
+'/wbs-summary-collapse', dataController.getWbsSummaryCollapse);
+
 router.get('/filter-options', dataController.getFilterOptions); // Is line ki wajah se crash ho raha tha
 router.get('/export-excel', dataController.exportToExcel);
 router.get('/categories', dataController.getCategories);
@@ -102,5 +104,9 @@ router.get(
 
 router.post('/drilldown', dataController.getDrillDownData);
 router.get('/export-drilldown', dataController.exportDrillDown);
+router.get(
+    '/negative-loa-table',
+    dataController.getNegativeLOATable
+);
 
 module.exports = router;

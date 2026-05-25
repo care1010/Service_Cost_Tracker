@@ -19,6 +19,8 @@ const SummaryView = ({ user }) => {
     const [showAll, setShowAll] = useState(false); 
     const [loading, setLoading] = useState(false);
     const [isReviewMode, setIsReviewMode] = useState(false);
+    const [collapseView, setCollapseView] = useState(false);
+    const [negativeLoaView, setNegativeLoaView] = useState(false);
 
     //  1. Review Button Click Handler
     const handleReviewClick = async () => {
@@ -84,10 +86,19 @@ const SummaryView = ({ user }) => {
 
     const handleFullExport = () => {
         const exportUrl = new URL(`${process.env.REACT_APP_API_URL}/api/data/export-excel`);
+
+        // Existing params
         exportUrl.searchParams.append('showAll', showAll);
+
+        // 🔥 NEW
+        exportUrl.searchParams.append('collapseView', collapseView);
+
         Object.keys(filters).forEach(key => {
-            if (filters[key] && filters[key] !== 'All') exportUrl.searchParams.append(key, filters[key]);
+            if (filters[key] && filters[key] !== 'All') {
+                exportUrl.searchParams.append(key, filters[key]);
+            }
         });
+
         window.location.href = exportUrl.toString();
     };
 
@@ -102,6 +113,16 @@ const SummaryView = ({ user }) => {
         finally { setLoading(false); }
     };
 
+    const handleNegativeLOA = () => {
+        // parent rows only
+        const filteredData = tableData.filter(row => {
+            const value = Number(row["EAC vs ASBL"]) || 0;
+            return value < 0;
+        });
+        setNegativeLOAData(filteredData);
+        setShowNegativeLOA(true);
+    };
+
     const handleAsblSubmit = (data) => {
         setIsModalOpen(false);
     };
@@ -114,7 +135,9 @@ const SummaryView = ({ user }) => {
         queryParams.append('allowedCustomers', user.allowedCustomers.join(',')); // 🔥 Customers bhejien
 }
 
-    const dynamicApiUrl = `${process.env.REACT_APP_API_URL}/api/data/wbs-summary?${queryParams.toString()}`;
+    const dynamicApiUrl = collapseView
+    ? `${process.env.REACT_APP_API_URL}/api/data/wbs-summary-collapse?${queryParams.toString()}`
+    : `${process.env.REACT_APP_API_URL}/api/data/wbs-summary?${queryParams.toString()}`;
 
     const tableColumns = [
         { header: 'BU', field: 'bu' },
@@ -157,6 +180,30 @@ const SummaryView = ({ user }) => {
                 </div>
                 
                 <div className="flex gap-3">
+                    {/* <button
+                        onClick={() => setNegativeLoaView(!negativeLoaView)}
+                        className="px-3 py-1 bg-red-500 text-white rounded"
+                    >
+                        -ve LOA
+                    </button> */}
+
+                    <button
+                        onClick={() => setCollapseView(!collapseView)}
+                        className="group text-white px-4 py-2 rounded-2xl shadow-md 
+                        flex items-center gap-2 transition-all duration-300 
+                        hover:scale-105 hover:shadow-xl"
+                        style={{
+                            background: collapseView
+                                ? 'linear-gradient(135deg, #16a34a, #15803d)'
+                                : 'linear-gradient(135deg, #4169e1, #3157c9)',
+                        }}
+                    >
+                        <div className="flex flex-col leading-tight text-left">
+                            <span className="text-sm font-black">
+                                {collapseView ? 'Expanded View' : 'Collapse View'}
+                            </span>
+                        </div>
+                    </button>
                     {/* Export Excel - Sabko dikhega */}
                     <button
                         onClick={handleFullExport}
@@ -253,7 +300,7 @@ const SummaryView = ({ user }) => {
             </div>
 
             <div className="rounded-[1.5rem] overflow-hidden shadow-xl border border-white bg-white">
-                <DataTable title="" columns={tableColumns} apiUrl={dynamicApiUrl} filters={filters} onKpiUpdate={handleKpiUpdate} />
+                <DataTable title="" columns={tableColumns} apiUrl={dynamicApiUrl} filters={filters} onKpiUpdate={handleKpiUpdate} collapseView={collapseView} />
             </div>
 
             <AsblModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSubmit={handleAsblSubmit} />
