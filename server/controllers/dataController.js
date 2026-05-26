@@ -1208,7 +1208,12 @@ exports.getFinalDashboardTable = async (req, res) => {
         // ======================
         // RLS LOGIC
         // ======================
-        applyRLS(type, allowedCustomers, conditions, params);
+        const customerList =
+    typeof allowedCustomers === 'string'
+        ? allowedCustomers.split(',')
+        : allowedCustomers || [];
+
+applyRLS(type, customerList, conditions, params);
 
         const whereSql =
             `WHERE ${conditions.join(' AND ')}`;
