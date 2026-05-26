@@ -85,21 +85,71 @@ const SummaryView = ({ user }) => {
     }, []);
 
     const handleFullExport = () => {
-        const exportUrl = new URL(`${process.env.REACT_APP_API_URL}/api/data/export-excel`);
 
-        // Existing params
-        exportUrl.searchParams.append('showAll', showAll);
+        const exportUrl = new URL(
+            `${process.env.REACT_APP_API_URL}/api/data/export-excel`
+        );
 
-        // 🔥 NEW
-        exportUrl.searchParams.append('collapseView', collapseView);
+        // =========================
+        // USER INFO
+        // =========================
+
+        const userType = user?.type || 'user';
+
+        const allowedCustomers =
+            Array.isArray(user?.allowedCustomers)
+                ? user.allowedCustomers.join(',')
+                : user?.allowedCustomers || '';
+
+        // =========================
+        // REQUIRED PARAMS
+        // =========================
+
+        exportUrl.searchParams.append(
+            'type',
+            userType
+        );
+
+        exportUrl.searchParams.append(
+            'allowedCustomers',
+            allowedCustomers
+        );
+
+        exportUrl.searchParams.append(
+            'showAll',
+            showAll
+        );
+
+        exportUrl.searchParams.append(
+            'collapseView',
+            collapseView
+        );
+
+        // =========================
+        // FILTERS
+        // =========================
 
         Object.keys(filters).forEach(key => {
-            if (filters[key] && filters[key] !== 'All') {
-                exportUrl.searchParams.append(key, filters[key]);
+
+            if (
+                filters[key]
+                &&
+                filters[key] !== 'All'
+            ) {
+
+                exportUrl.searchParams.append(
+                    key,
+                    filters[key]
+                );
             }
         });
 
-        window.location.href = exportUrl.toString();
+        // =========================
+        // EXPORT
+        // =========================
+
+        window.location.href =
+            exportUrl.toString();
     };
 
     const handleFullRefresh = async () => {

@@ -1,6 +1,44 @@
 const db = require('../config/db');
 const ExcelJS = require('exceljs');
 
+// ==============================
+// COMMON RLS FUNCTION
+// ==============================
+
+const applyRLS = (
+    type,
+    allowedCustomers,
+    conditions,
+    params
+) => {
+
+    // Super Admin = Full Access
+    if (type === 'super_admin') {
+        return;
+    }
+
+    // User/Admin Restricted Access
+    if (allowedCustomers) {
+
+        const customersArray = allowedCustomers
+            .split(',')
+            .map(c => c.trim())
+            .filter(Boolean);
+
+        if (customersArray.length > 0) {
+
+            const placeholders =
+                customersArray.map(() => '?').join(',');
+
+            conditions.push(
+                `customer IN (${placeholders})`
+            );
+
+            params.push(...customersArray);
+        }
+    }
+};
+
 exports.getWbsSummary = async (req, res) => {
     try {
         const { draw, start, length, search, showAll, type, allowedCustomers } = req.query; 
@@ -42,10 +80,7 @@ exports.getWbsSummary = async (req, res) => {
         }
 
         // RLS Logic
-        if (type === 'user' && allowedCustomers) {
-            conditions.push(`customer IN (?)`);
-            params.push(allowedCustomers.split(','));
-        }
+        applyRLS(type, allowedCustomers, conditions, params);
 
         // 🔥 FIX: ALL CATEGORIES LOGIC
         // Agar showAll 'true' hai, toh hum zero rows wala filter NAHI lagayenge
@@ -148,10 +183,7 @@ exports.getWbsSummaryCollapse = async (req, res) => {
         let params = [];
 
         // RLS
-        if (type === 'user' && allowedCustomers) {
-            conditions.push(`customer IN (?)`);
-            params.push(allowedCustomers.split(','));
-        }
+        applyRLS(type, allowedCustomers, conditions, params);
 
         const whereClause =
             conditions.length > 0
@@ -301,10 +333,7 @@ exports.getFilterOptions = async (req, res) => {
         let baseConditions = ["categories NOT IN ('Local Materials', 'Not to considered')", "cost_revenue <> 'NTC'"];
         let baseParams = [];
 
-        if (type === 'user' && allowedCustomers) {
-            baseConditions.push(`customer IN (?)`);
-            baseParams.push(allowedCustomers.split(','));
-        }
+        applyRLS(type, allowedCustomers, baseConditions, baseParams);
 
         // 2. Optimized Helper Function
         const getFilteredDistinct = async (targetColumn, currentFilters) => {
@@ -398,20 +427,23 @@ exports.updateNonCommitted = async (req, res) => {
 // 3. Excel Export function for Summmary View
 exports.exportToExcel = async (req, res) => {
     try {
-        const { showAll, collapseView, ...filters } = req.query;
+        const { showAll, collapseView, type, allowedCustomers, ...filters } = req.query;
 
         // 1. Filters Setup (Same as UI)
         let conditions = [
             "categories NOT IN ('Local Materials', 'Not to considered')",
             "cost_revenue <> 'NTC'"
         ];
+
+        let params = [];
+
+        applyRLS(type, allowedCustomers, conditions, params);
         
         // Agar 'Show All' nahi hai, toh zero rows filter lagayein
         if (showAll !== 'true') {
             conditions.push("(ABS(asbl) > 0.01 OR ABS(ptd) > 0.01 OR ABS(total_oc_fixed) > 0.01 OR ABS(non_committed) > 0.01)");
         }
 
-        let params = [];
         const allowedFilters = ['bu', 'wbs', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period'];
         allowedFilters.forEach(key => {
             if (filters[key] && filters[key] !== 'All') {
@@ -797,17 +829,7 @@ exports.getDashboardFilters = async (req, res) => {
 
         let params = [];
 
-        if (
-            type === 'user'
-            &&
-            allowedCustomers
-        ) {
-            const customerArray = allowedCustomers.split(',');
-            const placeholders = customerArray.map(() => '?').join(',');
-            conditions.push(`customer IN (${placeholders})`
-            );
-            params.push(...customerArray);
-        }
+        applyRLS(type, allowedCustomers, conditions, params);
 
         // YEAR FILTER
         if (years) {
@@ -932,17 +954,7 @@ exports.getBuAnalytics = async (req, res) => {
         // RLS LOGIC
         // ======================
 
-        if (
-            type === 'user'
-            &&
-            allowedCustomers
-        ) {
-            const customerArray = allowedCustomers.split(',');
-            const placeholders = customerArray.map(() => '?').join(',');
-            conditions.push(`customer IN (${placeholders})`
-            );
-            params.push(...customerArray);
-        }
+        applyRLS(type, allowedCustomers, conditions, params);
 
         // MULTI YEAR FILTER
 
@@ -1067,17 +1079,7 @@ exports.getLoaAnalytics = async (req, res) => {
         // RLS LOGIC
         // ======================
 
-        if (
-            type === 'user'
-            &&
-            allowedCustomers
-        ) {
-            const customerArray = allowedCustomers.split(',');
-            const placeholders = customerArray.map(() => '?').join(',');
-            conditions.push(`customer IN (${placeholders})`
-            );
-            params.push(...customerArray);
-        }
+        applyRLS(type, allowedCustomers, conditions, params);
 
         // MULTI YEAR FILTER
         if (years) {
@@ -1206,26 +1208,7 @@ exports.getFinalDashboardTable = async (req, res) => {
         // ======================
         // RLS LOGIC
         // ======================
-
-        if (
-            type === 'user'
-            &&
-            allowedCustomers
-        ) {
-
-            const customerArray =
-                allowedCustomers.split(',');
-
-            const placeholders =
-                customerArray.map(() => '?').join(',');
-
-            conditions.push(
-                `customer IN (${placeholders})`
-            );
-
-            params.push(...customerArray);
-
-        }
+        applyRLS(type, allowedCustomers, conditions, params);
 
         const whereSql =
             `WHERE ${conditions.join(' AND ')}`;
@@ -1307,25 +1290,7 @@ exports.getCostViewTable = async (req, res) => {
 
         let params = [];
 
-        if (
-            type === 'user'
-            &&
-            allowedCustomers
-        ) {
-
-            const customerArray =
-                allowedCustomers.split(',');
-
-            const placeholders =
-                customerArray.map(() => '?').join(',');
-
-            conditions.push(
-                `customer IN (${placeholders})`
-            );
-
-            params.push(...customerArray);
-
-        }
+        applyRLS(type, allowedCustomers, conditions, params);
 
         const whereSql =
             `WHERE ${conditions.join(' AND ')}`;
@@ -1407,7 +1372,7 @@ exports.getCostViewTable = async (req, res) => {
     ORDER BY
         SUM(asbl) DESC
 `;
-        const [rows] = await db.query(sql);
+        const [rows] = await db.query(sql, params);
         res.json(rows);
     } catch (error) {
         console.error(error);
@@ -1431,25 +1396,7 @@ exports.getCustomerViewTable = async (req, res) => {
         ];
 
         let params = [];
-        if (
-            type === 'user'
-            &&
-            allowedCustomers
-        ) {
-
-            const customerArray =
-                allowedCustomers.split(',');
-
-            const placeholders =
-                customerArray.map(() => '?').join(',');
-
-            conditions.push(
-                `customer IN (${placeholders})`
-            );
-
-            params.push(...customerArray);
-
-        }
+        applyRLS(type, allowedCustomers, conditions, params);
 
         const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
@@ -1554,25 +1501,7 @@ exports.getBuCustomerViewTable = async (req, res) => {
 
         let params = [];
 
-        if (
-            type === 'user'
-            &&
-            allowedCustomers
-        ) {
-
-            const customerArray =
-                allowedCustomers.split(',');
-
-            const placeholders =
-                customerArray.map(() => '?').join(',');
-
-            conditions.push(
-                `customer IN (${placeholders})`
-            );
-
-            params.push(...customerArray);
-
-        }
+        applyRLS(type, allowedCustomers, conditions, params);
 
         const whereSql =
             `WHERE ${conditions.join(' AND ')}`;
@@ -1672,25 +1601,7 @@ exports.getCustomerBuViewTable = async (req, res) => {
 
         let params = [];
 
-        if (
-            type === 'user'
-            &&
-            allowedCustomers
-        ) {
-
-            const customerArray =
-                allowedCustomers.split(',');
-
-            const placeholders =
-                customerArray.map(() => '?').join(',');
-
-            conditions.push(
-                `customer IN (${placeholders})`
-            );
-
-            params.push(...customerArray);
-
-        }
+        applyRLS(type, allowedCustomers, conditions, params);
 
         const whereSql =
             `WHERE ${conditions.join(' AND ')}`;
@@ -1794,14 +1705,7 @@ exports.getNegativeLOATable = async (req, res) => {
 
         let params = [];
 
-        if (type === 'user' && allowedCustomers) {
-
-            const customerArray = allowedCustomers.split(',');
-            const placeholders = customerArray.map(() => '?').join(',');
-
-            conditions.push(`customer IN (${placeholders})`);
-            params.push(...customerArray);
-        }
+        applyRLS(type, allowedCustomers, conditions, params);
 
         const whereSql = `WHERE ${conditions.join(' AND ')}`;
 
@@ -1880,25 +1784,7 @@ exports.getCustomerBuLoaViewTable = async (req, res) => {
 
         let params = [];
 
-        if (
-            type === 'user'
-            &&
-            allowedCustomers
-        ) {
-
-            const customerArray =
-                allowedCustomers.split(',');
-
-            const placeholders =
-                customerArray.map(() => '?').join(',');
-
-            conditions.push(
-                `customer IN (${placeholders})`
-            );
-
-            params.push(...customerArray);
-
-        }
+        applyRLS(type, allowedCustomers, conditions, params);
 
         const whereSql =
             `WHERE ${conditions.join(' AND ')}`;
