@@ -170,6 +170,7 @@ exports.getWbsSummary = async (req, res) => {
     }
 };
 
+// Collapse table of Summary View
 exports.getWbsSummaryCollapse = async (req, res) => {
     try {
 
@@ -467,71 +468,47 @@ if (collapseView === 'true') {
             customer,
             loa_name,
             loa_id,
+            cost_revenue,
 
-            'Cost' as cost_revenue,
+            ROUND(MAX(asbl), 2) AS asbl,
 
-            SUM(asbl) as asbl,
-            SUM(ptd) as ptd,
-            SUM(open_commitment) as open_commitment,
-            SUM(non_committed) as non_committed,
+            ROUND(MAX(asbl_loa), 2) AS asbl_loa,
 
-            (
+            ROUND(SUM(ptd), 2) AS ptd,
+
+            ROUND(MAX(total_oc_fixed), 2) AS open_commitment,
+
+            ROUND(MAX(non_committed_editable), 2) AS non_committed,
+
+            ROUND(
                 SUM(ptd)
-                + SUM(open_commitment)
-                + SUM(non_committed)
-            ) as eac,
+                + MAX(total_oc_fixed)
+                + MAX(non_committed_editable),
+            2) AS eac,
 
-            (
-                SUM(asbl)
+            ROUND(
+                MAX(asbl)
                 -
                 (
                     SUM(ptd)
-                    + SUM(open_commitment)
-                    + SUM(non_committed)
-                )
-            ) as eac_vs_asbl
+                    + MAX(total_oc_fixed)
+                    + MAX(non_committed_editable)
+                ),
+            2) AS eac_vs_asbl
 
-        FROM
-        (
-            SELECT
-                bu,
-                customer,
-                loa_name,
-                loa_id,
-                categories,
+        FROM final_dashboard_table
 
-                MAX(asbl) as asbl,
-                SUM(ptd) as ptd,
-                MAX(total_oc_fixed) as open_commitment,
-                MAX(non_committed) as non_committed
-
-            FROM final_dashboard_table
-
-            ${whereClause}
-            AND cost_revenue = 'Cost'
-
-            GROUP BY
-                bu,
-                customer,
-                loa_name,
-                loa_id,
-                categories
-        ) x
-
-        WHERE
-            ABS(asbl) > 0.01
-            OR ABS(ptd) > 0.01
-            OR ABS(open_commitment) > 0.01
-            OR ABS(non_committed) > 0.01
+        ${whereClause}
 
         GROUP BY
             bu,
             customer,
             loa_name,
-            loa_id
+            loa_id,
+            cost_revenue
 
         ORDER BY loa_name ASC
-        `;
+    `;
 
 } else {
 
@@ -570,7 +547,6 @@ if (collapseView === 'true') {
             FROM final_dashboard_table
 
             ${whereClause}
-            AND cost_revenue = 'Cost'
 
             GROUP BY
                 bu,
@@ -1208,12 +1184,7 @@ exports.getFinalDashboardTable = async (req, res) => {
         // ======================
         // RLS LOGIC
         // ======================
-        const customerList =
-    typeof allowedCustomers === 'string'
-        ? allowedCustomers.split(',')
-        : allowedCustomers || [];
-
-applyRLS(type, customerList, conditions, params);
+        applyRLS(type, allowedCustomers, conditions, params);
 
         const whereSql =
             `WHERE ${conditions.join(' AND ')}`;

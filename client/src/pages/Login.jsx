@@ -1,103 +1,247 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import loginImage from '../assets/Login.png';
+import companyLogo from '../assets/OIP.jpg';
 
 const Login = ({ onLoginSuccess }) => {
+
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
 
+    const [showPassword, setShowPassword] = useState(false);
+    const [rememberMe, setRememberMe] = useState(false);
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setLoading(true);
+
         try {
-            const res = await axios.post(`${process.env.REACT_APP_API_URL}/api/data/login`, { email, password });
-            // User data ko browser mein save karein
-            localStorage.setItem('user', JSON.stringify(res.data.user));
+
+            const res = await axios.post(
+                `${process.env.REACT_APP_API_URL}/api/data/login`,
+                { email, password }
+            );
+
+            const storage = rememberMe ? localStorage : sessionStorage;
+
+            storage.setItem('user', JSON.stringify(res.data.user));
+
             onLoginSuccess(res.data.user);
+
         } catch (err) {
+
             alert(err.response?.data?.error || "Login Failed");
+
         } finally {
+
             setLoading(false);
         }
     };
 
     return (
-        <div className="min-h-screen bg-[#0a192f] flex items-center justify-center p-4">
-            <div className="bg-white w-full max-w-4xl rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col md:flex-row h-[600px]">
-                
-                {/* LEFT SIDE: IMAGE/GRADIENT */}
-                <div className="md:w-1/2 bg-gradient-to-br from-blue-600 to-indigo-900 p-12 flex flex-col justify-center text-white relative">
-                    <div className="absolute inset-0 opacity-20 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
-                    <div className="relative z-10">
-                        <h2 className="text-4xl font-black mb-4 leading-tight">Welcome to <br/>NI INDIA Financial Services Cost Tracker Platform</h2>
-                        <p className="text-blue-100 text-sm leading-relaxed opacity-80">
-                            Manage project financials, analyze margins, and automate your workflow with our advanced BI platform.
-                        </p>
-                    </div>
-                    <div className="mt-20 relative z-10">
-                        <div className="flex -space-x-2">
-                            {[1,2,3,4].map(i => (
-                                <div key={i} className="w-8 h-8 rounded-full border-2 border-white bg-blue-400 flex items-center justify-center text-[10px] font-bold">U{i}</div>
-                            ))}
-                        </div>
-                        <p className="text-[10px] mt-2 uppercase tracking-widest font-bold text-blue-200">Trusted by Finance Teams</p>
-                    </div>
+
+        <div className="min-h-screen flex font-['DM_Sans']">
+
+            {/* LEFT PANEL */}
+            <div
+                className="hidden md:flex md:w-[55%] relative items-center justify-center px-10"
+                style={{
+                    background: 'linear-gradient(135deg, #ddeeff, #c8e0fb)',
+                }}
+            >
+
+                {/* LOGO */}
+                <div className="absolute top-8 left-8">
+                    <img
+                        src={companyLogo}
+                        alt="Company Logo"
+                        className="w-20 object-contain"
+                    />
                 </div>
 
-                {/* RIGHT SIDE: FORM */}
-                <div className="md:w-1/2 p-12 flex flex-col justify-center bg-white">
+                <div className="text-center max-w-lg">
+
+                    <img
+                        src={loginImage}
+                        alt="Login Illustration"
+                        className="w-full max-w-[350px] mx-auto mb-6"
+                    />
+
+                    <p className="text-[#557ca3] text-base">
+                        Trusted by Finance Team
+                    </p>
+
+                    <h2 className="text-[30px] font-black text-slate-800 mt-3 leading-tight">
+                        Service Cost Tracker Platform
+                    </h2>
+
+                    <p className="text-slate-500 text-sm mt-5 leading-relaxed">
+                        Manage project financials, analyze margins,
+                        and automate workflows with an advanced BI dashboard.
+                    </p>
+                </div>
+            </div>
+
+            {/* RIGHT PANEL */}
+            <div className="w-full md:w-[45%] bg-white flex flex-col justify-between px-8 md:px-14 py-10">
+
+                {/* FORM */}
+                <div className="w-full max-w-md mx-auto flex flex-col justify-center h-full">
+
                     <div className="mb-10">
-                        <h3 className="text-2xl font-black text-slate-800">Sign In</h3>
-                        <p className="text-slate-400 text-xs mt-1">Enter your credentials to access the dashboard</p>
+
+                        <h1 className="text-4xl font-black text-slate-800 mb-2">
+                            Welcome
+                        </h1>
+
+                        <p className="text-slate-500 text-sm">
+                            Sign into your account.
+                        </p>
+
                     </div>
 
                     <form onSubmit={handleSubmit} className="space-y-5">
+
+                        {/* EMAIL */}
                         <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Email Address</label>
-                            <input 
-                                type="email" 
+
+                            <label className="text-xs font-bold text-slate-500 uppercase ml-1">
+                                Email Address
+                            </label>
+
+                            <input
+                                type="email"
                                 required
-                                className="w-full p-3 mt-1 rounded-xl border border-slate-100 bg-slate-50 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                placeholder="name@nokia.com"
+                                placeholder="user@nokia.com"
                                 value={email}
                                 onChange={(e) => setEmail(e.target.value)}
+                                className="w-full mt-2 p-3 rounded-xl border border-slate-200 bg-slate-50 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                             />
+
                         </div>
 
+                        {/* PASSWORD */}
                         <div>
-                            <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">Password</label>
-                            <input 
-                                type="password" 
-                                required
-                                className="w-full p-3 mt-1 rounded-xl border border-slate-100 bg-slate-50 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
-                                placeholder="••••••••"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                            />
-                        </div>
 
-                        <div className="flex items-center justify-between px-1">
-                            <label className="flex items-center gap-2 cursor-pointer">
-                                <input type="checkbox" className="rounded text-blue-600" />
-                                <span className="text-[10px] text-slate-500 font-medium">Remember me</span>
+                            <label className="text-xs font-bold text-slate-500 uppercase ml-1">
+                                Password
                             </label>
-                            <a href="#" className="text-[10px] text-blue-600 font-bold hover:underline">Forgot Password?</a>
+
+                            <div className="relative mt-2">
+
+                                <input
+                                    type={showPassword ? 'text' : 'password'}
+                                    required
+                                    placeholder="••••••••"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    className="w-full p-3 pr-12 rounded-xl border border-slate-200 bg-slate-50 text-sm outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                                />
+
+                                <button
+                                    type="button"
+                                    onClick={() => setShowPassword(v => !v)}
+                                    className="absolute right-4 top-1/2 -translate-y-1/2"
+                                >
+
+                                    {showPassword ? (
+
+                                        <svg
+                                            xmlns="http://www.w3.org/2000/svg"
+                                            width="20"
+                                            height="20"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="#64748b"
+                                            strokeWidth="2"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                        >
+                                            <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-7 0-11-8-11-8a21.77 21.77 0 0 1 5.06-5.94" />
+                                            <path d="M9.9 4.24A10.94 10.94 0 0 1 12 4c7 0 11 8 11 8a21.77 21.77 0 0 1-2.16 3.19" />
+                                            <path d="M1 1l22 22" />
+                                            <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24" />
+                                        </svg>
+
+                                    ) : (
+
+                                        <svg
+                                            xmlns="http://www.w3.org/2000/svg"
+                                            width="20"
+                                            height="20"
+                                            viewBox="0 0 24 24"
+                                            fill="none"
+                                            stroke="#64748b"
+                                            strokeWidth="2"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                        >
+                                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z" />
+                                            <circle cx="12" cy="12" r="3" />
+                                        </svg>
+
+                                    )}
+
+                                </button>
+
+                            </div>
+
                         </div>
 
-                        <button 
+                        {/* REMEMBER */}
+                        <div className="flex items-center justify-between px-1">
+
+                            <label className="flex items-center gap-2 cursor-pointer">
+
+                                <input
+                                    type="checkbox"
+                                    checked={rememberMe}
+                                    onChange={(e) => setRememberMe(e.target.checked)}
+                                    className="rounded text-blue-600"
+                                />
+
+                                <span className="text-xs text-slate-500 font-medium">
+                                    Remember me
+                                </span>
+
+                            </label>
+
+                            <button
+                                type="button"
+                                className="text-xs text-blue-600 font-bold hover:underline"
+                            >
+                                Forgot Password?
+                            </button>
+
+                        </div>
+
+                        {/* BUTTON */}
+                        <button
                             type="submit"
                             disabled={loading}
                             className="w-full py-4 bg-slate-900 hover:bg-black text-white rounded-2xl font-bold text-sm shadow-xl transition-all active:scale-95"
                         >
-                            {loading ? "Verifying..." : "Login to Dashboard →"}
+
+                            {loading ? "Signing in..." : "Login to Dashboard →"}
+
                         </button>
+
                     </form>
 
-                    <div className="mt-10 text-center">
-                        <p className="text-[10px] text-slate-400">© 2024 Nokia Financial Services. All rights reserved.</p>
-                    </div>
                 </div>
+
+                {/* FOOTER */}
+                <div className="text-center pt-8">
+
+                    <p className="text-[11px] text-slate-400">
+                        ©2026 Nokia all rights reserved
+                    </p>
+
+                </div>
+
             </div>
+
         </div>
     );
 };

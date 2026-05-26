@@ -20,11 +20,27 @@ function App() {
     if (savedUser) setUser(JSON.parse(savedUser));
   }, []);
 
+  // 🔥 Role Protection: Agar role 'user' hai, to galti se bhi admin page open nahi ho sakega
+    useEffect(() => {
+      if (user) {
+        if (user.type === 'user' && activeTab === 'admin') {
+          setActiveTab('summary');
+        }
+      }
+    }, [activeTab, user]);
+
   const handleLogout = () => {
     if (window.confirm("Are you sure you want to sign out?")) {
       localStorage.removeItem('user');
       setUser(null);
+      setActiveTab('summary'); // 🔥 Logout par tab ko reset kiya
     }
+  };
+
+  // Jab login success ho, tab user set karne ke sath-sath activeTab ko 'summary' par redirect karein
+  const handleLoginSuccess = (userData) => {
+    setUser(userData);
+    setActiveTab('summary'); 
   };
 
   if (!user) {
@@ -59,7 +75,10 @@ function App() {
               {activeTab === 'ptd' && <PtdAutomation />}
               {activeTab === 'asbl' && <AsblAutomation />}
               {activeTab === 'dashboard' && <Dashboard user={user} />}
-              {activeTab === 'admin' && <AdminPanel onBack={() => setActiveTab('summary')} />}
+              {/* 🔥 Sirf admin ya super_admin hi is component ko load kar payenge */}
+              {activeTab === 'admin' && (user?.type === 'super_admin' || user?.type === 'admin') && (
+                <AdminPanel user={user} onBack={() => setActiveTab('summary')} />
+              )}
               
               {/* Under Development Placeholder */}
               {['ftc'].includes(activeTab) && (
