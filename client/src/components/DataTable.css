@@ -13,6 +13,10 @@
     padding: 4px;
 }
 
+.nc-input {
+    text-align: left !important;
+}
+
 /* Table Body Styling */
 table.dataTable thead th {
     background-color: #f8fafc;
@@ -152,7 +156,7 @@ tr.group-level-1 td {
 
 /* Table Layout Fix */
 .pbi-table {
-    table-layout: auto !important; /* Columns ko fix rakhega */
+    table-layout: fixed; /* Columns ko fix rakhega */
     width: 100% !important;
     border-collapse: collapse !important;
     margin: 0 !important;
@@ -161,7 +165,7 @@ tr.group-level-1 td {
 /* Har column ki ek minimum width set karein taaki data wrap na ho */
 .pbi-table th, .pbi-table td {
     width: 120px; /* Default width */
-    min-width: 70px;
+    min-width: 90px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: normal !important;
@@ -169,6 +173,13 @@ tr.group-level-1 td {
     word-wrap: break-word; /* Words ko break karega agar column se bahar jayein */
     max-width: 280px; /* Kisi bhi column ko 300px se bada nahi hone dega */
     vertical-align: top !important;
+    word-break: break-word;
+    overflow-wrap: break-word;
+}
+
+.pbi-table td.text-right {
+    min-width: 90px;
+    max-width: 90px;
 }
 
 .pbi-table th:nth-child(10) {

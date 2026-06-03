@@ -84,73 +84,136 @@ const SummaryView = ({ user }) => {
         setKpiData(data);
     }, []);
 
-    const handleFullExport = () => {
+    const handleFullExport = async () => {
 
-        const exportUrl = new URL(
-            `${process.env.REACT_APP_API_URL}/api/data/export-excel`
-        );
+    const result = await Swal.fire({
+        title: 'Select Export View',
+        text: 'Choose which view you want to export',
+        icon: 'question',
+        showDenyButton: true,
+        showCancelButton: true,
 
-        // =========================
-        // USER INFO
-        // =========================
+        confirmButtonText: 'Export at Cost Level',
+        denyButtonText: 'Export at Cost Element Level',
 
-        const userType = user?.type || 'user';
+        confirmButtonColor: '#16a34a',
+        denyButtonColor: '#4169e1',
+        cancelButtonColor: '#6b7280'
+    });
 
-        const allowedCustomers =
-            Array.isArray(user?.allowedCustomers)
-                ? user.allowedCustomers.join(',')
-                : user?.allowedCustomers || '';
+    let exportCollapseView = false;
 
-        // =========================
-        // REQUIRED PARAMS
-        // =========================
+    if (result.isConfirmed) {
+        // Collapse View Export
+        exportCollapseView = true;
+    }
+    else if (result.isDenied) {
+        // Expand View Export
+        exportCollapseView = false;
+    }
+    else {
+        return;
+    }
 
-        exportUrl.searchParams.append(
-            'type',
-            userType
-        );
+    const exportUrl = new URL(
+        `${process.env.REACT_APP_API_URL}/api/data/export-excel`
+    );
 
-        exportUrl.searchParams.append(
-            'allowedCustomers',
-            allowedCustomers
-        );
+    const userType = user?.type || 'user';
 
-        exportUrl.searchParams.append(
-            'showAll',
-            showAll
-        );
+    const allowedCustomers =
+        Array.isArray(user?.allowedCustomers)
+            ? user.allowedCustomers.join(',')
+            : user?.allowedCustomers || '';
 
-        exportUrl.searchParams.append(
-            'collapseView',
-            collapseView
-        );
+    exportUrl.searchParams.append(
+        'type',
+        userType
+    );
 
-        // =========================
-        // FILTERS
-        // =========================
+    exportUrl.searchParams.append(
+        'allowedCustomers',
+        allowedCustomers
+    );
 
-        Object.keys(filters).forEach(key => {
+    exportUrl.searchParams.append(
+        'showAll',
+        showAll
+    );
 
-            if (
+    // 👇 Popup se selected view bhejenge
+    exportUrl.searchParams.append(
+        'collapseView',
+        exportCollapseView
+    );
+
+    Object.keys(filters).forEach(key => {
+
+        if (
+            filters[key]
+            &&
+            filters[key] !== 'All'
+        ) {
+            exportUrl.searchParams.append(
+                key,
                 filters[key]
-                &&
-                filters[key] !== 'All'
-            ) {
+            );
+        }
+    });
 
-                exportUrl.searchParams.append(
-                    key,
-                    filters[key]
-                );
-            }
-        });
+    window.location.href = exportUrl.toString();
+};
 
-        // =========================
-        // EXPORT
-        // =========================
+const startExport = (exportCollapseView) => {
 
-        window.location.href =
-            exportUrl.toString();
-    };
+    const exportUrl = new URL(
+        `${process.env.REACT_APP_API_URL}/api/data/export-excel`
+    );
+
+    const userType = user?.type || 'user';
+
+    const allowedCustomers =
+        Array.isArray(user?.allowedCustomers)
+            ? user.allowedCustomers.join(',')
+            : user?.allowedCustomers || '';
+
+    exportUrl.searchParams.append(
+        'type',
+        userType
+    );
+
+    exportUrl.searchParams.append(
+        'allowedCustomers',
+        allowedCustomers
+    );
+
+    exportUrl.searchParams.append(
+        'showAll',
+        showAll
+    );
+
+    exportUrl.searchParams.append(
+        'collapseView',
+        exportCollapseView
+    );
+
+    Object.keys(filters).forEach(key => {
+
+        if (
+            filters[key]
+            &&
+            filters[key] !== 'All'
+        ) {
+            exportUrl.searchParams.append(
+                key,
+                filters[key]
+            );
+        }
+    });
+
+    window.location.href =
+        exportUrl.toString();
+};
 
     const handleFullRefresh = async () => {
         if(!window.confirm("This will take 1-2 minutes. Are you sure?")) return;
@@ -167,7 +230,7 @@ const SummaryView = ({ user }) => {
         // parent rows only
         const filteredData = tableData.filter(row => {
             const value = Number(row["EAC vs ASBL"]) || 0;
-            return value < 0;
+            return value <= 0 && Number(row["ASBL"]) > 0;
         });
         setNegativeLOAData(filteredData);
         setShowNegativeLOA(true);
@@ -194,7 +257,7 @@ const SummaryView = ({ user }) => {
         { header: 'Customer', field: 'customer' },
         { header: 'LOA Name', field: 'loa_name' },
         { header: 'LOA ID', field: 'loa_id' },
-        { header: 'Cost/Revenue', field: 'cost_revenue' },
+        { header: 'Cost / Revenue', field: 'cost_revenue' },
         { header: 'Category', field: 'categories' },
         { header: 'ASBL', field: 'asbl' },
         { header: 'ASBL LOA', field: 'asbl_loa' },
@@ -220,8 +283,6 @@ const SummaryView = ({ user }) => {
                 </div>
             )}
 
-            
-
             <FilterBar filters={filters} options={options} onFilterChange={handleFilterChange} onReset={handleReset} />
             
             <div className="flex flex-col lg:flex-row gap-4 mb-6 items-stretch">
@@ -237,7 +298,7 @@ const SummaryView = ({ user }) => {
                         -ve LOA
                     </button> */}
 
-                    <button
+                    {/* <button
                         onClick={() => setCollapseView(!collapseView)}
                         className="group text-white px-4 py-2 rounded-2xl shadow-md 
                         flex items-center gap-2 transition-all duration-300 
@@ -253,7 +314,7 @@ const SummaryView = ({ user }) => {
                                 {collapseView ? 'Expanded View' : 'Collapse View'}
                             </span>
                         </div>
-                    </button>
+                    </button> */}
                     {/* Export Excel - Sabko dikhega */}
                     <button
                         onClick={handleFullExport}
@@ -354,6 +415,12 @@ const SummaryView = ({ user }) => {
             </div>
 
             <AsblModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSubmit={handleAsblSubmit} />
+                <div className="mt-6 mb-4 px-4 py-3 border border-amber-200 rounded-lg text-sm text-slate-800 bg-amber-50">
+                    <span className="font-bold text-amber-800">Note:</span>{" "}
+                    This tool is to be used to track Services Cost "– EAC vs ASBL".
+                    Please ignore revenue figures, as these figures are not validated.
+                </div>
+
         </div>
     );
 };

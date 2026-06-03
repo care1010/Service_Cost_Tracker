@@ -69,11 +69,38 @@ const FilterBar = ({ filters, options, onFilterChange, onReset }) => {
                     >
                         <option value="All">All</option>
 
-                        {options[cfg.name]?.map((opt, i) => (
-                            <option key={i} value={opt}>
-                                {opt}
-                            </option>
-                        ))}
+                        {
+    (cfg.name === 'period'
+        ? options.period
+            ?.filter(
+                (p) =>
+                    p &&
+                    p !== '0-P' &&
+                    /^\d{4}-P\d+$/.test(p)
+            )
+            ?.sort((a, b) => {
+
+                const [yearA, periodA] = a.split('-P');
+                const [yearB, periodB] = b.split('-P');
+
+                // Year Descending
+                if (Number(yearA) !== Number(yearB)) {
+                    return Number(yearB) - Number(yearA);
+                }
+
+                // Period Descending
+                return Number(periodB) - Number(periodA);
+            })
+
+        : options[cfg.name]
+    )?.map((opt, i) => (
+
+        <option key={i} value={opt}>
+            {opt}
+        </option>
+
+    ))
+}
                     </select>
 
                 </div>
@@ -95,7 +122,7 @@ const FilterBar = ({ filters, options, onFilterChange, onReset }) => {
                     </span>
 
                     <span className="text-[15px] font-black tracking-wide uppercase">
-                        Reset
+                        Reset Filters
                     </span>
                 </button>
             </div>

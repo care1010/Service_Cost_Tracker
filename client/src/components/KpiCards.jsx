@@ -1,8 +1,13 @@
 import React from 'react';
 
 const KpiCards = ({ data }) => {
+    const asblValue =
+    Number(data?.asbl_sm) === 0
+        ? 'NA'
+        : data?.asbl_sm || 'NA';
+
     const cards = [
-        { label: 'ASBL SM %', value: data?.asbl_sm || '0.00', color: 'text-blue-600', bg: 'bg-blue-50' },
+        { label: 'ASBL SM %', value: asblValue, color: 'text-blue-600', bg: 'bg-blue-50' },
         { label: 'PTD SM %', value: data?.ptd_sm || '0.00', color: 'text-emerald-600', bg: 'bg-emerald-50' },
         { label: 'EAC SM %', value: data?.eac_sm || '0.00', color: 'text-purple-600', bg: 'bg-purple-50' },
     ];
@@ -28,7 +33,10 @@ const KpiCards = ({ data }) => {
 
                     {/* Value */}
                     <span className={`text-xl font-black ${card.color} z-10`}>
-                        {card.value}%
+                        {card.value === 'NA'
+                            ? 'NA'
+                            : `${card.value}%`
+                        }
                     </span>
                 </div>
             ))}

@@ -87,6 +87,14 @@ exports.updateManualAsbl = async (req, res) => {
     const { loa_name, updates } = req.body;
     try {
         const promises = updates.map(item => {
+
+            const asblValue =
+                item.asbl === "" ||
+                item.asbl === null ||
+                item.asbl === undefined
+                    ? 0
+                    : parseFloat(item.asbl);
+
             // Update Summary Table
             db.query(
                 `
@@ -96,7 +104,7 @@ exports.updateManualAsbl = async (req, res) => {
                 AND TRIM(categories) = TRIM(?)
                 `,
                 [
-                    item.asbl,
+                    asblValue,
                     loa_name,
                     item.categories
                 ]
@@ -111,7 +119,7 @@ exports.updateManualAsbl = async (req, res) => {
                 AND TRIM(categories) = TRIM(?)
                 `,
                 [
-                    item.asbl,
+                    asblValue,
                     loa_name,
                     item.categories
                 ]

@@ -87,8 +87,9 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
             searching: true,
             processing: true,
             autoWidth: false,
-            scrollX: true,
+            scrollX: false,
             pageLength: 100,
+            responsive: true,
             ajax: {
                 url: apiUrl,
                 type: 'GET',
@@ -103,8 +104,16 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
             columns: columns.map(col => ({
                 title: col.header,
                 data: col.field,
+                width:
+                col.field === 'loa_name' ? '180px' :
+                col.field === 'categories' ? '150px' :
+                col.field === 'customer' ? '120px' :
+                col.field === 'non_committed' ? '110px' :
+                '80px',
                 defaultContent: "-",
-                className: col.header.match(/ASBL|PTD|EAC|COMMITTED/i) ? 'text-right' : 'text-left',
+                className: col.field === 'non_committed'
+                ? 'text-left':
+                col.header.match(/ASBL|PTD|EAC|COMMITTED/i) ? 'text-right' : 'text-left',
                 render: function (data, type, row) {
                     // 🔥 Metadata columns ko sirf Category rows mein blank rakhein
                     const metadataFields = ['bu', 'customer', 'loa_name', 'loa_id', 'cost_revenue'];
@@ -121,7 +130,7 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
 
                             // Hamesha input return karein taaki edit bana rahe
                             return `<input type="number" 
-                                    class="nc-input w-24 p-1 border-2 ${highlightClass} text-right font-bold rounded-lg shadow-sm" 
+                                    class="nc-input w-full p-2 border-2 ${highlightClass} text-left font-bold rounded-lg shadow-sm" 
                                     value="${current}" 
                                     data-loa="${row.loa_name}" 
                                     data-cat="${row.categories}" 
@@ -327,7 +336,10 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
     return (
         <div className="matrix-wrapper bg-white p-2 rounded-[2rem] shadow-2xl border border-gray-100">
             <div className="flex justify-between items-center mb-6 border-b pb-4">
-                <h2 className="text-xl font-black text-slate-800">{title}</h2>
+                
+                <p className="text-xl font-bold text-black mt-1 p-1 ml-2">
+                    Note:- All numerical values are in KEUR
+                </p>
                 <div className="flex gap-3">
                     {/* 🔥 Condition based buttons */}
                     {showSaveButton && (
@@ -335,7 +347,7 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
                             onClick={handleSave}
                             className="group text-white px-5 py-2.5 rounded-2xl shadow-md 
                             flex items-center gap-2 transition-all duration-300 
-                            hover:scale-105 hover:shadow-xl mr-4"
+                            hover:scale-105 hover:shadow-xl mr-4 mt-2"
                             style={{
                                 background: 'linear-gradient(135deg, #4682b4, #35648d)',
                             }}

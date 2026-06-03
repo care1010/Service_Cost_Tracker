@@ -47,7 +47,7 @@ const Dashboard = ({ user }) => {
 // fetching table data for BU and Cost
 useEffect(() => {
     fetchTableData();
-}, [tableView]);
+}, [tableView, selectedYears, selectedPeriods, selectedCustomers, selectedLoas]);
 
 const fetchTableData = async () => {
 
@@ -84,17 +84,37 @@ const fetchTableData = async () => {
             endpoint = 'customer-bu-loa-view-table';
         }
 
+        const years =
+            selectedYears.join(',');
+
+        const periods =
+            selectedPeriods.join(',');
+
+        const customers =
+            selectedCustomers.join(',');
+
+        const loa_names =
+            selectedLoas.join(',');
+
         const res = await axios.get(
             `${process.env.REACT_APP_API_URL}/api/data/${endpoint}`,
             {
                 params: {
+
+                    years,
+                    periods,
+                    customers,
+                    loa_names,
+
                     type: user?.type,
+
                     allowedCustomers:
                         allowedCustomers.join(',')
                 }
             }
         );
-        setTableData(res.data);
+
+        setTableData(res.data)
 
     } catch (err) {
 
@@ -138,6 +158,7 @@ const columnsToShow =
     // LOA VIEW
     : tableView === 'loa'
     ? [
+        'bu',
         'customer',
         'loa_id',
         'loa_name',
@@ -816,10 +837,13 @@ const displayLoaData = showAllLoa
             {user?.type !== 'user' && (
             <div className="mt-6 bg-white p-4 rounded-xl shadow">
                 <div className="flex justify-between items-center mb-4">
-                    <h2 className="text-lg font-bold">Final Dashboard Table</h2>
+                    <h2 className="text-lg font-bold">Summary Table</h2>
+
+                    <div className="flex justify-between items-center flex-wrap w-full">
+                    {/* Left Side Buttons */}
                     
                     {/* Toggle Button for BU lvele table and Cost level table view */}
-                    <div className="flex gap-3 flex-wrap">
+                    <div className="flex gap-3 flex-wrap mr-auto">
 
                         {/* BU TOGGLE */}
 
@@ -869,8 +893,13 @@ const displayLoaData = showAllLoa
                                 }
                             `}
                         >
-                            LOA View
+                            BU+Customer+LOA View
                         </button>
+
+                        </div>
+
+                        {/* Right Side Buttons */}
+                        <div className="flex gap-3 flex-wrap ml-8">
 
                         {/* CUSTOMER TOGGLE */}
 
@@ -904,6 +933,21 @@ const displayLoaData = showAllLoa
 
                         </button>
 
+                        {/* customer-bu-LOA BUTTON */}
+                        <button
+                            onClick={() => setTableView('customer-bu-loa')}
+                            className={`
+                                px-5 py-2 rounded-xl text-sm font-bold transition-all duration-200
+                                ${
+                                    tableView === 'customer-bu-loa'
+                                        ? 'bg-red-700 text-white shadow-lg scale-105'
+                                        : 'bg-red-100 text-red-700 hover:bg-red-200'
+                                }
+                            `}
+                        >
+                            Customer+BU+LOA View
+                        </button>
+
                         {/* -ve LOA BUTTON */}
                         <button
                             onClick={() => setTableView('negative-loa')}
@@ -918,28 +962,24 @@ const displayLoaData = showAllLoa
                         >
                             -ve LOA View
                         </button>
+                        </div>
 
-                        {/* customer-bu-LOA BUTTON */}
-                        <button
-                            onClick={() => setTableView('customer-bu-loa')}
-                            className={`
-                                px-5 py-2 rounded-xl text-sm font-bold transition-all duration-200
-                                ${
-                                    tableView === 'customer-bu-loa'
-                                        ? 'bg-red-700 text-white shadow-lg scale-105'
-                                        : 'bg-red-100 text-red-700 hover:bg-red-200'
-                                }
-                            `}
-                        >
-                            Customer+BU+LOA
-                        </button>
 
                     </div>
                     <button
                         onClick={exportToExcel}
-                        className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-                        >
-                        Export Excel
+                        className="
+                            bg-blue-700 text-white
+                            px-4 py-2 rounded-lg
+                            ml-8
+                            flex items-center gap-2
+                            transition-all duration-200
+                            hover:scale-105
+                            hover:bg-blue-800 font-bold
+                        "
+                    >
+                        <span>📥</span>
+                        <span>Export</span>
                     </button>
                 </div>
 
