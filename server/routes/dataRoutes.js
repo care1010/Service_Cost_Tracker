@@ -114,4 +114,14 @@ router.get(
     dataController.getNegativeLOATable
 );
 
+router.get(
+    "/user-activity-logs",
+    dataController.getUserActivityLogs
+);
+
+router.get(
+    "/pending-users",
+    dataController.getPendingUsers
+);
+
 module.exports = router;

@@ -466,6 +466,31 @@ const resetAllFilters = () => {
     setShowAllLoa(false);
 };
 
+const totalASBL = buData.reduce(
+    (sum, item) => sum + Number(item.asbl || 0),
+    0
+);
+
+const totalPTD = buData.reduce(
+    (sum, item) => sum + Number(item.ptd || 0),
+    0
+);
+
+const totalEAC = buData.reduce(
+    (sum, item) => sum + Number(item.eac || 0),
+    0
+);
+
+const ptdCompletion =
+    totalASBL > 0
+        ? ((totalPTD / totalASBL) * 100).toFixed(1)
+        : "0.0";
+
+const eacCompletion =
+    totalASBL > 0
+        ? ((totalEAC / totalASBL) * 100).toFixed(1)
+        : "0.0";
+
 const displayLoaData = showAllLoa
     ? loaData
     : loaData.slice(0, 10);
@@ -983,170 +1008,191 @@ const displayLoaData = showAllLoa
                     </button>
                 </div>
 
-    <div className="overflow-auto max-h-[500px] border border-gray-200 rounded-xl">
-        <table className="min-w-full border border-gray-200 text-sm">
+                <div className="overflow-auto max-h-[500px] border border-gray-200 rounded-xl">
+                    <table className="min-w-full border border-gray-200 text-sm">
 
-        <thead className="bg-gray-100 sticky top-0 z-10">
-            <tr>
+                    <thead className="bg-gray-100 sticky top-0 z-10">
+                        <tr>
+                            {columnsToShow.map((col) => (
+                            <th
+                                key={col}
+                                className="border px-3 py-2 text-left"
+                            >
+                                {
+                                col
+                                    .replaceAll('_', ' ')
+                                    .toUpperCase()
+                                }
+                            </th>
+                            ))}
+                        </tr>
+                    </thead>
 
-                {columnsToShow.map((col) => (
+                        <tbody>
+                            {tableData &&
+                            tableData.length > 0 ? (
+                                tableData.map((row, index) => (
+                                <tr
+                                    key={index}
+                                    className="hover:bg-gray-50"
+                                >
+                                    {columnsToShow.map((col) => (
+                                    <td
+                                        key={col}
+                                        className="border px-3 py-2"
+                                    >
+                                        {row[col]}
+                                    </td>
+                                    ))}
+                                </tr>
+                                ))
+                            ) : (
+                                <tr>
+                                <td
+                                    colSpan={columnsToShow.length}
+                                    className="text-center py-4 text-gray-500"
+                                >
+                                    No Data Found
+                                </td>
+                                </tr>
+                            )}
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+            )}
 
-                <th
-                    key={col}
-                    className="border px-3 py-2 text-left"
-                >
-                    {
-                    col
-                        .replaceAll('_', ' ')
-                        .toUpperCase()
-                    }
-                </th>
-
-                ))}
-
-            </tr>
-        </thead>
-
-            <tbody>
-
-                {tableData &&
-                tableData.length > 0 ? (
-
-                    tableData.map((row, index) => (
-
-                    <tr
-                        key={index}
-                        className="hover:bg-gray-50"
-                    >
-
-                        {columnsToShow.map((col) => (
-
-                        <td
-                            key={col}
-                            className="border px-3 py-2"
-                        >
-                            {row[col]}
-                        </td>
-
-                        ))}
-
-                    </tr>
-
-                    ))
-
-                ) : (
-
-                    <tr>
-
-                    <td
-                        colSpan={columnsToShow.length}
-                        className="text-center py-4 text-gray-500"
-                    >
-                        No Data Found
-                    </td>
-
-                    </tr>
-
-                )}
-
-                </tbody>
-        </table>
-    </div>
-
-</div>
-)}
-
-{/* BU GRAPH */}
+            {/* BU GRAPH */}
 
             <div className="bg-white rounded-[2rem] shadow-lg p-6 relative">
-
                 {loading && (
-
                     <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center rounded-[2rem]">
-
                         <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-
                     </div>
-
                 )}
-
                 <h2 className="text-2xl font-black text-slate-800 mb-6">
                     Business Unit View
                 </h2>
 
+                <div className="flex gap-4 mb-6 flex-wrap">
+
+    <div className="bg-green-50 border border-green-200 rounded-2xl px-5 py-4 min-w-[220px]">
+        <div className="text-sm text-green-700 font-semibold">
+            PTD Completion
+        </div>
+
+        <div className="text-3xl font-black text-green-600">
+            {ptdCompletion}%
+        </div>
+
+        <div className="text-xs text-slate-500 mt-1">
+            {totalPTD.toFixed(2)} / {totalASBL.toFixed(2)}
+        </div>
+    </div>
+
+    <div className="bg-purple-50 border border-purple-200 rounded-2xl px-5 py-4 min-w-[220px]">
+        <div className="text-sm text-purple-700 font-semibold">
+            EAC Completion
+        </div>
+
+        <div className="text-3xl font-black text-purple-600">
+            {eacCompletion}%
+        </div>
+
+        <div className="text-xs text-slate-500 mt-1">
+            {totalEAC.toFixed(2)} / {totalASBL.toFixed(2)}
+        </div>
+    </div>
+
+</div>
+
                 <div className="w-full h-[420px] min-w-0">
-
                     <ResponsiveContainer width="100%" height="100%" minWidth={300}>
-
                         <BarChart data={buData}>
-
                             <CartesianGrid strokeDasharray="3 3" />
-
                             <XAxis dataKey="bu" />
-
                             <YAxis />
 
-                            <Tooltip />
+                            <Tooltip
+    formatter={(value, name, props) => {
+        const row = props.payload;
 
-                            <Legend />
+        if (name === "ptd") {
+            const completion =
+                row.asbl > 0
+                    ? ((row.ptd / row.asbl) * 100).toFixed(1)
+                    : "0.0";
 
-                            <Bar dataKey="asbl" fill="#2563eb">
+            return [
+                `${Number(value).toFixed(2)} (${completion}%)`,
+                "PTD"
+            ];
+        }
 
-                                <LabelList
-                                dataKey="asbl"
-                                position="top"
-                                formatter={(value) =>
-                                    Number(value).toFixed(2)
-                                }
-                                style={{
-                                    fontSize: '11px',
-                                    fontWeight: 'bold',
-                                    fill: '#1e293b'
-                                }}
+        if (name === "eac") {
+            const completion =
+                row.asbl > 0
+                    ? ((row.eac / row.asbl) * 100).toFixed(1)
+                    : "0.0";
+
+            return [
+                `${Number(value).toFixed(2)} (${completion}%)`,
+                "EAC"
+            ];
+        }
+
+        return [
+            Number(value).toFixed(2),
+            name.toUpperCase()
+        ];
+    }}
+/>
+
+                            <Legend
+                                formatter={(value) => value.toUpperCase()}
                             />
 
+                            <Bar dataKey="asbl" fill="#2563eb">
+                                <LabelList
+                                    dataKey="asbl"
+                                    position="top"
+                                    formatter={(value) => Number(value).toFixed(2)}
+                                    style={{
+                                        fontSize: '11px',
+                                        fontWeight: 'bold',
+                                        fill: '#1e293b'
+                                    }}
+                                />
                             </Bar>
 
                             <Bar dataKey="ptd" fill="#10b981">
-
                                 <LabelList
-                                dataKey="ptd"
-                                position="top"
-                                formatter={(value) =>
-                                    Number(value).toFixed(2)
-                                }
-                                style={{
-                                    fontSize: '11px',
-                                    fontWeight: 'bold',
-                                    fill: '#1e293b'
-                                }}
-                            />
-
+                                    dataKey="ptd"
+                                    position="top"
+                                    formatter={(value) => Number(value).toFixed(2)}
+                                    style={{
+                                        fontSize: '11px',
+                                        fontWeight: 'bold',
+                                        fill: '#1e293b'
+                                    }}
+                                />
                             </Bar>
 
                             <Bar dataKey="eac" fill="#8b5cf6">
-
                                 <LabelList
-                                dataKey="eac"
-                                position="top"
-                                formatter={(value) =>
-                                    Number(value).toFixed(2)
-                                }
-                                style={{
-                                    fontSize: '11px',
-                                    fontWeight: 'bold',
-                                    fill: '#1e293b'
-                                }}
-                            />
-
+                                    dataKey="eac"
+                                    position="top"
+                                    formatter={(value) => Number(value).toFixed(2)}
+                                    style={{
+                                        fontSize: '11px',
+                                        fontWeight: 'bold',
+                                        fill: '#1e293b'
+                                    }}
+                                />
                             </Bar>
-
                         </BarChart>
-
                     </ResponsiveContainer>
-
                 </div>
-
             </div>
 
             {/* LOA GRAPH */}
@@ -1155,21 +1201,15 @@ const displayLoaData = showAllLoa
                 ref={loaGraphRef}
                 className="bg-white rounded-[2rem] shadow-lg p-6 relative"
             >
-
                 <div className="flex items-center justify-between mb-6">
-
                     <div>
-
                         <h2 className="text-2xl font-black text-slate-800">
                             LOA Name View
                         </h2>
-
                         <p className="text-slate-400 text-sm mt-1">
                             ASBL • PTD • EAC Comparison
                         </p>
-
                     </div>
-
                     <div
                 ref={loaFilterRef}
                 className="relative"
@@ -1274,39 +1314,26 @@ const displayLoaData = showAllLoa
                                     <span className="text-sm text-slate-700 font-medium">
                                         {item.loa_name}
                                     </span>
-
                                 </label>
-
                             ))}
-
                         </div>
-
                     </div>
-
                 )}
-
             </div>
 
                     {/* TOGGLE BUTTON */}
-
                     <button
                         onClick={() => {
-
                             setShowAllLoa(!showAllLoa);
-
                             setTimeout(() => {
-
                                 loaGraphRef.current?.scrollIntoView({
                                     behavior: 'smooth',
                                     block: 'start'
                                 });
-
                             }, 100);
-
                         }}
                         className="px-5 py-2 rounded-xl bg-blue-600 text-white text-sm font-bold shadow hover:bg-blue-700 transition-all"
                     >
-
                         {showAllLoa
                             ? 'Show Top 10'
                             : 'Show All LOAs'}
@@ -1316,9 +1343,7 @@ const displayLoaData = showAllLoa
                 </div>
 
                 <div className="w-full max-h-[700px] overflow-y-auto pr-2">
-
                     <ResponsiveContainer width="100%" minWidth={300} height={showAllLoa ? loaData.length * 55: 700}>
-
                         <BarChart
                             data={
                                 selectedLoas.length > 0

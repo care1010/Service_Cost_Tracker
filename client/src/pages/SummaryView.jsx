@@ -216,15 +216,48 @@ const startExport = (exportCollapseView) => {
 };
 
     const handleFullRefresh = async () => {
-        if(!window.confirm("This will take 1-2 minutes. Are you sure?")) return;
-        setLoading(true);
-        try {
-            const res = await axios.post(`${process.env.REACT_APP_API_URL}/api/data/full-refresh`);
-            alert(res.data.message);
-            window.location.reload(); 
-        } catch (err) { alert("Refresh failed"); }
-        finally { setLoading(false); }
-    };
+
+    const result = await Swal.fire({
+        title: "Sync Database?",
+        text: "This process may take 1-2 minutes.",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Yes, Sync",
+    });
+
+    if (!result.isConfirmed) return;
+
+    Swal.fire({
+        title: "Syncing Database...",
+        text: "Please wait",
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
+
+    try {
+        const res = await axios.post(
+            `${process.env.REACT_APP_API_URL}/api/data/full-refresh`
+        );
+
+        await Swal.fire({
+            icon: "success",
+            title: "Sync Completed",
+            text: res.data.message
+        });
+
+        window.location.reload();
+
+    } catch (err) {
+        Swal.fire({
+            icon: "error",
+            title: "Sync Failed",
+            text: "Something went wrong"
+        });
+    }
+};
 
     const handleNegativeLOA = () => {
         // parent rows only
@@ -243,9 +276,9 @@ const startExport = (exportCollapseView) => {
     // 4. LOGIC CALCULATIONS
     const queryParams = new URLSearchParams(filters);
     queryParams.append('showAll', showAll);
-    queryParams.append('type', user?.type); // 🔥 Role bhejien
+    queryParams.append('type', user?.type); // Role bhejien
     if (user?.allowedCustomers) {
-        queryParams.append('allowedCustomers', user.allowedCustomers.join(',')); // 🔥 Customers bhejien
+        queryParams.append('allowedCustomers', user.allowedCustomers.join(',')); // Customers bhejien
 }
 
     const dynamicApiUrl = collapseView
@@ -291,30 +324,6 @@ const startExport = (exportCollapseView) => {
                 </div>
                 
                 <div className="flex gap-3">
-                    {/* <button
-                        onClick={() => setNegativeLoaView(!negativeLoaView)}
-                        className="px-3 py-1 bg-red-500 text-white rounded"
-                    >
-                        -ve LOA
-                    </button> */}
-
-                    {/* <button
-                        onClick={() => setCollapseView(!collapseView)}
-                        className="group text-white px-4 py-2 rounded-2xl shadow-md 
-                        flex items-center gap-2 transition-all duration-300 
-                        hover:scale-105 hover:shadow-xl"
-                        style={{
-                            background: collapseView
-                                ? 'linear-gradient(135deg, #16a34a, #15803d)'
-                                : 'linear-gradient(135deg, #4169e1, #3157c9)',
-                        }}
-                    >
-                        <div className="flex flex-col leading-tight text-left">
-                            <span className="text-sm font-black">
-                                {collapseView ? 'Expanded View' : 'Collapse View'}
-                            </span>
-                        </div>
-                    </button> */}
                     {/* Export Excel - Sabko dikhega */}
                     <button
                         onClick={handleFullExport}
@@ -400,7 +409,7 @@ const startExport = (exportCollapseView) => {
 
                                 <div className="flex flex-col leading-tight text-left">
                                     <span className="text-sm font-black">
-                                        Full Sync
+                                        Sync Database
                                     </span>
                                 </div>
                             </button>
@@ -411,7 +420,7 @@ const startExport = (exportCollapseView) => {
             </div>
 
             <div className="rounded-[1.5rem] overflow-hidden shadow-xl border border-white bg-white">
-                <DataTable title="" columns={tableColumns} apiUrl={dynamicApiUrl} filters={filters} onKpiUpdate={handleKpiUpdate} collapseView={collapseView} />
+                <DataTable title="" columns={tableColumns} apiUrl={dynamicApiUrl} filters={filters} onKpiUpdate={handleKpiUpdate} collapseView={collapseView} user={user} />
             </div>
 
             <AsblModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSubmit={handleAsblSubmit} />

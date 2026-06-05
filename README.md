@@ -90,3 +90,12 @@ Separation of Concerns: Design frontend mein hai, aur database ka saara kaam bac
 
 ##### IMPORTANT POINT #####
 NOTE:=>  ""React mein HTML ko JSX kehte hain aur wo JavaScript ke sath hi rehti hai kyunki React "Components" (chhote-chhote parts) par kaam karta hai.""
+
+
+##### IMPORTANT POINT #####
+##### IMPORTANT POINT #####
+##### IMPORTANT POINT #####
+##### IMPORTANT POINT #####
+non_committed  = column of final_dashboard_table => original column where old values are exist
+
+non_committed_editable = column of final_dashboard_table => input edit column where new saved values are exist

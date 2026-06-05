@@ -144,15 +144,13 @@ exports.getWbsSummary = async (req, res) => {
         // RLS Logic
         applyRLS(type, allowedCustomers, conditions, params);
 
-        // 🔥 FIX: ALL CATEGORIES LOGIC
+        //  FIX: ALL CATEGORIES LOGIC
         // Agar showAll 'true' hai, toh hum zero rows wala filter NAHI lagayenge
-        // Showing All = sirf non-zero rows
-        // 🔥 SHOWING ALL = sirf non-zero rows
         if (showAll === 'false') {
             conditions.push("(ABS(asbl) > 0.01 OR ABS(ptd) > 0.01 OR ABS(total_oc_fixed) > 0.01 OR ABS(non_committed_editable) > 0.01)");
         }
 
-        // 🔥 Dropdown Filters (Strict Check)
+        //  Dropdown Filters (Strict Check)
         const allowedFilters = ['bu', 'wbs', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period'];
         allowedFilters.forEach(key => {
             let value = req.query[key];
@@ -177,8 +175,8 @@ exports.getWbsSummary = async (req, res) => {
                 SUM(CASE WHEN cost_revenue = 'Cost' THEN asbl ELSE 0 END) as asbl_cost,
                 SUM(CASE WHEN cost_revenue = 'Revenue' THEN ptd ELSE 0 END) as ptd_rev,
                 SUM(CASE WHEN cost_revenue = 'Cost' THEN ptd ELSE 0 END) as ptd_cost,
-                SUM(CASE WHEN cost_revenue = 'Revenue' THEN (ptd + total_oc_fixed + non_committed) ELSE 0 END) as eac_rev,
-                SUM(CASE WHEN cost_revenue = 'Cost' THEN (ptd + total_oc_fixed + non_committed) ELSE 0 END) as eac_cost
+                SUM(CASE WHEN cost_revenue = 'Revenue' THEN (ptd + total_oc_fixed + non_committed_editable) ELSE 0 END) as eac_rev,
+                SUM(CASE WHEN cost_revenue = 'Cost' THEN (ptd + total_oc_fixed + non_committed_editable) ELSE 0 END) as eac_cost
             FROM final_dashboard_table
             ${whereClause}
         `;
@@ -573,16 +571,199 @@ exports.getFilterOptions = async (req, res) => {
 
 
 // 2. Naya Update Function (Dono tables ke liye)
+// exports.updateNonCommitted = async (req, res) => {
+//     const { updates, createdBy } = req.body;
+//     try {
+//         for (let item of updates) {
+//             // Dono tables mein 'non_committed_editable' ko update karein
+//             await db.query(`UPDATE summary SET non_committed_editable = ?, updated_by = ? WHERE loa_name = ? AND categories = ?`, [item.value, createdBy, item.loa_name, item.categories ]);
+//             await db.query(`UPDATE final_dashboard_table SET non_committed_editable = ?, updated_by = ? WHERE loa_name = ? AND categories = ?`, [item.value, createdBy, item.loa_name, item.categories ]);
+//         }
+//         res.status(200).json({ message: "Changes saved to Editable column!" });
+//     } catch (error) { 
+//         console.error("updateNonCommitted Error:", error);
+//         res.status(500).json({ error: error.message }); }
+// };
+
 exports.updateNonCommitted = async (req, res) => {
-    const { updates } = req.body;
+    const { updates, createdBy } = req.body;
+
     try {
+
+        const monthYear = new Date()
+            .toLocaleDateString('en-US', {
+                month: 'short',
+                year: 'numeric'
+            })
+            .replace(' ', '-');
+
         for (let item of updates) {
-            // Dono tables mein 'non_committed_editable' ko update karein
-            await db.query("UPDATE summary SET non_committed_editable = ? WHERE loa_name = ? AND categories = ?", [item.value, item.loa_name, item.categories]);
-            await db.query("UPDATE final_dashboard_table SET non_committed_editable = ? WHERE loa_name = ? AND categories = ?", [item.value, item.loa_name, item.categories]);
+
+            // Purani value fetch karo
+            const [existing] = await db.query(
+                `
+                SELECT
+                    non_committed_editable,
+                    customer
+                FROM summary
+                WHERE loa_name = ?
+                  AND categories = ?
+                `,
+                [
+                    item.loa_name,
+                    item.categories
+                ]
+            );
+
+            const oldValue =
+                existing?.[0]?.non_committed_editable || 0;
+
+            const customer =
+                existing?.[0]?.customer || '';
+
+            // Summary update
+            await db.query(
+                `
+                UPDATE summary
+                SET non_committed_editable = ?,
+                    updated_by = ?
+                WHERE loa_name = ?
+                  AND categories = ?
+                `,
+                [
+                    item.value,
+                    createdBy,
+                    item.loa_name,
+                    item.categories
+                ]
+            );
+
+            // Final dashboard update
+            await db.query(
+                `
+                UPDATE final_dashboard_table
+                SET non_committed_editable = ?,
+                    updated_by = ?
+                WHERE loa_name = ?
+                  AND categories = ?
+                `,
+                [
+                    item.value,
+                    createdBy,
+                    item.loa_name,
+                    item.categories
+                ]
+            );
+
+            // Activity Log Insert
+            await db.query(
+                `
+                INSERT INTO user_activity_logs
+                (
+                    user_email,
+                    customer,
+                    loa_name,
+                    categories,
+                    old_value,
+                    new_value,
+                    month_year
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                `,
+                [
+                    createdBy,
+                    customer,
+                    item.loa_name,
+                    item.categories,
+                    oldValue,
+                    item.value,
+                    monthYear
+                ]
+            );
         }
-        res.status(200).json({ message: "Changes saved to Editable column!" });
-    } catch (error) { res.status(500).json({ error: error.message }); }
+
+        res.status(200).json({
+            message: "Changes saved successfully!"
+        });
+
+    } catch (error) {
+
+        console.error(
+            "updateNonCommitted Error:",
+            error
+        );
+
+        res.status(500).json({
+            error: error.message
+        });
+    }
+};
+
+exports.getUserActivityLogs = async (req, res) => {
+    try {
+
+        const [rows] = await db.query(`
+            SELECT
+                id,
+                user_email,
+                customer,
+                loa_name,
+                categories,
+                old_value,
+                new_value,
+                month_year,
+                created_at
+            FROM user_activity_logs
+            ORDER BY created_at DESC
+        `);
+
+        res.json(rows);
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            error: error.message
+        });
+    }
+};
+
+exports.getPendingUsers = async (req, res) => {
+    try {
+
+        const monthYear = new Date()
+            .toLocaleDateString('en-US', {
+                month: 'short',
+                year: 'numeric'
+            })
+            .replace(' ', '-');
+
+        const [rows] = await db.query(`
+            SELECT
+                u.email,
+                u.type
+            FROM users u
+
+            LEFT JOIN (
+                SELECT DISTINCT user_email
+                FROM user_activity_logs
+                WHERE month_year = ?
+            ) l
+
+            ON u.email = l.user_email
+
+            WHERE l.user_email IS NULL
+
+            ORDER BY u.email
+        `, [monthYear]);
+
+        res.json(rows);
+
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({
+            error: error.message
+        });
+    }
 };
 
 // 3. Excel Export function for Summmary View
@@ -630,7 +811,7 @@ exports.exportToExcel = async (req, res) => {
         let exportQuery = '';
 
 
-// 🔥 COLLAPSE VIEW EXPORT
+// COLLAPSE VIEW EXPORT
 if (collapseView === 'true') {
 
     exportQuery = `
@@ -691,18 +872,19 @@ if (collapseView === 'true') {
                 customer,
                 loa_name,
                 loa_id,
-                'Cost' as cost_revenue,
+                cost_revenue,
                 categories,
 
                 MAX(asbl) as asbl,
+                MAX(asbl_loa) as asbl_loa,
                 SUM(ptd) as ptd,
                 MAX(total_oc_fixed) as open_commitment,
-                MAX(non_committed) as non_committed,
+                MAX(non_committed_editable) as non_committed,
 
                 (
                     SUM(ptd)
                     + MAX(total_oc_fixed)
-                    + MAX(non_committed)
+                    + MAX(non_committed_editable)
                 ) as eac,
 
                 (
@@ -711,7 +893,7 @@ if (collapseView === 'true') {
                     (
                         SUM(ptd)
                         + MAX(total_oc_fixed)
-                        + MAX(non_committed)
+                        + MAX(non_committed_editable)
                     )
                 ) as eac_vs_asbl
 
@@ -724,13 +906,14 @@ if (collapseView === 'true') {
                 customer,
                 loa_name,
                 loa_id,
+                cost_revenue,
                 categories
 
             HAVING
                 ABS(MAX(asbl)) > 0.01
                 OR ABS(SUM(ptd)) > 0.01
                 OR ABS(MAX(total_oc_fixed)) > 0.01
-                OR ABS(MAX(non_committed)) > 0.01
+                OR ABS(MAX(non_committed_editable)) > 0.01
 
             ORDER BY
                 loa_name ASC,
@@ -754,6 +937,7 @@ if (collapseView === 'true') {
             { header: 'LOA ID', key: 'loa_id', width: 15 },
             { header: 'Cost/Revenue', key: 'cost_revenue', width: 15 },
             { header: 'ASBL', key: 'asbl', width: 15 },
+            { header: 'ASBL LOA', key: 'asbl_loa', width: 15 },
             { header: 'PTD', key: 'ptd', width: 15 },
             { header: 'Open Commitment', key: 'open_commitment', width: 15 },
             { header: 'Non Committed', key: 'non_committed', width: 15 },
@@ -771,6 +955,7 @@ if (collapseView === 'true') {
             { header: 'Cost/Revenue', key: 'cost_revenue', width: 15 },
             { header: 'Category', key: 'categories', width: 25 },
             { header: 'ASBL', key: 'asbl', width: 15 },
+            { header: 'ASBL LOA', key: 'asbl_loa', width: 15 },
             { header: 'PTD', key: 'ptd', width: 15 },
             { header: 'Open Commitment', key: 'open_commitment', width: 15 },
             { header: 'Non Committed', key: 'non_committed', width: 15 },

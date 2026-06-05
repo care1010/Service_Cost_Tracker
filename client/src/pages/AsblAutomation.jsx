@@ -131,19 +131,74 @@ const AsblAutomation = () => {
     };
 
     const handleBulkUpdate = async () => {
-        if (!pasteData.trim()) return alert("Paste data first!");
-        setLoading(true);
-        try {
-            const res = await axios.post(`${process.env.REACT_APP_API_URL}/api/data/process-asbl-update`, { rawText: pasteData });
-            alert(res.data.message);
-            setPasteData('');
-            if (selectedLoa) {
-                const refresh = await axios.get(`${process.env.REACT_APP_API_URL}/api/data/project-details?loa_id=${selectedLoa}`);
-                setProjectData(refresh.data);
-            }
-        } catch (err) { alert(err.response?.data?.error || "Update failed"); }
-        finally { setLoading(false); }
-    };
+
+    if (!pasteData.trim()) {
+        return Swal.fire({
+            icon: "warning",
+            title: "No Data Found",
+            text: "Please paste data first."
+        });
+    }
+
+    const result = await Swal.fire({
+        title: "Submit Data?",
+        text: "The pasted data will be processed and updated.",
+        icon: "question",
+        showCancelButton: true,
+        confirmButtonText: "Yes, Submit",
+        cancelButtonText: "Cancel",
+        confirmButtonColor: "#10b981"
+    });
+
+    if (!result.isConfirmed) return;
+
+    setLoading(true);
+
+    Swal.fire({
+        title: "Processing...",
+        text: "Please wait while data is being updated.",
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
+
+    try {
+
+        const res = await axios.post(
+            `${process.env.REACT_APP_API_URL}/api/data/process-asbl-update`,
+            { rawText: pasteData }
+        );
+
+        await Swal.fire({
+            icon: "success",
+            title: "Update Successful",
+            text: res.data.message
+        });
+
+        setPasteData('');
+
+        if (selectedLoa) {
+            const refresh = await axios.get(
+                `${process.env.REACT_APP_API_URL}/api/data/project-details?loa_id=${selectedLoa}`
+            );
+
+            setProjectData(refresh.data);
+        }
+
+    } catch (err) {
+
+        Swal.fire({
+            icon: "error",
+            title: "Update Failed",
+            text: err.response?.data?.error || "Update failed"
+        });
+
+    } finally {
+        setLoading(false);
+    }
+};
 
     // 🔥 Filter logic for Toggle
     const displayData = showAll ? projectData : projectData.filter(row => Math.abs(row.asbl) > 0.01);
@@ -240,7 +295,7 @@ const AsblAutomation = () => {
                         </span>
 
                         <span className="text-sm font-black">
-                            Process Paste
+                            Submit
                         </span>
                     </button>
                 </div>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import './Sidebar.css';
 import logo from '../assets/OIP.jpg';
+import MyAccess from '../pages/MyAccess';
 
 // 🔥 FIX: Yahan brackets ke andar 'user' aur 'onLogout' add kiya
 const Sidebar = ({ activeTab, setActiveTab, user, onLogout }) => {
@@ -14,7 +15,8 @@ const Sidebar = ({ activeTab, setActiveTab, user, onLogout }) => {
     ...(user?.type !== 'user' ? [
         { id: 'add-project', label: 'Add Project' },
         { id: 'ptd', label: 'PTD' },
-        { id: 'asbl', label: 'ASBL' }
+        { id: 'asbl', label: 'ASBL' },
+        { id: 'logs', label: 'Logs' }
     ] : [])
 ];
 
@@ -52,10 +54,10 @@ const Sidebar = ({ activeTab, setActiveTab, user, onLogout }) => {
           <div className="profile-card">
             
             <div className="profile-header">
-              {/* 🔥 Dynamic Avatar (Email ka pehla letter) */}
+              {/* Dynamic Avatar (Email ka pehla letter) */}
               <div className="avatar">{user?.email?.charAt(0).toUpperCase() || 'U'}</div>
               <div>
-                {/* 🔥 Dynamic Email aur Role */}
+                {/* Dynamic Email aur Role */}
                 <div className="email">{user?.email || 'User'}</div>
                 <div className="role">{user?.type?.toUpperCase() || 'GUEST'}</div>
               </div>
@@ -63,18 +65,30 @@ const Sidebar = ({ activeTab, setActiveTab, user, onLogout }) => {
 
             <div className="divider"></div>
 
-            {/* 🔥 ROLE CHECK: Sirf Admin aur Super Admin ko dikhega */}
-        {(user?.type === 'admin' || user?.type === 'super_admin') && (
-            <div 
-                className="menu-item" 
-                onClick={() => { setActiveTab('admin'); setOpenMenu(false); }}
-                style={{ cursor: 'pointer' }}
-            >
-                🛠 Admin Panel
-            </div>
-        )}
+            {/* ROLE CHECK: Sirf Admin aur Super Admin ko dikhega */}
+            {(user?.type === 'admin' || user?.type === 'super_admin') && (
+                <div 
+                    className="menu-item" 
+                    onClick={() => { setActiveTab('admin'); setOpenMenu(false); }}
+                    style={{ cursor: 'pointer' }}
+                >
+                    🛠 Admin Panel
+                </div>
+            )}
 
-            {/* 🔥 SIGN OUT BUTTON (onLogout function ab defined hai) */}
+          {/* My Access Tab everybody can see */}
+          <div
+              className="menu-item"
+              onClick={() => {
+                  setActiveTab('my-access');
+                  setOpenMenu(false);
+              }}
+              style={{ cursor: 'pointer' }}
+          >
+              🔐 My Access
+          </div>
+
+            {/*  SIGN OUT BUTTON (onLogout function ab defined hai) */}
             <div className="menu-item" onClick={onLogout} style={{cursor: 'pointer'}}>
               🚪 Sign Out
             </div>

@@ -9,6 +9,8 @@ import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
 import AdminPanel from './pages/AdminPanel';
 import DrillDownPage from './pages/DrillDownPage';
+import MyAccess from './pages/MyAccess';
+import Logs from './pages/Logs';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -79,6 +81,8 @@ function App() {
               {activeTab === 'admin' && (user?.type === 'super_admin' || user?.type === 'admin') && (
                 <AdminPanel user={user} onBack={() => setActiveTab('summary')} />
               )}
+              {activeTab === 'my-access' && (<MyAccess user={user} /> )}
+              {activeTab === 'logs' && (<Logs /> )}
               
               {/* Under Development Placeholder */}
               {['ftc'].includes(activeTab) && (

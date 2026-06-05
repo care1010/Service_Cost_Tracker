@@ -10,7 +10,7 @@ import Swal from 'sweetalert2';
 import { HiOutlineTrash } from "react-icons/hi";
 import { useNavigate } from 'react-router-dom';
 
-const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButton = true, showClearButton = false, collapseView = false }) => {
+const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButton = true, showClearButton = false, collapseView = false, user }) => {
     const tableRef = useRef(null);
     const dataTableInstance = useRef(null);
     
@@ -20,13 +20,54 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
     const [canSave, setCanSave] = useState(false);
 
     const handleClear = async () => {
-        if (!window.confirm("This will reset ALL your unsaved edits. Continue?")) return;
-        try {
-            await axios.post(`${process.env.REACT_APP_API_URL}/api/data/clear-draft`);
-            alert("Draft cleared successfully!");
-            if (dataTableInstance.current) dataTableInstance.current.ajax.reload();
-        } catch (err) { alert("Clear failed"); }
-    };
+
+    const result = await Swal.fire({
+        title: "Clear All Draft Changes?",
+        text: "This will reset ALL your unsaved edits.",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Yes, Clear All the changes",
+        cancelButtonText: "Cancel",
+        confirmButtonColor: "#dc2626",
+        cancelButtonColor: "#6b7280",
+        reverseButtons: true
+    });
+
+    if (!result.isConfirmed) return;
+
+    Swal.fire({
+        title: "Clearing Draft...",
+        text: "Please wait",
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
+
+    try {
+        await axios.post(
+            `${process.env.REACT_APP_API_URL}/api/data/clear-draft`
+        );
+
+        await Swal.fire({
+            icon: "success",
+            title: "Draft Cleared",
+            text: "All unsaved changes have been removed."
+        });
+
+        if (dataTableInstance.current) {
+            dataTableInstance.current.ajax.reload();
+        }
+
+    } catch (err) {
+        Swal.fire({
+            icon: "error",
+            title: "Clear Failed",
+            text: "Unable to clear draft changes."
+        });
+    }
+};
 
     const fmt = (val) => {
         const num = parseFloat(val) || 0;
@@ -38,25 +79,84 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
     };
 
     const handleSave = async () => {
-        const updates = [];
-        $('.nc-input.is-changed').each(function () {
-            updates.push({
-                loa_name: $(this).data('loa'),
-                categories: $(this).data('cat'),
-                value: $(this).val()
-            });
-        });
-        if (updates.length === 0) return alert("No changes to save.");
-        try {
-            await axios.post(`${process.env.REACT_APP_API_URL}/api/data/update-non-committed`, { updates });
-            alert("✅ Changes saved to Draft!");
-            // 🔥 2. Save hone ke baad button wapas disable karein
-            setCanSave(false);
+    const updates = [];
 
-            $('.nc-input').removeClass('is-changed').css('border-color', '#e2e8f0');
-            if (dataTableInstance.current) dataTableInstance.current.ajax.reload(null, false);
-        } catch (err) { alert("❌ Save failed"); }
-    };
+    $('.nc-input.is-changed').each(function () {
+        updates.push({
+            loa_name: $(this).data('loa'),
+            categories: $(this).data('cat'),
+            value: $(this).val()
+        });
+    });
+
+    if (updates.length === 0) {
+        return Swal.fire({
+            icon: "info",
+            title: "No Changes",
+            text: "There are no changes to save."
+        });
+    }
+
+    const result = await Swal.fire({
+        title: "Save Changes?",
+        text: `You have ${updates.length} modified records.`,
+        icon: "question",
+        showCancelButton: true,
+        confirmButtonText: "Save",
+        cancelButtonText: "Cancel",
+        confirmButtonColor: "#4682b4"
+    });
+
+    if (!result.isConfirmed) return;
+
+    Swal.fire({
+        title: "Saving...",
+        text: "Please wait while changes are being saved.",
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
+
+    try {
+        await axios.post(
+            `${process.env.REACT_APP_API_URL}/api/data/update-non-committed`,
+            {
+                updates,
+                createdBy:
+                    user?.name ||
+                    user?.username ||
+                    user?.email ||
+                    'Unknown User'
+            }
+        );
+
+        await Swal.fire({
+            icon: "success",
+            title: "Saved Successfully",
+            text: "Changes have been saved to Draft."
+        });
+
+        setCanSave(false);
+
+        $('.nc-input')
+            .removeClass('is-changed')
+            .css('border-color', '#e2e8f0');
+
+        if (dataTableInstance.current) {
+            dataTableInstance.current.ajax.reload(null, false);
+        }
+
+    } catch (err) {
+        console.log(err.response?.data);
+        Swal.fire({
+            icon: "error",
+            title: "Save Failed",
+            text: "Unable to save changes. Please try again."
+        });
+    }
+};
 
     useEffect(() => {
         if (!tableRef.current) return;
@@ -71,6 +171,7 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
             const offset = showClearButton ? 1 : 0;
 
             const asbl = parseFloat($row.find('td:nth-child(7)').text().replace(/,/g, '')) || 0;
+            const asbl_loa = parseFloat($row.find('td:nth-child(8)').text().replace(/,/g, '')) || 0;
             const ptd = parseFloat($row.find('td:nth-child(9)').text().replace(/,/g, '')) || 0;
             const oc = parseFloat($row.find('td:nth-child(10)').text().replace(/,/g, '')) || 0;
             const nc = parseFloat($input.val()) || 0;
@@ -216,7 +317,7 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
                                 <td></td>
 
                                 <td class="text-right font-bold text-slate-700">${fmt(asbl)}</td>
-                                <td class="text-right font-bold"></td>
+                                <td class="text-right font-bold text-slate-700">${fmt(asbl_loa)}</td>
                                 <td class="text-right font-bold text-slate-700">${fmt(ptd)}</td>
                                 <td class="text-right font-bold text-slate-700">${fmt(oc)}</td>
 

@@ -2,17 +2,15 @@ import React from 'react';
 import axios from 'axios';
 import DataTable from '../components/DataTable';
 import $ from 'jquery';
-import { 
-    HiOutlineDownload,
-    HiOutlineArrowLeft,
-    HiOutlineLightningBolt
-} from "react-icons/hi";
+import Swal from "sweetalert2";
+import { HiOutlineDownload, HiOutlineArrowLeft, HiOutlineLightningBolt} from "react-icons/hi";
 
 const ReviewChanges = ({ onBack }) => {
     const handleFinalize = async () => {
-    // 1. Pehle check karein ki kya Review page par koi unsaved input hai?
+
     const pendingUpdates = [];
-    $('.nc-input.is-changed').each(function() {
+
+    $('.nc-input.is-changed').each(function () {
         pendingUpdates.push({
             loa_name: $(this).data('loa'),
             categories: $(this).data('cat'),
@@ -20,19 +18,57 @@ const ReviewChanges = ({ onBack }) => {
         });
     });
 
-    if (pendingUpdates.length > 0) {
-        // Agar user ne review page par kuch badla hai, toh pehle use Draft mein save karein
-        await axios.post(`${process.env.REACT_APP_API_URL}/api/data/update-non-committed`, { updates: pendingUpdates });
-    }
+    const result = await Swal.fire({
+        title: "Submit Data?",
+        text: "This will update the main Summary View.",
+        icon: "warning",
+        showCancelButton: true,
+        confirmButtonText: "Yes, Submit",
+        cancelButtonText: "Cancel",
+        confirmButtonColor: "#4169e1"
+    });
 
-    if (!window.confirm("Finalize all changes? This will update the main Summary View.")) return;
+    if (!result.isConfirmed) return;
+
+    Swal.fire({
+        title: "Submitting Data...",
+        text: "Please wait",
+        allowOutsideClick: false,
+        allowEscapeKey: false,
+        didOpen: () => {
+            Swal.showLoading();
+        }
+    });
 
     try {
-        const res = await axios.post(`${process.env.REACT_APP_API_URL}/api/data/finalize-changes`);
-        alert(res.data.message);
-        onBack(); // Wapas Summary View par jayein
+
+        if (pendingUpdates.length > 0) {
+            await axios.post(
+                `${process.env.REACT_APP_API_URL}/api/data/update-non-committed`,
+                { updates: pendingUpdates }
+            );
+        }
+
+        const res = await axios.post(
+            `${process.env.REACT_APP_API_URL}/api/data/finalize-changes`
+        );
+
+        await Swal.fire({
+            icon: "success",
+            title: "Success",
+            text: res.data.message
+        });
+
+        onBack();
+
     } catch (err) {
-        alert("Finalize failed");
+
+        Swal.fire({
+            icon: "error",
+            title: "Submission Failed",
+            text: "Unable to finalize changes."
+        });
+
     }
 };
 
