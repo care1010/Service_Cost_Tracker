@@ -132,13 +132,7 @@ exports.getWbsSummary = async (req, res) => {
 
         const searchPattern = `%${searchValue}%`;
 
-            params.push(
-                searchPattern,
-                searchPattern,
-                searchPattern,
-                searchPattern,
-                searchPattern
-            );
+            params.push(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern);
         }
 
         // RLS Logic
@@ -175,18 +169,64 @@ exports.getWbsSummary = async (req, res) => {
                 SUM(CASE WHEN cost_revenue = 'Cost' THEN asbl ELSE 0 END) as asbl_cost,
                 SUM(CASE WHEN cost_revenue = 'Revenue' THEN ptd ELSE 0 END) as ptd_rev,
                 SUM(CASE WHEN cost_revenue = 'Cost' THEN ptd ELSE 0 END) as ptd_cost,
-                SUM(CASE WHEN cost_revenue = 'Revenue' THEN (ptd + total_oc_fixed + non_committed_editable) ELSE 0 END) as eac_rev,
-                SUM(CASE WHEN cost_revenue = 'Cost' THEN (ptd + total_oc_fixed + non_committed_editable) ELSE 0 END) as eac_cost
+                (
+    SUM(
+        CASE
+            WHEN cost_revenue = 'Revenue'
+            THEN ptd
+            ELSE 0
+        END
+    )
+    +
+    MAX(
+        CASE
+            WHEN cost_revenue = 'Revenue'
+            THEN total_oc_fixed
+        END
+    )
+    +
+    MAX(
+        CASE
+            WHEN cost_revenue = 'Revenue'
+            THEN non_committed_editable
+        END
+    )
+) AS eac_rev,
+
+(
+    SUM(
+        CASE
+            WHEN cost_revenue = 'Cost'
+            THEN ptd
+            ELSE 0
+        END
+    )
+    +
+    MAX(
+        CASE
+            WHEN cost_revenue = 'Cost'
+            THEN total_oc_fixed
+        END
+    )
+    +
+    MAX(
+        CASE
+            WHEN cost_revenue = 'Cost'
+            THEN non_committed_editable
+        END
+    )
+) AS eac_cost
             FROM final_dashboard_table
             ${whereClause}
         `;
         const [kpiRes] = await db.query(kpiQuery, params);
         const k = kpiRes[0];
-        console.log(k);
+        // console.log(k);
 
         const calcSm = (rev, cost) => {
 
-            const revenue = Number(rev) || 0;
+            // Revenue ko hamesha positive consider karo
+            const revenue = Math.abs(Number(rev) || 0);
             const costVal = Number(cost) || 0;
             if (revenue === 0) {
                 return "0.00";
@@ -604,7 +644,9 @@ exports.updateNonCommitted = async (req, res) => {
                 `
                 SELECT
                     non_committed_editable,
-                    customer
+                    customer,
+                    bu,
+                    loa_id
                 FROM summary
                 WHERE loa_name = ?
                   AND categories = ?
@@ -620,6 +662,12 @@ exports.updateNonCommitted = async (req, res) => {
 
             const customer =
                 existing?.[0]?.customer || '';
+
+            const bu =
+            existing?.[0]?.bu || '';
+
+            const loaId =
+            existing?.[0]?.loa_id || '';
 
             // Summary update
             await db.query(
@@ -661,19 +709,23 @@ exports.updateNonCommitted = async (req, res) => {
                 INSERT INTO user_activity_logs
                 (
                     user_email,
+                    bu,
                     customer,
                     loa_name,
+                    loa_id,
                     categories,
                     old_value,
                     new_value,
                     month_year
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `,
                 [
                     createdBy,
+                    bu,
                     customer,
                     item.loa_name,
+                    loaId,
                     item.categories,
                     oldValue,
                     item.value,
@@ -706,8 +758,10 @@ exports.getUserActivityLogs = async (req, res) => {
             SELECT
                 id,
                 user_email,
+                bu,
                 customer,
                 loa_name,
+                loa_id,
                 categories,
                 old_value,
                 new_value,
@@ -965,10 +1019,19 @@ if (collapseView === 'true') {
     }
 
         const [rows] = await db.query(exportQuery, params);
-        console.log("Export Rows Count:", rows.length);
-        rows.forEach(row => {
-            worksheet.addRow(row).commit();
-        });
+
+            rows.forEach(row => {
+
+                row.asbl = Number(row.asbl || 0);
+                row.asbl_loa = Number(row.asbl_loa || 0);
+                row.ptd = Number(row.ptd || 0);
+                row.open_commitment = Number(row.open_commitment || 0);
+                row.non_committed = Number(row.non_committed || 0);
+                row.eac = Number(row.eac || 0);
+                row.eac_vs_asbl = Number(row.eac_vs_asbl || 0);
+
+                worksheet.addRow(row).commit();
+            });
         
         await workbook.commit();
     } catch (error) {
@@ -1519,6 +1582,101 @@ exports.getLoaAnalytics = async (req, res) => {
             error: error.message
         });
     }
+};
+
+// 4. Non Committed Trend for LOA (Review Changes page ke liye)
+exports.getNonCommittedTrend = async (req, res) => {
+
+    try {
+
+        const { loa_name = '' } = req.query;
+
+        const currentMonthYear = new Date()
+            .toLocaleString('en-US', {
+                month: 'short',
+                year: 'numeric'
+            })
+            .replace(' ', '-');
+
+        const [rows] = await db.query(
+            `
+            SELECT
+                latest.month_year,
+                SUM(latest.new_value) AS total_non_committed
+            FROM
+            (
+                SELECT l1.*
+                FROM user_activity_logs l1
+                INNER JOIN
+                (
+                    SELECT
+                        loa_name,
+                        categories,
+                        month_year,
+                        MAX(id) AS latest_id
+                    FROM user_activity_logs
+                    GROUP BY
+                        loa_name,
+                        categories,
+                        month_year
+                ) l2
+                ON l1.id = l2.latest_id
+            ) latest
+
+            WHERE
+                (? = '' OR latest.loa_name = ?)
+                AND latest.month_year <> ?
+
+            GROUP BY latest.month_year
+
+            ORDER BY STR_TO_DATE(
+                CONCAT('01-', latest.month_year),
+                '%d-%b-%Y'
+            ) DESC
+
+            LIMIT 6
+            `,
+            [
+                loa_name,
+                loa_name,
+                currentMonthYear
+            ]
+        );
+
+        res.json(rows);
+
+    } catch (error) {
+
+        console.error(error);
+
+        res.status(500).json({
+            error: error.message
+        });
+
+    }
+};
+
+// 5. Distinct LOA Names for Trend Dropdown (Review Changes page ke liye)
+exports.getTrendLoas = async (req, res) => {
+
+    try {
+
+        const [rows] = await db.query(`
+            SELECT DISTINCT loa_name
+            FROM user_activity_logs
+            ORDER BY loa_name
+        `);
+
+        res.json(rows);
+
+    } catch (error) {
+
+        res.status(500).json({
+            error: error.message
+        });
+
+    }
+
 };
 
 // 3. Final Dashboard ke liye BU-wise aggregated data (Dashboard page ke liye)

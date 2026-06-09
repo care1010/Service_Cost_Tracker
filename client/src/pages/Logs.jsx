@@ -67,8 +67,10 @@ const Logs = () => {
 
         const exportData = logs.map(row => ({
             User: row.user_email,
+            BU: row.bu,
             Customer: row.customer,
             LOA: row.loa_name,
+            LOA_ID: row.loa_id,
             Category: row.categories,
             Old_Value: row.old_value,
             New_Value: row.new_value,
@@ -318,7 +320,7 @@ const Logs = () => {
                                 <tr className="bg-slate-100">
 
                                     <th className="p-3 text-left">
-                                        User
+                                        BU
                                     </th>
 
                                     <th className="p-3 text-left">
@@ -330,7 +332,11 @@ const Logs = () => {
                                     </th>
 
                                     <th className="p-3 text-left">
-                                        Category
+                                        LOA ID
+                                    </th>
+
+                                    <th className="p-3 text-left">
+                                        Categories
                                     </th>
 
                                     <th className="p-3 text-left">
@@ -343,6 +349,10 @@ const Logs = () => {
 
                                     <th className="p-3 text-left">
                                         Month
+                                    </th>
+
+                                    <th className="p-3 text-left">
+                                        User
                                     </th>
 
                                     <th className="p-3 text-left">
@@ -363,7 +373,7 @@ const Logs = () => {
                                     >
 
                                         <td className="p-3">
-                                            {row.user_email}
+                                            {row.bu}
                                         </td>
 
                                         <td className="p-3">
@@ -372,6 +382,10 @@ const Logs = () => {
 
                                         <td className="p-3">
                                             {row.loa_name}
+                                        </td>
+
+                                        <td className="p-3">
+                                            {row.loa_id}
                                         </td>
 
                                         <td className="p-3">
@@ -388,6 +402,10 @@ const Logs = () => {
 
                                         <td className="p-3">
                                             {row.month_year}
+                                        </td>
+
+                                        <td className="p-3">
+                                            {row.user_email}
                                         </td>
 
                                         <td className="p-3">

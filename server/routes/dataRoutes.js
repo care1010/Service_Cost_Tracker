@@ -64,6 +64,13 @@ router.get('/download-asbl-template', (req, res) => {
     });
 });
 
+router.get('/download-ptd-template', (req, res) => {
+    const filePath = path.join(__dirname, '../../PTD_template.xlsx');
+    res.download(filePath, 'PTD_template.xlsx', (err) => {
+        if (err) res.status(500).send("PTD Template not found.");
+    });
+});
+
 
 const adminController = require('../controllers/adminController');
 router.get('/admin/users', adminController.getAllUsers);
@@ -77,51 +84,28 @@ router.post('/finalize-changes', dataController.finalizeChanges);
 
 router.get('/check-pending-changes', dataController.checkPendingChanges);
 
-router.get(
-    '/final-dashboard-table',
-    dataController.getFinalDashboardTable
-);
+router.get('/final-dashboard-table', dataController.getFinalDashboardTable);
 
-router.get(
-    '/cost-view-table',
-    dataController.getCostViewTable
-);
+router.get('/cost-view-table', dataController.getCostViewTable);
 
-router.get(
-    '/customer-view-table',
-    dataController.getCustomerViewTable
-);
+router.get('/customer-view-table', dataController.getCustomerViewTable);
 
-router.get(
-    '/bu-customer-view-table',
-    dataController.getBuCustomerViewTable
-);
+router.get('/bu-customer-view-table', dataController.getBuCustomerViewTable);
 
-router.get(
-    '/customer-bu-view-table',
-    dataController.getCustomerBuViewTable
-);
+router.get('/customer-bu-view-table', dataController.getCustomerBuViewTable);
 
-router.get(
-    '/customer-bu-loa-view-table',
-    dataController.getCustomerBuLoaViewTable
-);
+router.get('/customer-bu-loa-view-table', dataController.getCustomerBuLoaViewTable);
 
 router.post('/drilldown', dataController.getDrillDownData);
 router.get('/export-drilldown', dataController.exportDrillDown);
-router.get(
-    '/negative-loa-table',
-    dataController.getNegativeLOATable
-);
+router.get('/negative-loa-table', dataController.getNegativeLOATable);
 
-router.get(
-    "/user-activity-logs",
-    dataController.getUserActivityLogs
-);
+router.get("/user-activity-logs", dataController.getUserActivityLogs);
 
-router.get(
-    "/pending-users",
-    dataController.getPendingUsers
-);
+router.get("/pending-users", dataController.getPendingUsers);
+
+router.get('/non-committed-trend', dataController.getNonCommittedTrend);
+
+router.get('/trend-loas', dataController.getTrendLoas);
 
 module.exports = router;

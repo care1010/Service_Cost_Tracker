@@ -3,7 +3,7 @@ import axios from 'axios';
 import { DataGrid } from '@mui/x-data-grid';
 import * as XLSX from "xlsx";
 import { saveAs } from 'file-saver';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList, LineChart, Line, ComposedChart } from 'recharts';
 
 const Dashboard = ({ user }) => {
 
@@ -43,6 +43,43 @@ const Dashboard = ({ user }) => {
     const [tableView, setTableView] = useState('bu');
 
     const allowedCustomers = user?.allowedCustomers || [];
+
+    const [trendData, setTrendData] = useState([]);
+    const [trendLoas, setTrendLoas] = useState([]);
+    const [selectedTrendLoa, setSelectedTrendLoa] = useState('');
+
+
+useEffect(() => {
+    axios
+        .get(`${process.env.REACT_APP_API_URL}/api/data/trend-loas`)
+        .then((res) => {
+            setTrendLoas(res.data);
+        })
+        .catch(console.error);
+}, []);
+
+useEffect(() => {
+    fetchTrendData();
+}, [selectedTrendLoa]);
+
+const fetchTrendData = async () => {
+    try {
+
+        const res = await axios.get(
+            `${process.env.REACT_APP_API_URL}/api/data/non-committed-trend`,
+            {
+                params: {
+                    loa_name: selectedTrendLoa
+                }
+            }
+        );
+
+        setTrendData(res.data);
+
+    } catch (err) {
+        console.error(err);
+    }
+};
 
 // fetching table data for BU and Cost
 useEffect(() => {
@@ -1196,7 +1233,6 @@ const displayLoaData = showAllLoa
             </div>
 
             {/* LOA GRAPH */}
-
             <div
                 ref={loaGraphRef}
                 className="bg-white rounded-[2rem] shadow-lg p-6 relative"
@@ -1223,13 +1259,10 @@ const displayLoaData = showAllLoa
                 >
                     Filter LOA ▼
                 </button>
-
                 {showLoaDropdown && (
-
                     <div className="absolute right-0 mt-2 w-[320px] bg-white border border-slate-200 rounded-2xl shadow-2xl z-50 p-4">
 
                         {/* SEARCH */}
-
                         <input
                             type="text"
                             placeholder="Search LOA..."
@@ -1241,19 +1274,15 @@ const displayLoaData = showAllLoa
                         />
 
                         {/* ACTION BUTTONS */}
-
                         <div className="flex justify-between mb-3">
-
                             <button
                                 className="text-[11px] font-bold text-blue-600"
                                 onClick={() => {
-
                                     setSelectedLoas(
                                         filteredLoaOptions.map(
                                             (x) => x.loa_name
                                         )
                                     );
-
                                 }}
                             >
                                 Select All
@@ -1262,55 +1291,41 @@ const displayLoaData = showAllLoa
                             <button
                                 className="text-[11px] font-bold text-red-500"
                                 onClick={() => {
-
                                     setSelectedLoas([]);
-
                                 }}
                             >
                                 Clear
                             </button>
-
                         </div>
 
                         {/* LOA LIST */}
-
                         <div className="max-h-[300px] overflow-y-auto space-y-2">
-
                             {filteredLoaOptions.map((item) => (
-
                                 <label
                                     key={item.loa_name}
                                     className="flex items-center gap-3 p-2 hover:bg-slate-100 rounded-xl cursor-pointer"
                                 >
-
                                     <input
                                         type="checkbox"
                                         checked={selectedLoas.includes(item.loa_name)}
                                         onChange={(e) => {
 
                                             if (e.target.checked) {
-
                                                 setSelectedLoas([
                                                     ...selectedLoas,
                                                     item.loa_name
                                                 ]);
 
                                             } else {
-
                                                 setSelectedLoas(
-
                                                     selectedLoas.filter(
                                                         (x) =>
                                                             x !== item.loa_name
                                                     )
-
                                                 );
-
                                             }
-
                                         }}
                                     />
-
                                     <span className="text-sm text-slate-700 font-medium">
                                         {item.loa_name}
                                     </span>
@@ -1386,7 +1401,6 @@ const displayLoaData = showAllLoa
                             <Legend />
 
                             {/* ASBL */}
-
                             <Bar
                                 dataKey="asbl"
                                 fill="#2563eb"
@@ -1409,7 +1423,6 @@ const displayLoaData = showAllLoa
                             </Bar>
 
                             {/* PTD */}
-
                             <Bar
                                 dataKey="ptd"
                                 fill="#10b981"
@@ -1432,7 +1445,6 @@ const displayLoaData = showAllLoa
                             </Bar>
 
                             {/* EAC */}
-
                             <Bar
                                 dataKey="eac"
                                 fill="#8b5cf6"
@@ -1456,10 +1468,149 @@ const displayLoaData = showAllLoa
                 </div>
             </div>
 
+            <div className="bg-white rounded-[2rem] shadow-lg p-6 mt-8">
+
+                <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4 mb-6">
+
+                    <h2 className="text-2xl font-black text-slate-800">
+                        Non Committed Trend
+                    </h2>
+
+                    <select
+                        value={selectedTrendLoa}
+                        onChange={(e) =>
+                            setSelectedTrendLoa(e.target.value)
+                        }
+                        className="border border-slate-300 rounded-xl px-4 py-2"
+                    >
+                        <option value="">
+                            All LOAs
+                        </option>
+
+                        {trendLoas.map((item) => (
+
+                            <option
+                                key={item.loa_name}
+                                value={item.loa_name}
+                            >
+                                {item.loa_name}
+                            </option>
+
+                        ))}
+                    </select>
+
+                </div>
+
+                {/* KPI Cards */}
+                <div className="grid md:grid-cols-3 gap-4 mb-6">
+                    <div className="bg-blue-50 rounded-2xl p-5">
+                        <div className="text-sm text-slate-500">
+                            Selected LOA
+                        </div>
+
+                        <div className="text-xl font-black text-blue-700">
+                            {selectedTrendLoa || 'ALL'}
+                        </div>
+                    </div>
+
+                    <div className="bg-green-50 rounded-2xl p-5">
+                        <div className="text-sm text-slate-500">
+                            Latest Value
+                        </div>
+
+                        <div className="text-xl font-black text-green-700">
+                            {
+                                trendData.length > 0
+                                    ? Number(
+                                        trendData[
+                                            trendData.length - 1
+                                        ]?.total_non_committed
+                                    ).toFixed(2)
+                                    : '0.00'
+                            }
+                        </div>
+                    </div>
+
+                    <div className="bg-purple-50 rounded-2xl p-5">
+                        <div className="text-sm text-slate-500">
+                            Available Months
+                        </div>
+
+                        <div className="text-xl font-black text-purple-700">
+                            {trendData.length}
+                        </div>
+                    </div>
+
+                </div>
+
+                <div className="w-full h-[450px]">
+
+                    <ResponsiveContainer width="100%" height="100%">
+                        <ComposedChart data={trendData}>
+
+                            <CartesianGrid strokeDasharray="3 3" />
+
+                            <XAxis
+                                dataKey="month_year"
+                            />
+
+                            <YAxis />
+
+                            <Tooltip
+                                content={({ active, payload, label }) => {
+
+                                    if (!active || !payload || !payload.length) {
+                                        return null;
+                                    }
+
+                                    return (
+                                        <div className="bg-white p-3 rounded-xl shadow-lg border">
+
+                                            <p className="font-bold mb-2">
+                                                {label}
+                                            </p>
+
+                                            <p className="text-blue-600 font-semibold">
+                                                NON COMMITTED :
+                                                {' '}
+                                                {Number(payload[0].value).toFixed(2)}
+                                            </p>
+
+                                        </div>
+                                    );
+                                }}
+                            />
+
+                            <Legend />
+
+                            {/* Column Bar */}
+
+                            <Bar dataKey="total_non_committed" fill="#3b82f6" radius={[8, 8, 0, 0]}>
+                                <LabelList
+                                    dataKey="total_non_committed"
+                                    position="top"
+                                    formatter={(value) =>
+                                        Number(value).toFixed(0)
+                                    }
+                                />
+                            </Bar>
+
+                            {/* Trend Line */}
+                            <Line
+                                type="monotone"
+                                dataKey="total_non_committed"
+                                stroke="#1e293b"
+                                strokeWidth={3}
+                                dot={{ r: 5 }}
+                                legendType="none"
+                            />
+
+                        </ComposedChart>
+                    </ResponsiveContainer>
+                </div>
+            </div>
         </div>
-
     );
-
 };
 
 export default Dashboard;

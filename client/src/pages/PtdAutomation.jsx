@@ -34,19 +34,25 @@ const PtdAutomation = () => {
     };
 
     return (
-        <div className="p-8 bg-white rounded-3xl shadow-xl max-w-2xl mx-auto mt-20 border border-slate-100">
-            <h2 className="text-2xl font-black text-slate-800 mb-6 flex items-center gap-3">
-                <span className="bg-blue-600 p-2 rounded-xl text-white text-sm">⚙️</span>
-                Upload PTD Data
-            </h2>
+        <div className="p-8 bg-white rounded-3xl shadow-xl max-w-4xl mx-auto mt-10 border border-slate-100">
+            <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                    <span className="bg-blue-600 p-2 rounded-xl text-white text-sm">
+                        ⚙️
+                    </span>
 
-            {/* RIGHT SIDE BUTTON */}
-            <button
-                onClick={handleDownloadTemplate}
-                className="px-5 py-2 rounded-2xl font-bold text-xs text-blue-600 bg-blue-50 border border-blue-200 shadow-sm whitespace-nowrap transition-all duration-200 ease-in-out transform hover:scale-105 hover:bg-blue-100 active:scale-95"
-            >
-                📥 Export Template
-            </button>
+                    <h2 className="text-2xl font-black text-slate-800">
+                        Upload PTD Data
+                    </h2>
+                </div>
+
+                <button
+                    onClick={handleDownloadTemplate}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-sm text-white bg-gradient-to-r from-blue-600 to-indigo-600 shadow-lg shadow-blue-100 transition-all duration-300 hover:scale-105 hover:shadow-xl hover:from-blue-700 hover:to-indigo-700 active:scale-95"
+                >
+                    📥 Export Template
+                </button>
+            </div>
             <p className="text-slate-600 text-base mt-2 mb-7">NOTE: If any error occurred while uploading the PTD data, please refer to the template provided to avoid mismatch of column headers. </p>
 
             <div className="border-2 border-dashed border-slate-200 rounded-3xl p-10 text-center hover:border-blue-400 transition-all bg-slate-50">
@@ -54,7 +60,7 @@ const PtdAutomation = () => {
                 <label htmlFor="ptd-file" className="cursor-pointer">
                     <div className="text-4xl mb-4">📁</div>
                     <p className="text-slate-600 font-bold">{file ? file.name : "Click to select Monthly Excel File"}</p>
-                    <p className="text-slate-400 text-xs mt-2">Supports .xlsx and .xls (Sheets: CJI5, CJ74)</p>
+                    <p className="text-slate-400 text-xs mt-2">Supports .xlsx (Sheets: CJI5, CJ74)</p>
                 </label>
             </div>
 
