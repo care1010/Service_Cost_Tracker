@@ -419,7 +419,7 @@ const startExport = (exportCollapseView) => {
                 </div>
             </div>
 
-            <div className="rounded-[1.5rem] overflow-hidden shadow-xl border border-white bg-white">
+            <div className="rounded-[1.5rem] overflow-hidden shadow-xl border border-white bg-white w-full">
                 <DataTable title="" columns={tableColumns} apiUrl={dynamicApiUrl} filters={filters} onKpiUpdate={handleKpiUpdate} collapseView={collapseView} user={user} />
             </div>
 

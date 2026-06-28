@@ -2,20 +2,50 @@ import React, { useState } from 'react';
 import './Sidebar.css';
 import logo from '../assets/OIP.jpg';
 import MyAccess from '../pages/MyAccess';
+import Swal from 'sweetalert2';
 
 // 🔥 FIX: Yahan brackets ke andar 'user' aur 'onLogout' add kiya
 const Sidebar = ({ activeTab, setActiveTab, user, onLogout }) => {
-  const [openMenu, setOpenMenu] = useState(false);
+const [openMenu, setOpenMenu] = useState(false);
+
+const handleLogout = () => {
+  Swal.fire({
+    title: 'Sign Out?',
+    text: 'Are you sure you want to sign out?',
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'Yes, Sign Out',
+    cancelButtonText: 'Cancel',
+    background: '#0f172a',
+    color: '#fff',
+    confirmButtonColor: '#dc2626',
+    cancelButtonColor: '#475569'
+  }).then((result) => {
+    if (result.isConfirmed) {
+      Swal.fire({
+        icon: 'success',
+        title: 'Signed Out Successfully',
+        timer: 1000,
+        showConfirmButton: false,
+        background: '#0f172a',
+        color: '#fff'
+      }).then(() => {
+        onLogout();
+      });
+    }
+  });
+};
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'summary', label: 'Summary View' },
+    { id: 'erp_resource', label: 'Cross ERP'},
+    { id: 'add-project', label: 'Add Project' },
+    { id: 'asbl', label: 'ASBL' },
     // { id: 'loa-view', label: 'Loa Wise View' },
     // Inhe sirf admin ya super_admin ko dikhao
     ...(user?.type !== 'user' ? [
-        { id: 'add-project', label: 'Add Project' },
         { id: 'ptd', label: 'PTD' },
-        { id: 'asbl', label: 'ASBL' },
         { id: 'logs', label: 'Logs' }
     ] : [])
 ];
@@ -89,7 +119,7 @@ const Sidebar = ({ activeTab, setActiveTab, user, onLogout }) => {
           </div>
 
             {/*  SIGN OUT BUTTON (onLogout function ab defined hai) */}
-            <div className="menu-item" onClick={onLogout} style={{cursor: 'pointer'}}>
+            <div className="menu-item" onClick={handleLogout} style={{cursor: 'pointer'}}>
               🚪 Sign Out
             </div>
 

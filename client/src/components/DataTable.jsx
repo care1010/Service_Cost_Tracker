@@ -247,7 +247,7 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
 
                         return `
                             <span
-                                class="drill-link text-blue-600 font-bold cursor-pointer hover:underline"
+                                class="drill-link text-grey-700 font-bold cursor-pointer hover:underline"
                                 data-field="${col.field}"
                                 data-uniquekey="${row.unique_key}"
                                 data-loa="${row.loa_name}"
@@ -281,18 +281,18 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
                             <tr class="group-parent">
                                 <td class="pbi-col font-black text-blue-800">${!collapseView ? '<span class="toggle-icon">➕</span>' : ''}
                                 ${rowData.bu}</td>
-                                <td class="font-bold text-slate-700">${rowData.customer}</td>
-                                <td class="font-bold text-slate-700">${group}</td>
-                                <td class="font-bold text-slate-700">${rowData.loa_id}</td>
+                                <td class="font-bold text-grey-700">${rowData.customer}</td>
+                                <td class="font-bold text-grey-700">${group}</td>
+                                <td class="font-bold text-grey-700">${rowData.loa_id}</td>
                                 <td></td><td></td>
-                                <td class="text-right font-bold text-slate-900">${fmt(asbl)}</td>
-                                <td class="text-right font-bold text-slate-900">${fmt(asbl_loa)}</td>
-                                <td class="text-right font-bold text-slate-900">${fmt(ptd)}</td>
-                                <td class="text-right font-bold text-slate-900">${fmt(oc)}</td>
-                                ${showClearButton ? `<td class="text-right font-bold text-slate-900">${fmt(nc_orig)}</td>` : ''} <!-- 🔥 Review Page Extra Cell -->
-                                <td class="text-right font-bold text-slate-900">${fmt(nc)}</td>
-                                <td class="text-right font-bold text-slate-900">${fmt(eac)}</td>
-                                <td class="text-right font-bold text-slate-900">${fmt(varTotal)}</td>
+                                <td class="text-right font-bold text-grey-900">${fmt(asbl)}</td>
+                                <td class="text-right font-bold text-grey-900">${fmt(asbl_loa)}</td>
+                                <td class="text-right font-bold text-grey-900">${fmt(ptd)}</td>
+                                <td class="text-right font-bold text-grey-900">${fmt(oc)}</td>
+                                ${showClearButton ? `<td class="text-right font-bold text-grey-900">${fmt(nc_orig)}</td>` : ''} <!-- 🔥 Review Page Extra Cell -->
+                                <td class="text-right font-bold text-grey-900">${fmt(nc)}</td>
+                                <td class="text-right font-bold text-grey-900">${fmt(eac)}</td>
+                                <td class="text-right font-bold text-grey-900">${fmt(varTotal)}</td>
                             </tr>
                         `);
                     } else {
@@ -304,28 +304,28 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
 
                         return $(`
                             <tr class="group-child">
-                                <td class="text-slate-400">${rowData.bu}</td>
-                                <td class="text-slate-400">${rowData.customer}</td>
-                                <td class="text-slate-400">${rowData.loa_name}</td>
-                                <td class="text-slate-400">${rowData.loa_id}</td>
+                                <td class="text-grey-700">${rowData.bu}</td>
+                                <td class="text-grey-700">${rowData.customer}</td>
+                                <td class="text-grey-700">${rowData.loa_name}</td>
+                                <td class="text-grey-700">${rowData.loa_id}</td>
 
-                                <td class="pbi-col font-bold text-slate-600">
+                                <td class="pbi-col font-bold text-grey-700">
                                     ${!collapseView ? '<span class="toggle-icon">➕</span>' : ''}
                                     ${group}
                                 </td>
 
                                 <td></td>
 
-                                <td class="text-right font-bold text-slate-700">${fmt(asbl)}</td>
-                                <td class="text-right font-bold text-slate-700">${fmt(asbl_loa)}</td>
-                                <td class="text-right font-bold text-slate-700">${fmt(ptd)}</td>
-                                <td class="text-right font-bold text-slate-700">${fmt(oc)}</td>
+                                <td class="text-right font-bold text-grey-700">${fmt(asbl)}</td>
+                                <td class="text-right font-bold text-grey-700">${fmt(asbl_loa)}</td>
+                                <td class="text-right font-bold text-grey-700">${fmt(ptd)}</td>
+                                <td class="text-right font-bold text-grey-700">${fmt(oc)}</td>
 
-                                ${showClearButton ? `<td class="text-right font-bold text-slate-700">${fmt(nc_orig)}</td>` : ''}
+                                ${showClearButton ? `<td class="text-right font-bold text-grey-700">${fmt(nc_orig)}</td>` : ''}
 
-                                <td class="text-right font-bold text-slate-700">${fmt(nc)}</td>
-                                <td class="text-right font-bold text-slate-700">${fmt(eac)}</td>
-                                <td class="text-right font-bold text-slate-700">${fmt(varTotal)}</td>
+                                <td class="text-right font-bold text-grey-700">${fmt(nc)}</td>
+                                <td class="text-right font-bold text-grey-700">${fmt(eac)}</td>
+                                <td class="text-right font-bold text-grey-700">${fmt(varTotal)}</td>
                             </tr>
                         `);
                     }

@@ -51,7 +51,46 @@ exports.uploadPtdData = async (req, res) => {
 
         // --- 2. CJ74 Logic ---
         if (sheetNames.includes('CJ74')) {
+
             const cj74Data = xlsx.utils.sheet_to_json(workbook.Sheets['CJ74']);
+
+            // ==========================================
+            // DUPLICATE YEAR + PERIOD VALIDATION
+            // ==========================================
+            const periodYearPairs = [
+                ...new Set(
+                    cj74Data
+                        .filter(row => row['Year'] && row['Per'])
+                        .map(
+                            row => `${row['Year']}_${row['Per']}`
+                        )
+                )
+            ];
+
+            for (const pair of periodYearPairs) {
+                const [year, per] = pair.split('_');
+                console.log("Checking:", year, per);
+                const [existing] = await db.query(
+                    `
+                    SELECT COUNT(*) AS cnt
+                    FROM cj74_new
+                    WHERE year = ?
+                    AND per = ?
+                    `,
+                    [year, per]
+                );
+                console.log("DB Result:", existing);
+                if (existing[0].cnt > 0) {
+                    console.log("DUPLICATE FOUND");
+                    return res.status(400).json({
+                        error: `CJ74 data already exists for Year ${year} - Period ${per}. Duplicate upload is not allowed.`
+                    });
+                }
+            }
+
+            // ==========================================
+            // ACTUAL INSERT PROCESS
+            // ==========================================
             const cj74Rows = cj74Data.map(row => {
                 if(row['LOA_ID']) affectedLoas.add(row['LOA_ID'].toString().trim());
                 return [

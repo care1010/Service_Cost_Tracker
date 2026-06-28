@@ -1,4 +1,5 @@
 const db = require('../config/db');
+const bcrypt = require('bcrypt');
 
 // 1. Saare users aur unke mapped customers laana (With RLS)
 exports.getAllUsers = async (req, res) => {
@@ -6,7 +7,7 @@ exports.getAllUsers = async (req, res) => {
         const { currentUserType, allowedCustomers } = req.query;
         const customersList = allowedCustomers ? allowedCustomers.split(',') : [];
 
-        let usersQuery = "SELECT id, email, password, type FROM users";
+        let usersQuery = "SELECT id, email, type FROM users";
         let usersParams = [];
 
         // RLS for Admin
@@ -55,7 +56,8 @@ exports.createUser = async (req, res) => {
         }
 
         // A. Users table mein insert
-        await db.query("INSERT INTO users (email, password, type) VALUES (?, ?, ?)", [email, password, type]);
+        const hashedPassword = await bcrypt.hash(password, 10);
+        await db.query("INSERT INTO users (email, password, type) VALUES (?, ?, ?)", [email, hashedPassword, type]);
 
         // B. Access table mein mapping (Multiple rows)
         if (customers && customers.length > 0) {
@@ -95,7 +97,8 @@ exports.updateUser = async (req, res) => {
         }
 
         // A. User details update
-        await db.query("UPDATE users SET type = ?, password = ? WHERE id = ?", [type, password, id]);
+        const hashedPassword = await bcrypt.hash(password, 10);
+        await db.query("UPDATE users SET type = ?, password = ? WHERE id = ?", [type, hashedPassword, id]);
 
         // B. Purani mapping delete karke nayi insert karna
         await db.query("DELETE FROM access WHERE email = ?", [email]);

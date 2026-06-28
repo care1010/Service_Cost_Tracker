@@ -7,13 +7,15 @@ import { HiOutlineRefresh, HiOutlineFilter } from "react-icons/hi";
 const FilterBar = ({ filters, options, onFilterChange, onReset }) => {
 
     const filterConfigs = [
-        { label: 'BU', name: 'bu' },
-        { label: 'Customer', name: 'customer' },
-        { label: 'LOA ID', name: 'loa_id' },
-        { label: 'LOA Name', name: 'loa_name' },
-        { label: 'WBS', name: 'wbs' },
-        { label: 'Active/Inactive', name: 'active_inactive' },
-        { label: 'Period', name: 'period' },
+        { label: 'BU', name: 'bu', span: 'lg:col-span-1' },
+        { label: 'Customer', name: 'customer', span: 'lg:col-span-1' },
+        { label: 'LOA ID', name: 'loa_id', span: 'lg:col-span-1' },
+        { label: 'LOA Name', name: 'loa_name', span: 'lg:col-span-1' },
+        { label: 'WBS', name: 'wbs', span: 'lg:col-span-1' },
+        { label: 'WBS Type', name: 'wbs_type', span: 'lg:col-span-1' },
+        { label: 'WBS Description', name: 'wbs_description', span: 'lg:col-span-1' },
+        { label: 'Active/Inactive', name: 'active_inactive', span: 'lg:col-span-[0.8]' }, // ya lg:col-span-1
+        { label: 'Period', name: 'period', span: 'lg:col-span-1' },
     ];
 
     useEffect(() => {
@@ -45,15 +47,13 @@ const FilterBar = ({ filters, options, onFilterChange, onReset }) => {
     shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-200">
 
         {/* Filters Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
+        <div className="grid grid-cols-2 md:grid-cols-6 lg:grid-cols-12 gap-2 items-end">
 
             {filterConfigs.map((cfg) => (
-
                 <div
                     key={cfg.name}
-                    className="bg-slate-50/70 border border-slate-200 
-                    rounded-2xl p-1 transition-all duration-300 
-                    hover:shadow-md hover:border-blue-100"
+                    className={`${cfg.span} bg-slate-50/70 border border-slate-200 rounded-2xl p-1
+                    transition-all duration-300 hover:shadow-md hover:border-blue-100`}
                 >
 
                     <label className="text-[12px] font-black 

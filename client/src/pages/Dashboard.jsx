@@ -11,6 +11,7 @@ const Dashboard = ({ user }) => {
 
     const [buData, setBuData] = useState([]);
     const [loaData, setLoaData] = useState([]);
+    const [selectedStatus, setSelectedStatus] = useState('Active');
 
     // FILTER OPTIONS for YEARS, PERIODS, CUSTOMERS
     const [filterOptions, setFilterOptions] = useState({ years: [], periods: [], customers: [], loa_names: []});
@@ -29,6 +30,11 @@ const Dashboard = ({ user }) => {
     const yearRef = useRef();
     const periodRef = useRef();
     const customerRef = useRef();
+
+    // Refs & States for the NEW Top LOA Filter
+    const topLoaRef = useRef();
+    const [showTopLoaDropdown, setShowTopLoaDropdown] = useState(false);
+    const [topLoaSearch, setTopLoaSearch] = useState('');
 
     const [loaSearch, setLoaSearch] = useState('');
     const [showLoaDropdown, setShowLoaDropdown] = useState(false);
@@ -60,22 +66,20 @@ useEffect(() => {
 
 useEffect(() => {
     fetchTrendData();
-}, [selectedTrendLoa]);
+}, [selectedTrendLoa, selectedStatus ]);
 
 const fetchTrendData = async () => {
     try {
-
         const res = await axios.get(
             `${process.env.REACT_APP_API_URL}/api/data/non-committed-trend`,
             {
                 params: {
-                    loa_name: selectedTrendLoa
+                    loa_name: selectedTrendLoa,
+                    active_inactive: selectedStatus
                 }
             }
         );
-
         setTrendData(res.data);
-
     } catch (err) {
         console.error(err);
     }
@@ -84,14 +88,12 @@ const fetchTrendData = async () => {
 // fetching table data for BU and Cost
 useEffect(() => {
     fetchTableData();
-}, [tableView, selectedYears, selectedPeriods, selectedCustomers, selectedLoas]);
+}, [tableView, selectedYears, selectedPeriods, selectedCustomers, selectedLoas, selectedStatus]);
 
 const fetchTableData = async () => {
 
     try {
-
         let endpoint = '';
-
         // BU TABLE
         if (tableView === 'bu') {
             endpoint = 'final-dashboard-table';
@@ -142,19 +144,14 @@ const fetchTableData = async () => {
                     periods,
                     customers,
                     loa_names,
-
+                    active_inactive: selectedStatus,
                     type: user?.type,
-
-                    allowedCustomers:
-                        allowedCustomers.join(',')
+                    allowedCustomers: allowedCustomers.join(',')
                 }
             }
         );
-
         setTableData(res.data)
-
     } catch (err) {
-
         console.log(
             'Error fetching table:',
             err
@@ -308,7 +305,13 @@ const exportToExcel = () => {
             ) {
                 setShowCustomerDropdown(false);
             }
-
+            // Close Top LOA dropdown on outside click
+            if (
+                topLoaRef.current &&
+                !topLoaRef.current.contains(event.target)
+            ) {
+                setShowTopLoaDropdown(false);
+            }
         };
 
         document.addEventListener('mousedown', handleClickOutside);
@@ -349,6 +352,7 @@ const exportToExcel = () => {
                             periods,
                             customers,
                             loa_names,
+                            active_inactive: selectedStatus,
                             type: user?.type,
                             allowedCustomers:
                             allowedCustomers.join(',')
@@ -365,7 +369,8 @@ const exportToExcel = () => {
         selectedYears,
         selectedPeriods,
         selectedCustomers,
-        selectedLoas
+        selectedLoas,
+        selectedStatus
     ]);
 
     // =========================================
@@ -392,6 +397,7 @@ const exportToExcel = () => {
                                 periods,
                                 customers,
                                 loa_names,
+                                active_inactive: selectedStatus,
                                 showAll: showAllLoa,
                                 type: user?.type,
                                 allowedCustomers:
@@ -408,6 +414,7 @@ const exportToExcel = () => {
                                 periods,
                                 customers,
                                 loa_names,
+                                active_inactive: selectedStatus,
                                 showAll: showAllLoa,
                                 type: user?.type,
                                 allowedCustomers:
@@ -428,7 +435,7 @@ const exportToExcel = () => {
             }
         };
         fetchData();
-    }, [selectedYears, selectedPeriods, selectedCustomers, selectedLoas, showAllLoa]);
+    }, [selectedYears, selectedPeriods, selectedCustomers, selectedLoas, showAllLoa, selectedStatus,]);
 
     // =========================================
     // YEAR CHANGE
@@ -494,6 +501,11 @@ const filteredLoaOptions = loaData.filter((item) =>
         .includes(loaSearch.toLowerCase())
 );
 
+// Search logic for top bar LOA selector (Maps over ALL database-filters LOAs)
+const filteredTopLoaOptions = (filterOptions.loa_names || []).filter((loa) =>
+    loa?.toLowerCase().includes(topLoaSearch.toLowerCase())
+);
+
 const resetAllFilters = () => {
     setSelectedYears([]);
     setSelectedPeriods([]);
@@ -501,6 +513,8 @@ const resetAllFilters = () => {
     setSelectedLoas([]);
     setLoaSearch('');
     setShowAllLoa(false);
+    // Default Active
+    setSelectedStatus('Active')
 };
 
 const totalASBL = buData.reduce(
@@ -548,15 +562,14 @@ const displayLoaData = showAllLoa
                         </p>
                     </div>
 
-                    {/* FILTERS */}
+                    {/* FILTERS BAR */}
                     <div className="flex flex-col md:flex-row gap-5">
-                        {/* 1. Customer Filter */}
-                        <div ref={customerRef} className="relative w-[260px]">
 
+                        {/* 1. Customer Filter */}
+                        <div ref={customerRef} className="relative w-[240px]">
                             <p className="text-[11px] font-black uppercase text-slate-500 mb-2">
                                 Select Customers
                             </p>
-
                             <button
                                 onClick={() =>
                                     setShowCustomerDropdown(
@@ -565,229 +578,231 @@ const displayLoaData = showAllLoa
                                 }
                                 className="w-full bg-white border border-slate-300 rounded-2xl px-4 py-3 shadow-sm text-left"
                             >
-
                                 <div className="flex items-center justify-between">
-
                                     <span className="text-sm font-medium text-slate-700">
-
                                         {selectedCustomers.length > 0
                                             ? `${selectedCustomers.length} Selected`
                                             : 'Choose Customers'}
-
                                     </span>
-
                                     <span>▼</span>
-
                                 </div>
-
                             </button>
-
                             {showCustomerDropdown && (
-
                                 <div className="absolute top-full left-0 mt-2 w-full bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-3 max-h-[260px] overflow-y-auto">
-
                                     <div className="flex justify-between mb-3">
-
                                         <button
                                             className="text-[10px] font-bold text-blue-600"
                                             onClick={() => {
-
                                                 setSelectedCustomers(
                                                     filterOptions.customers
                                                 );
-
                                             }}
                                         >
                                             Select All
                                         </button>
-
                                         <button
                                             className="text-[10px] font-bold text-red-500"
                                             onClick={() => {
-
                                                 setSelectedCustomers([]);
-
                                             }}
                                         >
                                             Clear
                                         </button>
-
                                     </div>
 
                                     <div className="space-y-2">
-
                                         {filterOptions.customers.map((customer) => (
-
                                             <label
                                                 key={customer}
                                                 className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-100 cursor-pointer"
                                             >
-
                                                 <input
                                                     type="checkbox"
-
                                                     checked={selectedCustomers.includes(customer)}
-
                                                     onChange={(e) => {
-
                                                         if (e.target.checked) {
-
                                                             setSelectedCustomers([
                                                                 ...selectedCustomers,
                                                                 customer
                                                             ]);
-
                                                         } else {
-
                                                             setSelectedCustomers(
-
                                                                 selectedCustomers.filter(
                                                                     (x) => x !== customer
                                                                 )
-
                                                             );
-
                                                         }
-
                                                     }}
                                                 />
-
                                                 <span className="text-sm font-medium text-slate-700">
                                                     {customer}
                                                 </span>
-
                                             </label>
-
                                         ))}
-
                                     </div>
-
                                 </div>
-
                             )}
-
                         </div>
+                        {/* -----Customer filter button END here---- */}
 
-                        {/* 1. YEAR FILTER */}
-
-                        <div
-                            ref={yearRef}
-                            className="relative w-[260px]"
-                        >
-
+                        {/* 🔥 4. NEW DUPLICATE LOA FILTER AT THE TOP FILTER BAR (Lists ALL synced database-filters LOAs) */}
+                        <div ref={topLoaRef} className="relative w-[220px]">
                             <p className="text-[11px] font-black uppercase text-slate-500 mb-2">
-                                Select Years
+                                Select LOA Name
                             </p>
-
                             <button
-                                onClick={() =>
-                                    setShowYearDropdown(
-                                        !showYearDropdown
-                                    )
-                                }
+                                onClick={() => setShowTopLoaDropdown(!showTopLoaDropdown)}
                                 className="w-full bg-white border border-slate-300 rounded-2xl px-4 py-3 shadow-sm text-left"
                             >
-
                                 <div className="flex items-center justify-between">
-
-                                    <span className="text-sm font-medium text-slate-700">
-
-                                        {selectedYears.length > 0
-                                            ? `${selectedYears.length} Selected`
-                                            : 'Choose Years'}
-
+                                    <span className="text-sm font-medium text-slate-700 truncate">
+                                        {selectedLoas.length > 0
+                                            ? `${selectedLoas.length} Selected`
+                                            : 'Choose LOAs'}
                                     </span>
-
                                     <span>▼</span>
-
                                 </div>
-
                             </button>
 
-                            {showYearDropdown && (
-
-                                <div className="absolute top-full left-0 mt-2 w-full bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-3 max-h-[260px] overflow-y-auto">
+                            {showTopLoaDropdown && (
+                                <div className="absolute top-full left-0 mt-2 w-[320px] bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-3 max-h-[360px] overflow-y-auto">
+                                    
+                                    {/* SEARCH BOX FOR TOP LOA SELECTOR */}
+                                    <input
+                                        type="text"
+                                        placeholder="Search LOA..."
+                                        value={topLoaSearch}
+                                        onChange={(e) => setTopLoaSearch(e.target.value)}
+                                        className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm mb-3 outline-none focus:border-blue-500"
+                                    />
 
                                     <div className="flex justify-between mb-3">
-
                                         <button
                                             className="text-[10px] font-bold text-blue-600"
                                             onClick={() => {
-
-                                                setSelectedYears(
-                                                    filterOptions.years
-                                                );
-
-                                                setSelectedPeriods(
-                                                    filterOptions.periods
-                                                );
-
+                                                setSelectedLoas(filterOptions.loa_names || []);
                                             }}
                                         >
                                             Select All
                                         </button>
-
                                         <button
                                             className="text-[10px] font-bold text-red-500"
                                             onClick={() => {
-
-                                                setSelectedYears([]);
-                                                setSelectedPeriods([]);
-
+                                                setSelectedLoas([]);
                                             }}
                                         >
                                             Clear
                                         </button>
+                                    </div>
 
+                                    <div className="space-y-2 max-h-[220px] overflow-y-auto">
+                                        {filteredTopLoaOptions.map((loa) => (
+                                            <label
+                                                key={loa}
+                                                className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-100 cursor-pointer"
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedLoas.includes(loa)}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) {
+                                                            setSelectedLoas([...selectedLoas, loa]);
+                                                        } else {
+                                                            setSelectedLoas(selectedLoas.filter((x) => x !== loa));
+                                                        }
+                                                    }}
+                                                />
+                                                <span className="text-sm font-medium text-slate-700 truncate">
+                                                    {loa}
+                                                </span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                        {/* Loa Name filter END*/}
+
+                        <div className="w-[160px]">
+                            <p className="text-[11px] font-black uppercase text-slate-500 mb-2">
+                                WBS Type
+                            </p>
+
+                            <select
+                                value={selectedStatus}
+                                onChange={(e) => setSelectedStatus(e.target.value)}
+                                className="w-full bg-white border border-slate-300 rounded-2xl px-4 py-3 shadow-sm text-sm font-medium text-slate-700"
+                            >
+                                <option value="Active">Project</option>
+                                <option value="Inactive">AMC</option>
+                                <option value="Inactive">Warranty</option>
+                                <option value="">All</option>
+                                {/* <span>▼</span> */}
+                            </select>
+                        </div>
+
+                        {/* 2. YEAR FILTER */}
+                        <div ref={yearRef} className="relative w-[180px]">
+                            <p className="text-[11px] font-black uppercase text-slate-500 mb-2">
+                                Select Year
+                            </p>
+                            <button onClick={() => setShowYearDropdown(!showYearDropdown)}
+                                className="w-full bg-white border border-slate-300 rounded-2xl px-4 py-3 shadow-sm text-left"
+                            >
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm font-medium text-slate-700">
+                                        {selectedYears.length > 0
+                                            ? `${selectedYears.length} Selected`
+                                            : 'Choose Years'}
+                                    </span>
+                                    <span>▼</span>
+                                </div>
+                            </button>
+
+                            {showYearDropdown && (
+                                <div className="absolute top-full left-0 mt-2 w-full bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-3 max-h-[260px] overflow-y-auto">
+                                    <div className="flex justify-between mb-3">
+                                        <button className="text-[10px] font-bold text-blue-600"
+                                            onClick={() => { setSelectedYears(filterOptions.years);
+                                                setSelectedPeriods(
+                                                    filterOptions.periods);}}>
+                                            Select All
+                                        </button>
+                                        <button
+                                            className="text-[10px] font-bold text-red-500"
+                                            onClick={() => {
+                                                setSelectedYears([]);
+                                                setSelectedPeriods([]);}}>
+                                            Clear
+                                        </button>
                                     </div>
 
                                     <div className="space-y-2">
-
                                         {filterOptions.years.map((year) => (
-
                                             <label
                                                 key={year}
                                                 className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-100 cursor-pointer"
                                             >
-
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedYears.includes(year)}
-                                                    onChange={(e) =>
+                                                <input type="checkbox" checked={selectedYears.includes(year)} onChange={(e) =>
                                                         handleYearChange(
                                                             year,
-                                                            e.target.checked
-                                                        )
-                                                    }
-                                                />
-
+                                                            e.target.checked)}/>
                                                 <span className="text-sm font-medium text-slate-700">
                                                     {year}
                                                 </span>
-
                                             </label>
-
                                         ))}
-
                                     </div>
-
                                 </div>
-
                             )}
-
                         </div>
+                        {/*-------- YEAR FILTER button END HERE--------- */}
 
-                        {/* 2. PERIOD FILTER */}
-
-                        <div
-                            ref={periodRef}
-                            className="relative w-[260px]"
-                        >
-
+                        {/* 3. PERIOD FILTER */}
+                        <div ref={periodRef} className="relative w-[180px]">
                             <p className="text-[11px] font-black uppercase text-slate-500 mb-2">
                                 Select Periods
                             </p>
-
                             <button
                                 onClick={() =>
                                     setShowPeriodDropdown(
@@ -796,106 +811,93 @@ const displayLoaData = showAllLoa
                                 }
                                 className="w-full bg-white border border-slate-300 rounded-2xl px-4 py-3 shadow-sm text-left"
                             >
-
                                 <div className="flex items-center justify-between">
-
                                     <span className="text-sm font-medium text-slate-700">
-
                                         {selectedPeriods.length > 0
                                             ? `${selectedPeriods.length} Selected`
                                             : 'Choose Periods'}
-
                                     </span>
-
                                     <span>▼</span>
-
                                 </div>
-
                             </button>
 
                             {showPeriodDropdown && (
-
                                 <div className="absolute top-full left-0 mt-2 w-full bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-3 max-h-[260px] overflow-y-auto">
-
                                     <button
                                             className="text-[10px] font-bold text-blue-600"
                                             onClick={() => {
-
                                                 setSelectedYears(
                                                     filterOptions.years
                                                 );
-
                                                 setSelectedPeriods(
                                                     filterOptions.periods
                                                 );
-
                                             }}
                                         >
                                             Select All
                                         </button>
-
                                         <button
                                             className="text-[10px] font-bold text-red-500 ml-7"
                                             onClick={() => {
-
                                                 setSelectedYears([]);
                                                 setSelectedPeriods([]);
-
                                             }}
                                         >
                                             Clear
                                         </button>
 
-                                    <div className="space-y-2">
-
-                                        {filterOptions.periods.map((period) => (
-
-                                            <label
-                                                key={period}
-                                                className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-100 cursor-pointer"
-                                            >
-
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedPeriods.includes(period)}
-                                                    onChange={(e) =>
-                                                        handlePeriodChange(
-                                                            period,
-                                                            e.target.checked
-                                                        )
-                                                    }
-                                                />
-
-                                                <span className="text-sm font-medium text-slate-700">
-                                                    {period}
-                                                </span>
-
-                                            </label>
-
-                                        ))}
-
-                                    </div>
-
+                                        <div className="space-y-2">
+                                            {filterOptions.periods.map((period) => (
+                                                <label
+                                                    key={period}
+                                                    className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-100 cursor-pointer"
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedPeriods.includes(period)}
+                                                        onChange={(e) =>
+                                                            handlePeriodChange(
+                                                                period,
+                                                                e.target.checked
+                                                            )
+                                                        }
+                                                    />
+                                                    <span className="text-sm font-medium text-slate-700">
+                                                        {period}
+                                                    </span>
+                                                </label>
+                                            ))}
+                                        </div>
                                 </div>
-
                             )}
-
                         </div>
 
+                        <div className="w-[160px]">
+                            <p className="text-[11px] font-black uppercase text-slate-500 mb-2">
+                                Active/Inactive
+                            </p>
+
+                            <select
+                                value={selectedStatus}
+                                onChange={(e) => setSelectedStatus(e.target.value)}
+                                className="w-full bg-white border border-slate-300 rounded-2xl px-4 py-3 shadow-sm text-sm font-medium text-slate-700"
+                            >
+                                <option value="Active">Active</option>
+                                <option value="Inactive">Inactive</option>
+                                <option value="">All</option>
+                                {/* <span>▼</span> */}
+                            </select>
+                        </div>
                         <button
                             onClick={resetAllFilters}
                             className="h-[52px] mt-6 px-5 rounded-2xl bg-red-500 text-white text-sm font-bold shadow-md hover:bg-red-600 transition-all
                             "
                         >Reset Filters
                         </button>
-
                     </div>
-
                 </div>
-
             </div>
 
-            
             {user?.type !== 'user' && (
             <div className="mt-6 bg-white p-4 rounded-xl shadow">
                 <div className="flex justify-between items-center mb-4">

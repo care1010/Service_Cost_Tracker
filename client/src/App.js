@@ -11,6 +11,7 @@ import AdminPanel from './pages/AdminPanel';
 import DrillDownPage from './pages/DrillDownPage';
 import MyAccess from './pages/MyAccess';
 import Logs from './pages/Logs';
+import ERPResource from './pages/ERPResource';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -32,11 +33,9 @@ function App() {
     }, [activeTab, user]);
 
   const handleLogout = () => {
-    if (window.confirm("Are you sure you want to sign out?")) {
-      localStorage.removeItem('user');
-      setUser(null);
-      setActiveTab('summary'); // 🔥 Logout par tab ko reset kiya
-    }
+    localStorage.removeItem('user');
+    setUser(null);
+    setActiveTab('summary');
   };
 
   // Jab login success ho, tab user set karne ke sath-sath activeTab ko 'summary' par redirect karein
@@ -58,7 +57,8 @@ function App() {
         <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} user={user} onLogout={handleLogout} />
       )}
 
-      <main className={`flex-1 ${isDrillDown ? 'ml-0' : 'ml-64'} p-8 bg-[#fcfcfd] min-h-screen overflow-x-hidden`}>
+      <main className={`flex-1 ${isDrillDown ? 'ml-0' : ''} p-8 bg-[#fcfcfd] min-h-screen overflow-x-hidden`}
+        style={!isDrillDown ? { marginLeft: '130px', width: "calc(100vw - 130px)" } : {}}>
         
         {!isDrillDown && (
             <div className="mb-8 text-center">
@@ -77,6 +77,7 @@ function App() {
               {activeTab === 'ptd' && <PtdAutomation />}
               {activeTab === 'asbl' && <AsblAutomation />}
               {activeTab === 'dashboard' && <Dashboard user={user} />}
+              {activeTab === 'erp_resource' && <ERPResource />}
               {/* 🔥 Sirf admin ya super_admin hi is component ko load kar payenge */}
               {activeTab === 'admin' && (user?.type === 'super_admin' || user?.type === 'admin') && (
                 <AdminPanel user={user} onBack={() => setActiveTab('summary')} />

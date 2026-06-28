@@ -4,6 +4,7 @@ import $ from 'jquery';
 import 'datatables.net-dt';
 import 'datatables.net-dt/css/dataTables.dataTables.css';
 import Swal from 'sweetalert2';
+import './AdminPanel.css';
 
 const AdminPanel = ({ user }) => {
     const [users, setUsers] = useState([]);
@@ -40,13 +41,19 @@ const AdminPanel = ({ user }) => {
 
             $(tableRef.current).DataTable({
                 data: users,
+                destroy: true,
+                pageLength: 50,
+                lengthMenu: [
+                    [50, 100, 200, -1],
+                    [50, 100, 200, "All"]
+                ],
                 columns: [
                     { 
-                        title: "Email / Username", 
+                        title: "Email", 
                         data: "email",
                         render: (data) => `
                             <div class="flex items-center gap-3">
-                                <div class="w-8 h-8 rounded-full bg-blue-600/20 text-blue-400 flex items-center justify-center font-bold text-xs uppercase">
+                                <div class="w-8 h-8 rounded-full bg-blue-600/20 text-blue-400 flex items-center justify-center font-bold text-sm uppercase">
                                     ${data ? data.charAt(0).toUpperCase() : ''}
                                 </div>
                                 <span class="font-semibold text-slate-200">${data}</span>
@@ -57,7 +64,7 @@ const AdminPanel = ({ user }) => {
                         title: "Role", 
                         data: "type",
                         render: (data) => `
-                            <span class="px-3 py-1 rounded-lg text-[9px] font-black uppercase ring-1 ${
+                            <span class="px-3 py-1 rounded-lg text-[11px] font-black uppercase ring-1 ${
                                 data === 'super_admin' 
                                 ? 'bg-purple-500/10 text-purple-400 ring-purple-500/30' 
                                 : 'bg-emerald-500/10 text-emerald-400 ring-emerald-500/30'
@@ -67,12 +74,12 @@ const AdminPanel = ({ user }) => {
                         `
                     },
                     { 
-                        title: "Access Control", 
+                        title: "Customer Access", 
                         data: "customers",
                         render: (data) => `
                             <div class="flex flex-wrap gap-1 max-w-md">
                                 ${data && data.length > 0 
-                                    ? data.map(c => `<span class="bg-slate-800 text-slate-300 px-2 py-0.5 rounded text-[9px] border border-slate-700 font-medium">${c}</span>`).join('') 
+                                    ? data.map(c => `<span class="bg-slate-800 text-slate-300 px-2 py-0.5 rounded text-[12px] border border-slate-700 font-medium">${c}</span>`).join('') 
                                     : `<span class="text-slate-500 text-xs italic">No Access</span>`
                                 }
                             </div>
@@ -84,10 +91,10 @@ const AdminPanel = ({ user }) => {
                         render: (data, type, row) => `
                             <div class="flex gap-3">
                                 <button class="edit-btn text-blue-400 hover:text-blue-300 transition-colors" data-id="${row.id}">
-                                    ✏️ <span class="text-xs ml-1">Edit</span>
+                                    ✏️ <span class="text-xs ml-1"></span>
                                 </button>
                                 <button class="delete-btn text-rose-400 hover:text-rose-300 transition-colors" data-id="${row.id}" data-email="${row.email}">
-                                    🗑️ <span class="text-xs ml-1">Delete</span>
+                                    🗑️ <span class="text-sm ml-1">Delete</span>
                                 </button>
                             </div>
                         `
@@ -102,7 +109,7 @@ const AdminPanel = ({ user }) => {
                             setFormData({
                                 id: userToEdit.id,
                                 email: userToEdit.email,
-                                password: userToEdit.password || '',
+                                // password: userToEdit.password || '',
                                 type: userToEdit.type || 'user',
                                 customers: userToEdit.customers || []
                             }); 
@@ -204,7 +211,7 @@ const AdminPanel = ({ user }) => {
                     <h1 className="text-3xl font-black text-white tracking-tight">
                         User <span className="text-blue-500">Management</span>
                     </h1>
-                    <p className="text-slate-400 text-sm mt-1">Manage user account roles and system access permissions</p>
+                    <p className="text-slate-400 text-sm mt-1"></p>
                 </div>
                 <button 
                     onClick={() => { 
@@ -214,7 +221,7 @@ const AdminPanel = ({ user }) => {
                     }}
                     className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg transition-all flex items-center gap-2"
                 >
-                    <span>➕</span> Create User
+                    <span className="text-white text-2xl font-bold">+</span> Create User
                 </button>
             </div>
 
@@ -231,7 +238,7 @@ const AdminPanel = ({ user }) => {
                         <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-950">
                             <div>
                                 <h2 className="text-2xl font-black text-white">{editMode ? 'Edit User details' : 'Create New User'}</h2>
-                                <p className="text-slate-500 text-xs mt-0.5">Define login credentials and database scopes</p>
+                                
                             </div>
                             <button 
                                 onClick={() => setShowModal(false)} 
@@ -246,19 +253,19 @@ const AdminPanel = ({ user }) => {
                             {/* Email & Role Input Row */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
-                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 block">Email Address</label>
+                                    <label className="text-[12px] font-bold text-slate-200 uppercase tracking-wider mb-2 block">Email Address</label>
                                     <input 
                                         type="email" 
                                         disabled={editMode} 
                                         className="w-full p-3 rounded-xl bg-slate-950 border border-slate-800 text-white outline-none focus:border-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" 
                                         value={formData.email} 
                                         onChange={e => setFormData({...formData, email: e.target.value})} 
-                                        placeholder="email@company.com" 
+                                        placeholder="email@nokia.com" 
                                         required 
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 block">System Role</label>
+                                    <label className="text-[12px] font-bold text-slate-200 uppercase tracking-wider mb-2 block">System Role</label>
                                     <select 
                                         className="w-full p-3 rounded-xl bg-slate-950 border border-slate-800 text-white outline-none focus:border-blue-500 transition-colors" 
                                         value={formData.type} 
@@ -277,7 +284,7 @@ const AdminPanel = ({ user }) => {
 
                             {/* Password input row */}
                             <div>
-                                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 block">Password</label>
+                                <label className="text-[12px] font-bold text-slate-200 uppercase tracking-wider mb-2 block">Password</label>
                                 <div className="flex gap-2">
                                     <input 
                                         type="text" 
@@ -298,17 +305,17 @@ const AdminPanel = ({ user }) => {
                             </div>
 
                             {/* Customer Access Row */}
-                            <div className="p-5 bg-slate-950 rounded-2xl border border-slate-800">
+                            <div className="p-5 bg-slate-950 rounded-2xl border border-slate-800 min-h-[450px]">
                                 <div className="flex justify-between items-center mb-4">
                                     <div>
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Customer Access Control</p>
-                                        <p className="text-slate-600 text-[10px]">Select which customers this user can view</p>
+                                        <p className="text-[12px] font-bold text-slate-200 uppercase tracking-wider">Customer Access</p>
+                                        
                                     </div>
                                     <div className="flex gap-3">
                                         <button 
                                             type="button" 
                                             onClick={handleSelectAllCustomers}
-                                            className="text-[10px] font-bold text-blue-400 hover:text-blue-300 transition-colors"
+                                            className="text-[12px] font-bold text-blue-400 hover:text-blue-300 transition-colors"
                                         >
                                             Select All
                                         </button>
@@ -316,18 +323,18 @@ const AdminPanel = ({ user }) => {
                                         <button 
                                             type="button" 
                                             onClick={handleClearAllCustomers}
-                                            className="text-[10px] font-bold text-rose-400 hover:text-rose-300 transition-colors"
+                                            className="text-[12px] font-bold text-rose-400 hover:text-rose-300 transition-colors"
                                         >
                                             Clear All
                                         </button>
                                     </div>
                                 </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-44 overflow-y-auto pr-1">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[340px] overflow-y-auto pr-2">
                                     {customers.length > 0 ? (
                                         customers.map(c => (
                                             <label 
                                                 key={c} 
-                                                className="flex items-center gap-3 text-xs text-slate-300 hover:text-white cursor-pointer select-none py-1"
+                                                className="flex items-center gap-3 text-sm text-slate-300 hover:text-white cursor-pointer select-none py-1"
                                             >
                                                 <input 
                                                     type="checkbox" 
@@ -359,7 +366,7 @@ const AdminPanel = ({ user }) => {
                                     type="submit" 
                                     className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-bold transition-all shadow-lg shadow-blue-900/10"
                                 >
-                                    {editMode ? 'Update User Access' : 'Save New User'}
+                                    {editMode ? 'Update User' : 'Create New User'}
                                 </button>
                                 <button 
                                     type="button" 

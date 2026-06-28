@@ -14,6 +14,7 @@ const AsblAutomation = () => {
     const [selectedLoa, setSelectedLoa] = useState('');
     const [projectData, setProjectData] = useState([]);
     const [showAll, setShowAll] = useState(false);
+    const [originalProjectData, setOriginalProjectData] = useState([]);
 
     useEffect(() => {
         axios.get(`${process.env.REACT_APP_API_URL}/api/data/filter-options`).then(res => {
@@ -36,7 +37,12 @@ const AsblAutomation = () => {
                     `${process.env.REACT_APP_API_URL}/api/data/project-details?loa_name=${selectedLoa}`
                 )
                 .then(res => {
-                    setProjectData(res.data);
+                    const dataWithOriginal = res.data.map(row => ({
+                        ...row,
+                        original_asbl: row.asbl
+                    }));
+                    setProjectData(dataWithOriginal);
+                    setOriginalProjectData(dataWithOriginal);
                     // 🔥 Check if all ASBL values are zero
                     const hasActiveValues = res.data.some(
                         row => Math.abs(row.asbl) > 0.01
@@ -85,48 +91,96 @@ const AsblAutomation = () => {
     };
 
     const handleManualSave = async () => {
+
         if (!selectedLoa) {
-            return alert("Please select a project first");
+            return Swal.fire({
+                icon: "warning",
+                title: "No Project Selected",
+                text: "Please select a project first."
+            });
         }
+
+        // Sirf changed rows nikalo
+        const changedRows = projectData.filter(row =>
+            Number(row.asbl) !== Number(row.original_asbl)
+        );
+
+        // Koi change nahi hua
+        if (changedRows.length === 0) {
+            return Swal.fire({
+                icon: "warning",
+                title: "No Changes Found",
+                text: "Please modify ASBL value before saving."
+            });
+        }
+
+        const confirm = await Swal.fire({
+            title: "Save Changes?",
+            text: `${changedRows.length} row(s) will be updated.`,
+            icon: "question",
+            showCancelButton: true,
+            confirmButtonText: "Yes, Save",
+            cancelButtonText: "Cancel",
+            confirmButtonColor: "#10b981"
+        });
+
+        if (!confirm.isConfirmed) return;
+
         setLoading(true);
+
+        Swal.fire({
+            title: "Saving...",
+            text: "Updating ASBL values.",
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
+
         try {
-            // 🔥 Save API
+
             const res = await axios.post(
                 `${process.env.REACT_APP_API_URL}/api/data/update-manual-asbl`,
                 {
                     loa_name: selectedLoa,
-                    updates: projectData
+                    updates: changedRows
                 }
             );
-            // Immediately fetch fresh updated data
+
             const refresh = await axios.get(
                 `${process.env.REACT_APP_API_URL}/api/data/project-details?loa_name=${selectedLoa}`
             );
 
-            // Update state with fresh DB values
-            const refreshedData = [...refresh.data];
-            // Respect current toggle mode
-            if (!showAll) {
-                const filtered = refreshedData.filter(
-                    row => Math.abs(row.asbl) > 0.01
-                );
-                setProjectData(filtered);
-            } else {
-                setProjectData(refreshedData);
-            }
-            //  Success popup AFTER refresh
-            alert(res.data.message);
+            const refreshedData = refresh.data.map(row => ({
+                ...row,
+                original_asbl: row.asbl
+            }));
+
+            setProjectData(refreshedData);
+            setOriginalProjectData(refreshedData);
+
+            await Swal.fire({
+                icon: "success",
+                title: "Saved Successfully",
+                text: res.data.message,
+                confirmButtonColor: "#10b981"
+            });
 
         } catch (err) {
-            alert(
-                "Save failed: " +
-                (
+
+            Swal.fire({
+                icon: "error",
+                title: "Save Failed",
+                text:
                     err.response?.data?.error ||
                     "Server Error"
-                )
-            );
+            });
+
         } finally {
+
             setLoading(false);
+
         }
     };
 
@@ -205,12 +259,12 @@ const AsblAutomation = () => {
 
     return (
         <div className="p-6 bg-[#f8fafc] min-h-screen space-y-6 text-slate-800">
-            {loading && (
+            {/* {loading && (
                 <div className="fixed inset-0 z-[2000] bg-slate-900/70 backdrop-blur-sm flex flex-col items-center justify-center text-white">
                     <div className="w-12 h-12 border-4 border-blue-400 border-t-transparent rounded-full animate-spin mb-4"></div>
                     <p className="font-bold">Processing Data...</p>
                 </div>
-            )}
+            )} */}
 
             {/* SECTION 1: PASTE AREA */}
             <div className="bg-white/95 backdrop-blur-md rounded-[2rem] shadow-[0_8px_30px_rgb(0,0,0,0.05)] 

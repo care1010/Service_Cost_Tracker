@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import Swal from 'sweetalert2';
 
 const PtdAutomation = () => {
     const [file, setFile] = useState(null);
@@ -13,23 +14,87 @@ const PtdAutomation = () => {
     };
 
     const handleUpload = async () => {
-        if (!file) return alert("Please select a file first!");
-        
+
+        if (!file) {
+            return Swal.fire({
+                icon: 'warning',
+                title: 'No File Selected',
+                text: 'Please select a file first!',
+                confirmButtonColor: '#2563eb'
+            });
+        }
+
+        const confirm = await Swal.fire({
+            title: 'Upload PTD File?',
+            text: 'This will process the Excel file and update MySQL data.',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Yes, Upload',
+            cancelButtonText: 'Cancel',
+            confirmButtonColor: '#2563eb',
+            cancelButtonColor: '#6b7280'
+        });
+
+        if (!confirm.isConfirmed) return;
+
         const formData = new FormData();
         formData.append('file', file);
 
         setLoading(true);
-        setStatus('Processing Excel and Updating MySQL...');
+        Swal.fire({
+            title: 'Processing File...',
+            html: `
+                <div style="margin-top:10px">
+                    Processing Excel and Updating MySQL...
+                </div>
+            `,
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            showConfirmButton: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
+        });
 
         try {
-            const res = await axios.post(`${process.env.REACT_APP_API_URL}/api/data/ptd-automation`, formData);
-            alert(res.data.message);
+
+            const res = await axios.post(
+                `${process.env.REACT_APP_API_URL}/api/data/ptd-automation`,
+                formData
+            );
+
+            Swal.close();
+            await Swal.fire({
+                icon: 'success',
+                title: 'Upload Successful',
+                text: res.data.message,
+                confirmButtonColor: '#16a34a'
+            });
+
             setStatus('Success!');
+            setFile(null);
+
+            // file input reset
+            document.getElementById('ptd-file').value = '';
+
         } catch (err) {
-            alert("Upload failed!");
+            Swal.close();
+
+            Swal.fire({
+                icon: 'error',
+                title: 'Upload Failed!',
+                text:
+                    err.response?.data?.error ||
+                    'An error occurred while uploading the file.',
+                confirmButtonColor: '#dc2626'
+            });
+
             setStatus('Error occurred.');
+
         } finally {
+
             setLoading(false);
+
         }
     };
 

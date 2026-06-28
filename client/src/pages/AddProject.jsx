@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import axios from 'axios';
+import Swal from 'sweetalert2';
 
 const AddProject = () => {
     const [pasteData, setPasteData] = useState('');
@@ -10,16 +11,47 @@ const AddProject = () => {
     };
 
     const handleProcess = async () => {
-        if (!pasteData.trim()) return alert("Please paste Excel data first!");
+
+        if (!pasteData.trim()) {
+            return Swal.fire({
+                icon: 'warning',
+                title: 'No Data Found',
+                text: 'Please paste Excel data first!',
+                confirmButtonColor: '#2563eb'
+            });
+        }
+
         setLoading(true);
+
         try {
-            const res = await axios.post(`${process.env.REACT_APP_API_URL}/api/data/process-project-paste`, { rawText: pasteData });
-            alert(res.data.message);
+
+            const res = await axios.post(
+                `${process.env.REACT_APP_API_URL}/api/data/process-project-paste`,
+                { rawText: pasteData }
+            );
+
+            await Swal.fire({
+                icon: 'success',
+                title: 'Success',
+                text: res.data.message,
+                confirmButtonColor: '#16a34a'
+            });
+
             setPasteData('');
+
         } catch (err) {
-            alert(err.response?.data?.error || "Failed to process data");
+
+            Swal.fire({
+                icon: 'error',
+                title: 'Failed',
+                text: err.response?.data?.error || 'Failed to process data',
+                confirmButtonColor: '#dc2626'
+            });
+
         } finally {
+
             setLoading(false);
+
         }
     };
 
@@ -58,6 +90,15 @@ const AddProject = () => {
                 </div>
 
                 <div className="p-8 bg-slate-50/50 border-t border-slate-100 flex justify-center gap-6">
+
+                    <button
+                        onClick={handleProcess}
+                        disabled={loading}
+                        className="px-12 py-4 rounded-2xl font-bold text-sm bg-blue-600 hover:bg-blue-700 text-white shadow-xl shadow-blue-100 transition-all duration-200 ease-in-out transform hover:scale-105 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        Add Project in Exiting Loa 
+                    </button>
+
                     <button
                         onClick={handleProcess}
                         disabled={loading}

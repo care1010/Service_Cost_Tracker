@@ -1,0 +1,136 @@
+/* Entries text */
+.admin-dt-wrapper .dataTables_length label {
+    color: #ffffff !important;
+}
+
+/* Showing 1 to 52 of 52 entries */
+.admin-dt-wrapper .dataTables_info {
+    color: #ffffff !important;
+}
+
+div.dataTables_wrapper div.dataTables_info {
+    color: #ffffff !important;
+}
+
+/* Search text */
+.admin-dt-wrapper .dataTables_filter label {
+    color: #ffffff !important;
+}
+
+/* Search input */
+.admin-dt-wrapper .dataTables_filter input {
+    color: #ffffff !important;
+    background-color: #0f172a !important;
+    border: 1px solid #334155 !important;
+}
+
+/* Pagination buttons */
+.admin-dt-wrapper .dataTables_paginate .paginate_button {
+    color: #ffffff !important;
+}
+
+/* Current page button */
+.admin-dt-wrapper .dataTables_paginate .paginate_button.current {
+    background: #2563eb !important;
+    color: #ffffff !important;
+    border: none !important;
+}
+
+/* Hover */
+.admin-dt-wrapper .dataTables_paginate .paginate_button:hover {
+    background: #1e40af !important;
+    color: #ffffff !important;
+    border: none !important;
+}
+
+/* DataTables v2 */
+.admin-dt-wrapper .dt-info,
+.admin-dt-wrapper .dt-length,
+.admin-dt-wrapper .dt-search label,
+.admin-dt-wrapper .dt-paging-button {
+    color: #fff !important;
+}
+
+/* Dropdown */
+.admin-dt-wrapper .dt-length select {
+    color: #fff !important;
+    background: #0f172a !important;
+    border: 1px solid #ffffff !important;
+}
+
+/* Search box */
+.admin-dt-wrapper .dt-search input {
+    color: #fff !important;
+    background: #0f172a !important;
+    border: 1px solid #334155 !important;
+}
+
+/* Entries dropdown text */
+.admin-dt-wrapper .dataTables_length,
+.admin-dt-wrapper .dataTables_length label,
+.admin-dt-wrapper .dataTables_length select {
+    color: #ffffff !important;
+}
+
+/* Search label */
+.admin-dt-wrapper .dataTables_filter,
+.admin-dt-wrapper .dataTables_filter label {
+    color: #ffffff !important;
+}
+
+/* Search input */
+.admin-dt-wrapper .dataTables_filter input {
+    color: #ffffff !important;
+    background: #0f172a !important;
+    border: 1px solid #334155 !important;
+}
+
+/* Showing X to Y of Z entries */
+.admin-dt-wrapper .dataTables_info {
+    color: #ffffff !important;
+}
+
+/* Pagination container */
+.admin-dt-wrapper .dataTables_paginate {
+    color: #ffffff !important;
+}
+
+/* Previous, Next, page numbers */
+.admin-dt-wrapper .dataTables_paginate .paginate_button,
+.admin-dt-wrapper .dataTables_paginate .paginate_button.previous,
+.admin-dt-wrapper .dataTables_paginate .paginate_button.next,
+.admin-dt-wrapper .dataTables_paginate .paginate_button.current,
+.admin-dt-wrapper .dataTables_paginate span a {
+    color: #ffffff !important;
+}
+
+/* Current page */
+.admin-dt-wrapper .dataTables_paginate .paginate_button.current {
+    background: #2563eb !important;
+    border: none !important;
+    color: #ffffff !important;
+}
+
+/* Hover */
+.admin-dt-wrapper .dataTables_paginate .paginate_button:hover,
+.admin-dt-wrapper .dataTables_paginate span a:hover {
+    background: #1e40af !important;
+    color: #ffffff !important;
+    border: none !important;
+}
+
+/* Disabled Previous / Next */
+.admin-dt-wrapper .dataTables_paginate .paginate_button.disabled {
+    color: #94a3b8 !important;
+}
+.admin-dt-wrapper * {
+    color: white !important;
+}
+
+/* Table Header */
+.admin-dt-wrapper table.dataTable thead th {
+    background-color: #0f172a !important;
+    color: #ffffff !important;
+    border-bottom: 1px solid #334155 !important;
+    font-size: 13px;
+}

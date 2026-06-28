@@ -108,4 +108,10 @@ router.get('/non-committed-trend', dataController.getNonCommittedTrend);
 
 router.get('/trend-loas', dataController.getTrendLoas);
 
+router.get('/erp-resource', dataController.getERPResource);
+
+router.get('/erp-resource-export', dataController.exportERPResource);
+
+router.post('/erp-resource/upload',  upload.single('file'), dataController.uploadERPResource);
+
 module.exports = router;

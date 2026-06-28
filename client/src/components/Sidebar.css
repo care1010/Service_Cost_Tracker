@@ -1,7 +1,7 @@
 /* Sidebar ka main container */
 .sidebar-container {
-    width: 256px; /* 64 Tailwind unit */
-    background-color: #0f172a; /* slate-900 */
+    width: 160px; /* 64 Tailwind unit */
+    background-color: #052b55; /* slate-900 */
     color: white;
     height: 100vh;
     position: fixed;

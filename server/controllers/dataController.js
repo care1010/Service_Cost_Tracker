@@ -1,5 +1,7 @@
 const db = require('../config/db');
 const ExcelJS = require('exceljs');
+const XLSX = require('xlsx');
+const fs = require('fs');
 
 // ==============================
 // COMMON RLS FUNCTION
@@ -43,21 +45,15 @@ const applyRLS = (
 // ==============================
 const applyDashboardFilters = (
     query, conditions, params) => {
-
-    const {years, periods, customers, loa_names} = query;
-
+    const {years, periods, customers, loa_names, active_inactive} = query;
     // YEAR FILTER
     if (years) {
-
         const yearArray = years.split(',');
-
         const yearConditions =
             yearArray.map(() => "period LIKE ?");
-
         conditions.push(
             `(${yearConditions.join(' OR ')})`
         );
-
         params.push(
             ...yearArray.map(y => `${y}-%`)
         );
@@ -65,38 +61,35 @@ const applyDashboardFilters = (
 
     // PERIOD FILTER
     if (periods) {
-
         const periodArray = periods.split(',');
-
         conditions.push(
             `period IN (${periodArray.map(() => '?').join(',')})`
         );
-
         params.push(...periodArray);
     }
 
     // CUSTOMER FILTER
     if (customers) {
-
         const customerArray = customers.split(',');
-
         conditions.push(
             `customer IN (${customerArray.map(() => '?').join(',')})`
         );
-
         params.push(...customerArray);
     }
 
     // LOA FILTER
     if (loa_names) {
-
         const loaArray = loa_names.split(',');
-
         conditions.push(
             `loa_name IN (${loaArray.map(() => '?').join(',')})`
         );
-
         params.push(...loaArray);
+    }
+
+    // NEW STATUS FILTER
+    if (active_inactive) {
+        conditions.push(`active_inactive = ?`);
+        params.push(active_inactive);
     }
 };
 
@@ -609,22 +602,7 @@ exports.getFilterOptions = async (req, res) => {
     }
 };
 
-
-// 2. Naya Update Function (Dono tables ke liye)
-// exports.updateNonCommitted = async (req, res) => {
-//     const { updates, createdBy } = req.body;
-//     try {
-//         for (let item of updates) {
-//             // Dono tables mein 'non_committed_editable' ko update karein
-//             await db.query(`UPDATE summary SET non_committed_editable = ?, updated_by = ? WHERE loa_name = ? AND categories = ?`, [item.value, createdBy, item.loa_name, item.categories ]);
-//             await db.query(`UPDATE final_dashboard_table SET non_committed_editable = ?, updated_by = ? WHERE loa_name = ? AND categories = ?`, [item.value, createdBy, item.loa_name, item.categories ]);
-//         }
-//         res.status(200).json({ message: "Changes saved to Editable column!" });
-//     } catch (error) { 
-//         console.error("updateNonCommitted Error:", error);
-//         res.status(500).json({ error: error.message }); }
-// };
-
+// Non committed cell inputs from user update
 exports.updateNonCommitted = async (req, res) => {
     const { updates, createdBy } = req.body;
 
@@ -646,7 +624,8 @@ exports.updateNonCommitted = async (req, res) => {
                     non_committed_editable,
                     customer,
                     bu,
-                    loa_id
+                    loa_id,
+                    active_inactive
                 FROM summary
                 WHERE loa_name = ?
                   AND categories = ?
@@ -668,6 +647,9 @@ exports.updateNonCommitted = async (req, res) => {
 
             const loaId =
             existing?.[0]?.loa_id || '';
+
+            const activeInactive =
+            existing?.[0]?.active_inactive || '';
 
             // Summary update
             await db.query(
@@ -716,9 +698,10 @@ exports.updateNonCommitted = async (req, res) => {
                     categories,
                     old_value,
                     new_value,
+                    active_inactive,
                     month_year
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `,
                 [
                     createdBy,
@@ -729,6 +712,7 @@ exports.updateNonCommitted = async (req, res) => {
                     item.categories,
                     oldValue,
                     item.value,
+                    activeInactive,
                     monthYear
                 ]
             );
@@ -1205,124 +1189,114 @@ exports.fullRefresh = async (req, res) => {
 };
 
 
-// 1. Dashboard Filters (SYNCED FILTERS)
+// 1. Dashboard Filters (SYNCED All Dashboard FILTERS with Multi-Select Fix)
 exports.getDashboardFilters = async (req, res) => {
     try {
-        const {
-            years,
-            periods,
-            customers,
-            loa_names,type, allowedCustomers
-        } = req.query;
+        const { type, allowedCustomers } = req.query;
 
-        let conditions = [
-            "period IS NOT NULL",
-            "customer IS NOT NULL",
-            "customer <> ''",
-            "loa_name IS NOT NULL",
-            "loa_name <> ''"
-        ];
+        // 🔥 Helper function to build WHERE clause dynamically by excluding the active filter
+        const buildConditions = (excludeKey) => {
+            const {
+                years,
+                periods,
+                customers,
+                active_inactive,
+                loa_names
+            } = req.query;
 
-        let params = [];
+            let conditions = [
+                "period IS NOT NULL",
+                "customer IS NOT NULL",
+                "customer <> ''",
+                "loa_name IS NOT NULL",
+                "loa_name <> ''"
+            ];
+            let params = [];
 
-        applyRLS(type, allowedCustomers, conditions, params);
+            // Apply Row Level Security (Always active)
+            applyRLS(type, allowedCustomers, conditions, params);
 
-        // YEAR FILTER
-        if (years) {
-            const yearArray = years.split(',');
-            const yearConditions = yearArray.map(
-                () => "period LIKE ?"
-            );
+            // YEAR FILTER (Ignore if fetching Years/Periods options)
+            if (years && excludeKey !== 'years' && excludeKey !== 'periods') {
+                const yearArray = years.split(',');
+                const yearConditions = yearArray.map(() => "period LIKE ?");
+                conditions.push(`(${yearConditions.join(' OR ')})`);
+                params.push(...yearArray.map(y => `${y}-%`));
+            }
 
-            conditions.push(
-                `(${yearConditions.join(' OR ')})`
-            );
+            // PERIOD FILTER (Ignore if fetching Periods/Years options)
+            if (periods && excludeKey !== 'periods' && excludeKey !== 'years') {
+                const periodArray = periods.split(',');
+                const placeholders = periodArray.map(() => '?').join(',');
+                conditions.push(`period IN (${placeholders})`);
+                params.push(...periodArray);
+            }
 
-            params.push(
-                ...yearArray.map(y => `${y}-%`)
-            );
-        }
+            // CUSTOMER FILTER (Ignore if fetching Customers options)
+            if (customers && excludeKey !== 'customers') {
+                const customerArray = customers.split(',');
+                const placeholders = customerArray.map(() => '?').join(',');
+                conditions.push(`customer IN (${placeholders})`);
+                params.push(...customerArray);
+            }
 
-        // PERIOD FILTER
-        if (periods) {
-            const periodArray = periods.split(',');
-            const placeholders =
-                periodArray.map(() => '?').join(',');
-            conditions.push(
-                `period IN (${placeholders})`
-            );
-            params.push(...periodArray);
-        }
+            // LOA FILTER (Ignore if fetching LOA Name options)
+            if (loa_names && excludeKey !== 'loa_names') {
+                const loaArray = loa_names.split(',');
+                const placeholders = loaArray.map(() => '?').join(',');
+                conditions.push(`loa_name IN (${placeholders})`);
+                params.push(...loaArray);
+            }
 
-        // CUSTOMER FILTER
-        if (customers) {
-            const customerArray =
-                customers.split(',');
-            const placeholders =
-                customerArray.map(() => '?').join(',');
-            conditions.push(
-                `customer IN (${placeholders})`
-            );
-            params.push(...customerArray);
-        }
+            // Active Inactive Status Filter (Always active)
+            if (active_inactive) {
+                conditions.push(`active_inactive = ?`);
+                params.push(active_inactive);
+            }
 
-        // LOA FILTER
-        if (loa_names) {
-            const loaArray =
-                loa_names.split(',');
-            const placeholders =
-                loaArray.map(() => '?').join(',');
-            conditions.push(
-                `loa_name IN (${placeholders})`
-            );
-            params.push(...loaArray);
-        }
-        const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+            const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+            return { whereSql, params };
+        };
 
-        // PERIODS
+        // 1. Fetch PERIODS & YEARS (Exclude years/periods filters from condition)
+        const periodQueryObj = buildConditions('periods');
         const [periodRows] = await db.query(`
             SELECT DISTINCT period
             FROM final_dashboard_table
-            ${whereSql}
+            ${periodQueryObj.whereSql}
             ORDER BY period DESC
-        `, params);
+        `, periodQueryObj.params);
 
-        // CUSTOMERS
+        // 2. Fetch CUSTOMERS (Exclude customers filters from condition)
+        const customerQueryObj = buildConditions('customers');
         const [customerRows] = await db.query(`
             SELECT DISTINCT customer
             FROM final_dashboard_table
-            ${whereSql}
+            ${customerQueryObj.whereSql}
             ORDER BY customer ASC
-        `, params);
+        `, customerQueryObj.params);
 
-        // LOA NAMES
+        // 3. Fetch LOA NAMES (Exclude loa_names filters from condition)
+        const loaQueryObj = buildConditions('loa_names');
         const [loaRows] = await db.query(`
             SELECT DISTINCT loa_name
             FROM final_dashboard_table
-            ${whereSql}
+            ${loaQueryObj.whereSql}
             ORDER BY loa_name ASC
-        `, params);
+        `, loaQueryObj.params);
 
-        // YEARS
+        // Process distinct years from compiled period rows
         const yearsList = [
             ...new Set(
-                periodRows.map(
-                    r => r.period?.split('-')[0]
-                )
+                periodRows.map(r => r.period?.split('-')[0])
             )
         ].sort((a, b) => b - a);
+
         res.status(200).json({
             years: yearsList,
-            periods: periodRows.map(
-                r => r.period
-            ),
-            customers: customerRows.map(
-                r => r.customer
-            ),
-
-            loa_names: loaRows.map(
-                r => r.loa_name
-            )
+            periods: periodRows.map(r => r.period),
+            customers: customerRows.map(r => r.customer),
+            loa_names: loaRows.map(r => r.loa_name)
         });
     } catch (error) {
         res.status(500).json({
@@ -1333,58 +1307,40 @@ exports.getDashboardFilters = async (req, res) => {
 
 // 2. Filtered BU Analytics
 exports.getBuAnalytics = async (req, res) => {
-
     try {
-
-        const { years, periods, customers, loa_names, showAll, type, allowedCustomers } = req.query;
-
+        const { years, periods, customers, loa_names, active_inactive, showAll, type, allowedCustomers } = req.query;
         let conditions = [
             "categories NOT IN ('Local Materials', 'Not to considered')",
             "cost_revenue <> 'NTC'",
             "cost_revenue = 'Cost'"
         ];
-
         let params = [];
-
         // ======================
         // RLS LOGIC
         // ======================
-
         applyRLS(type, allowedCustomers, conditions, params);
 
         // MULTI YEAR FILTER
-
         if (years) {
-
             const yearArray = years.split(',');
-
             const yearConditions = yearArray.map(() =>
                 "period LIKE ?"
             );
-
             conditions.push(`(${yearConditions.join(' OR ')})`);
-
             params.push(
                 ...yearArray.map(y => `${y}-%`)
             );
-
         }
 
         // MULTI PERIOD FILTER
-
         if (periods) {
-
             const periodArray = periods.split(',');
-
             const placeholders =
                 periodArray.map(() => '?').join(',');
-
             conditions.push(
                 `period IN (${placeholders})`
             );
-
             params.push(...periodArray);
-
         }
 
         // MULTI CUSTOMER FILTER
@@ -1410,36 +1366,41 @@ exports.getBuAnalytics = async (req, res) => {
             );
             params.push(...loaArray);
         }
+
+        // Active Inactive Status Filter
+        if (active_inactive) {
+            conditions.push(`active_inactive = ?`);
+            params.push(active_inactive);
+        }
+
         const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-
         const sql = `
-
-SELECT
-    bu,
-    SUM(asbl) AS asbl,
-    SUM(ptd) AS ptd,
-    SUM(eac) AS eac
-FROM (
-    SELECT
-        bu,
-        MAX(asbl) AS asbl,
-        SUM(ptd) AS ptd,
-        (
-            SUM(ptd)
-            + MAX(total_oc_fixed)
-            + MAX(non_committed_editable)
-        ) AS eac
-    FROM final_dashboard_table
-    ${whereSql}
-    GROUP BY
-        bu,
-        customer,
-        loa_id,
-        loa_name,
-        cost_revenue,
-        categories
-) x
-GROUP BY bu`;
+            SELECT
+                bu,
+                SUM(asbl) AS asbl,
+                SUM(ptd) AS ptd,
+                SUM(eac) AS eac
+            FROM (
+                SELECT
+                    bu,
+                    MAX(asbl) AS asbl,
+                    SUM(ptd) AS ptd,
+                    (
+                        SUM(ptd)
+                        + MAX(total_oc_fixed)
+                        + MAX(non_committed_editable)
+                    ) AS eac
+                FROM final_dashboard_table
+                ${whereSql}
+                GROUP BY
+                    bu,
+                    customer,
+                    loa_id,
+                    loa_name,
+                    cost_revenue,
+                    categories
+            ) x
+            GROUP BY bu`;
 
         const [rows] =
             await db.query(sql, params);
@@ -1453,11 +1414,8 @@ GROUP BY bu`;
 
 // 3. Filtered LOA Analytics
 exports.getLoaAnalytics = async (req, res) => {
-
     try {
-
-        const { years, periods, customers, loa_names, showAll, type, allowedCustomers } = req.query;
-
+        const { years, periods, customers, loa_names, active_inactive, showAll, type, allowedCustomers } = req.query;
         const limitSql =
             showAll === 'true'
                 ? ''
@@ -1468,13 +1426,11 @@ exports.getLoaAnalytics = async (req, res) => {
             "cost_revenue <> 'NTC'",
             "cost_revenue = 'Cost'"
         ];
-
         let params = [];
 
         // ======================
         // RLS LOGIC
         // ======================
-
         applyRLS(type, allowedCustomers, conditions, params);
 
         // MULTI YEAR FILTER
@@ -1483,21 +1439,15 @@ exports.getLoaAnalytics = async (req, res) => {
             const yearConditions = yearArray.map(() =>
                 "period LIKE ?"
             );
-
             conditions.push(`(${yearConditions.join(' OR ')})`);
-
             params.push(
                 ...yearArray.map(y => `${y}-%`)
             );
-
         }
 
         // MULTI PERIOD FILTER
-
         if (periods) {
-
             const periodArray = periods.split(',');
-
             const placeholders =
                 periodArray.map(() => '?').join(',');
             conditions.push(
@@ -1507,43 +1457,36 @@ exports.getLoaAnalytics = async (req, res) => {
         }
 
         // MULTI CUSTOMER FILTER
-
         if (customers) {
-
             const customerArray =
                 customers.split(',');
-
             const placeholders =
                 customerArray.map(() => '?').join(',');
-
             conditions.push(
                 `customer IN (${placeholders})`
             );
-
             params.push(...customerArray);
-
         }
 
         // MULTI LOA FILTER
-
         if (loa_names) {
-
             const loaArray =
                 loa_names.split(',');
-
             const placeholders =
                 loaArray.map(() => '?').join(',');
-
             conditions.push(
                 `loa_name IN (${placeholders})`
             );
-
             params.push(...loaArray);
+        }
 
+        // Active Inactive Status Filter
+        if (active_inactive) {
+            conditions.push(`active_inactive = ?`);
+            params.push(active_inactive);
         }
 
         const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-
         const sql = `
                 SELECT
                     loa_name,
@@ -1584,20 +1527,16 @@ exports.getLoaAnalytics = async (req, res) => {
     }
 };
 
-// 4. Non Committed Trend for LOA (Review Changes page ke liye)
+// 4. Non Committed Trend for LOA (Dashboard page ke liye)
 exports.getNonCommittedTrend = async (req, res) => {
-
     try {
-
-        const { loa_name = '' } = req.query;
-
+        const { loa_name = '' , active_inactive = ''} = req.query;
         const currentMonthYear = new Date()
             .toLocaleString('en-US', {
                 month: 'short',
                 year: 'numeric'
             })
             .replace(' ', '-');
-
         const [rows] = await db.query(
             `
             SELECT
@@ -1622,75 +1561,59 @@ exports.getNonCommittedTrend = async (req, res) => {
                 ) l2
                 ON l1.id = l2.latest_id
             ) latest
-
             WHERE
                 (? = '' OR latest.loa_name = ?)
+                AND (? = '' OR latest.active_inactive = ?)
                 AND latest.month_year <> ?
-
             GROUP BY latest.month_year
-
             ORDER BY STR_TO_DATE(
                 CONCAT('01-', latest.month_year),
                 '%d-%b-%Y'
             ) DESC
-
             LIMIT 6
             `,
             [
                 loa_name,
                 loa_name,
+                active_inactive,
+                active_inactive,
                 currentMonthYear
             ]
         );
-
         res.json(rows);
-
     } catch (error) {
-
         console.error(error);
-
         res.status(500).json({
             error: error.message
         });
-
     }
 };
 
-// 5. Distinct LOA Names for Trend Dropdown (Review Changes page ke liye)
+// 5. Distinct LOA Names for Trend Dropdown (Dashboard page ke liye)
 exports.getTrendLoas = async (req, res) => {
-
     try {
-
         const [rows] = await db.query(`
             SELECT DISTINCT loa_name
             FROM user_activity_logs
             ORDER BY loa_name
         `);
-
         res.json(rows);
-
     } catch (error) {
-
         res.status(500).json({
             error: error.message
         });
-
     }
-
 };
 
 // 3. Final Dashboard ke liye BU-wise aggregated data (Dashboard page ke liye)
 exports.getFinalDashboardTable = async (req, res) => {
     try {
-
         const { type, allowedCustomers } = req.query;
-
         let conditions = [
             "categories NOT IN ('Local Materials', 'Not to considered')",
             "cost_revenue <> 'NTC'",
             "cost_revenue = 'Cost'"
         ];
-
         let params = [];
 
         // ======================
@@ -1698,10 +1621,8 @@ exports.getFinalDashboardTable = async (req, res) => {
         // ======================
         applyRLS(type, allowedCustomers, conditions, params);
         applyDashboardFilters(req.query, conditions, params);
-
         const whereSql =
             `WHERE ${conditions.join(' AND ')}`;
-
         const sql = `
             SELECT
                 bu,
@@ -1766,105 +1687,77 @@ exports.getFinalDashboardTable = async (req, res) => {
 
 // 2. LOA-wise detailed table
 exports.getCostViewTable = async (req, res) => {
-
     try {
-
         const { type, allowedCustomers } = req.query;
-
         let conditions = [
             "categories NOT IN ('Local Materials', 'Not to considered')",
             "cost_revenue <> 'NTC'",
             "cost_revenue = 'Cost'"
         ];
-
         let params = [];
-
         applyRLS(type, allowedCustomers, conditions, params);
         applyDashboardFilters(req.query, conditions, params);
 
         const whereSql =
             `WHERE ${conditions.join(' AND ')}`;
-
         const sql = `
-    SELECT
-        bu,
-        customer,
-        loa_id,
-        loa_name,
-
-        ROUND(SUM(asbl), 2) AS asbl,
-
-        ROUND(SUM(asbl_loa), 2) AS asbl_loa,
-
-        ROUND(SUM(ptd), 2) AS ptd,
-
-        ROUND(SUM(open_commitment), 2) AS open_commitment,
-
-        ROUND(SUM(non_committed), 2) AS non_committed,
-
-        ROUND(SUM(eac), 2) AS eac,
-
-        ROUND(SUM(eac_vs_asbl), 2) AS eac_vs_asbl
-
-    FROM (
-
-        SELECT
-            bu,
-            loa_name,
-            customer,
-            loa_id,
-            cost_revenue,
-            categories,
-
-            COALESCE(MAX(asbl), 0) AS asbl,
-
-            COALESCE(MAX(asbl_loa), 0) AS asbl_loa,
-
-            COALESCE(SUM(ptd), 0) AS ptd,
-
-            COALESCE(MAX(total_oc_fixed), 0) AS open_commitment,
-
-            COALESCE(MAX(non_committed_editable), 0) AS non_committed,
-
-            (
-                COALESCE(SUM(ptd), 0)
-                + COALESCE(MAX(total_oc_fixed), 0)
-                + COALESCE(MAX(non_committed_editable), 0)
-            ) AS eac,
-
-            (
-                COALESCE(MAX(asbl), 0)
-                -
-                (
-                    COALESCE(SUM(ptd), 0)
-                    + COALESCE(MAX(total_oc_fixed), 0)
-                    + COALESCE(MAX(non_committed_editable), 0)
-                )
-            ) AS eac_vs_asbl
-
-        FROM final_dashboard_table
-
-        ${whereSql}
-
-        GROUP BY
-            bu,
-            loa_name,
-            customer,
-            loa_id,
-            cost_revenue,
-            categories
-
-    ) x
-
-    GROUP BY
-        bu,
-        customer,
-        loa_id,
-        loa_name
-
-    ORDER BY
-        SUM(asbl) DESC
-`;
+                SELECT
+                    bu,
+                    customer,
+                    loa_id,
+                    loa_name,
+                    ROUND(SUM(asbl), 2) AS asbl,
+                    ROUND(SUM(asbl_loa), 2) AS asbl_loa,
+                    ROUND(SUM(ptd), 2) AS ptd,
+                    ROUND(SUM(open_commitment), 2) AS open_commitment,
+                    ROUND(SUM(non_committed), 2) AS non_committed,
+                    ROUND(SUM(eac), 2) AS eac,
+                    ROUND(SUM(eac_vs_asbl), 2) AS eac_vs_asbl
+                FROM (
+                    SELECT
+                        bu,
+                        loa_name,
+                        customer,
+                        loa_id,
+                        cost_revenue,
+                        categories,
+                        COALESCE(MAX(asbl), 0) AS asbl,
+                        COALESCE(MAX(asbl_loa), 0) AS asbl_loa,
+                        COALESCE(SUM(ptd), 0) AS ptd,
+                        COALESCE(MAX(total_oc_fixed), 0) AS open_commitment,
+                        COALESCE(MAX(non_committed_editable), 0) AS non_committed,
+                        (
+                            COALESCE(SUM(ptd), 0)
+                            + COALESCE(MAX(total_oc_fixed), 0)
+                            + COALESCE(MAX(non_committed_editable), 0)
+                        ) AS eac,
+                        (
+                            COALESCE(MAX(asbl), 0)
+                            -
+                            (
+                                COALESCE(SUM(ptd), 0)
+                                + COALESCE(MAX(total_oc_fixed), 0)
+                                + COALESCE(MAX(non_committed_editable), 0)
+                            )
+                        ) AS eac_vs_asbl
+                    FROM final_dashboard_table
+                    ${whereSql}
+                    GROUP BY
+                        bu,
+                        loa_name,
+                        customer,
+                        loa_id,
+                        cost_revenue,
+                        categories
+                ) x
+                GROUP BY
+                    bu,
+                    customer,
+                    loa_id,
+                    loa_name
+                ORDER BY
+                    SUM(asbl) DESC
+            `;
         const [rows] = await db.query(sql, params);
         res.json(rows);
     } catch (error) {
@@ -1878,10 +1771,8 @@ exports.getCostViewTable = async (req, res) => {
 // CUSTOMER VIEW TABLE
 
 exports.getCustomerViewTable = async (req, res) => {
-
     try {
         const { type, allowedCustomers } = req.query;
-
         const conditions = [
             "categories NOT IN ('Local Materials', 'Not to considered')",
             "cost_revenue <> 'NTC'",
@@ -1895,193 +1786,138 @@ exports.getCustomerViewTable = async (req, res) => {
         const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
         const sql = `
-
-            SELECT
-                customer,
-
-                ROUND(SUM(asbl), 2) AS asbl,
-
-                ROUND(SUM(asbl_loa), 2) AS asbl_loa,
-
-                ROUND(SUM(ptd), 2) AS ptd,
-
-                ROUND(SUM(open_commitment), 2) AS open_commitment,
-
-                ROUND(SUM(non_committed), 2) AS non_committed,
-
-                ROUND(SUM(eac), 2) AS eac,
-
-                ROUND(SUM(eac_vs_asbl), 2) AS eac_vs_asbl
-
-            FROM (
-
                 SELECT
-
                     customer,
-
-                    MAX(asbl) AS asbl,
-
-                    MAX(asbl_loa) AS asbl_loa,
-
-                    SUM(ptd) AS ptd,
-
-                    MAX(total_oc_fixed) AS open_commitment,
-
-                    MAX(non_committed_editable) AS non_committed,
-
-                    (
-                        SUM(ptd)
-                        + MAX(total_oc_fixed)
-                        + MAX(non_committed_editable)
-                    ) AS eac,
-
-                    (
-                        MAX(asbl)
-                        -
+                    ROUND(SUM(asbl), 2) AS asbl,
+                    ROUND(SUM(asbl_loa), 2) AS asbl_loa,
+                    ROUND(SUM(ptd), 2) AS ptd,
+                    ROUND(SUM(open_commitment), 2) AS open_commitment,
+                    ROUND(SUM(non_committed), 2) AS non_committed,
+                    ROUND(SUM(eac), 2) AS eac,
+                    ROUND(SUM(eac_vs_asbl), 2) AS eac_vs_asbl
+                FROM (
+                    SELECT
+                        customer,
+                        MAX(asbl) AS asbl,
+                        MAX(asbl_loa) AS asbl_loa,
+                        SUM(ptd) AS ptd,
+                        MAX(total_oc_fixed) AS open_commitment,
+                        MAX(non_committed_editable) AS non_committed,
                         (
                             SUM(ptd)
                             + MAX(total_oc_fixed)
                             + MAX(non_committed_editable)
-                        )
-                    ) AS eac_vs_asbl
-
-                FROM final_dashboard_table
-
-                ${whereSql}
-
-                GROUP BY
-                    customer,
-                    loa_id,
-                    loa_name,
-                    cost_revenue,
-                    categories
-
-            ) x
-
-            GROUP BY customer
-
-            ORDER BY asbl DESC
-        `;
+                        ) AS eac,
+                        (
+                            MAX(asbl)
+                            -
+                            (
+                                SUM(ptd)
+                                + MAX(total_oc_fixed)
+                                + MAX(non_committed_editable)
+                            )
+                        ) AS eac_vs_asbl
+                    FROM final_dashboard_table
+                    ${whereSql}
+                    GROUP BY
+                        customer,
+                        loa_id,
+                        loa_name,
+                        cost_revenue,
+                        categories
+                ) x
+                GROUP BY customer
+                ORDER BY asbl DESC
+            `;
 
         const [rows] = await db.query(sql, params);
-
         res.json(rows);
-
     } catch (error) {
-
         console.error(error);
-
         res.status(500).json({
             error: error.message
         });
-
     }
-
 };
 
 // BU + CUSTOMER VIEW
-
 exports.getBuCustomerViewTable = async (req, res) => {
-
     try {
-
         const { type, allowedCustomers } = req.query;
-
         let conditions = [
             "categories NOT IN ('Local Materials', 'Not to considered')",
             "cost_revenue <> 'NTC'",
             "cost_revenue = 'Cost'"
         ];
-
         let params = [];
-
         applyRLS(type, allowedCustomers, conditions, params);
         applyDashboardFilters(req.query, conditions, params);
 
         const whereSql =
             `WHERE ${conditions.join(' AND ')}`;
-
         const sql = `
-            SELECT
-                bu,
-                customer,
-
-                ROUND(SUM(asbl), 2) AS asbl,
-                ROUND(SUM(asbl_loa), 2) AS asbl_loa,
-                ROUND(SUM(ptd), 2) AS ptd,
-                ROUND(SUM(open_commitment), 2) AS open_commitment,
-                ROUND(SUM(non_committed), 2) AS non_committed,
-                ROUND(SUM(eac), 2) AS eac,
-                ROUND(SUM(eac_vs_asbl), 2) AS eac_vs_asbl
-
-            FROM (
-
                 SELECT
-
                     bu,
                     customer,
-                    loa_id,
-                    loa_name,
-                    cost_revenue,
-                    categories,
-
-                    MAX(asbl) AS asbl,
-                    MAX(asbl_loa) AS asbl_loa,
-                    SUM(ptd) AS ptd,
-                    MAX(total_oc_fixed) AS open_commitment,
-                    MAX(non_committed_editable) AS non_committed,
-
-                    (
-                        SUM(ptd)
-                        + MAX(total_oc_fixed)
-                        + MAX(non_committed_editable)
-                    ) AS eac,
-
-                    (
-                        MAX(asbl)
-                        -
+                    ROUND(SUM(asbl), 2) AS asbl,
+                    ROUND(SUM(asbl_loa), 2) AS asbl_loa,
+                    ROUND(SUM(ptd), 2) AS ptd,
+                    ROUND(SUM(open_commitment), 2) AS open_commitment,
+                    ROUND(SUM(non_committed), 2) AS non_committed,
+                    ROUND(SUM(eac), 2) AS eac,
+                    ROUND(SUM(eac_vs_asbl), 2) AS eac_vs_asbl
+                FROM (
+                    SELECT
+                        bu,
+                        customer,
+                        loa_id,
+                        loa_name,
+                        cost_revenue,
+                        categories,
+                        MAX(asbl) AS asbl,
+                        MAX(asbl_loa) AS asbl_loa,
+                        SUM(ptd) AS ptd,
+                        MAX(total_oc_fixed) AS open_commitment,
+                        MAX(non_committed_editable) AS non_committed,
                         (
                             SUM(ptd)
                             + MAX(total_oc_fixed)
                             + MAX(non_committed_editable)
-                        )
-                    ) AS eac_vs_asbl
-
-                FROM final_dashboard_table
-
-                ${whereSql}
-
+                        ) AS eac,
+                        (
+                            MAX(asbl)
+                            -
+                            (
+                                SUM(ptd)
+                                + MAX(total_oc_fixed)
+                                + MAX(non_committed_editable)
+                            )
+                        ) AS eac_vs_asbl
+                    FROM final_dashboard_table
+                    ${whereSql}
+                    GROUP BY
+                        bu,
+                        customer,
+                        loa_id,
+                        loa_name,
+                        cost_revenue,
+                        categories
+                ) x
                 GROUP BY
                     bu,
-                    customer,
-                    loa_id,
-                    loa_name,
-                    cost_revenue,
-                    categories
-
-            ) x
-
-            GROUP BY
-                bu,
-                customer
-
-            ORDER BY
-                bu ASC,
-                asbl DESC
-        `;
+                    customer
+                ORDER BY
+                    bu ASC,
+                    asbl DESC
+            `;
 
         const [rows] = await db.query(sql, params);
-
         res.json(rows);
-
     } catch (error) {
-
         res.status(500).json({
             error: error.message
         });
-
     }
-
 };
 
 // CUSTOMER + BU VIEW
@@ -2093,97 +1929,74 @@ exports.getCustomerBuViewTable = async (req, res) => {
             "cost_revenue <> 'NTC'",
             "cost_revenue = 'Cost'"
         ];
-
         let params = [];
-
         applyRLS(type, allowedCustomers, conditions, params);
         applyDashboardFilters(req.query, conditions, params);
-
         const whereSql =
             `WHERE ${conditions.join(' AND ')}`;
-
         const sql = `
-            SELECT
-
-                customer,
-                bu,
-
-                ROUND(SUM(asbl), 2) AS asbl,
-                ROUND(SUM(asbl_loa), 2) AS asbl_loa,
-                ROUND(SUM(ptd), 2) AS ptd,
-                ROUND(SUM(open_commitment), 2) AS open_commitment,
-                ROUND(SUM(non_committed), 2) AS non_committed,
-                ROUND(SUM(eac), 2) AS eac,
-                ROUND(SUM(eac_vs_asbl), 2) AS eac_vs_asbl
-
-            FROM (
-
                 SELECT
-
                     customer,
                     bu,
-                    loa_id,
-                    loa_name,
-                    cost_revenue,
-                    categories,
-
-                    MAX(asbl) AS asbl,
-                    MAX(asbl_loa) AS asbl_loa,
-                    SUM(ptd) AS ptd,
-                    MAX(total_oc_fixed) AS open_commitment,
-                    MAX(non_committed_editable) AS non_committed,
-
-                    (
-                        SUM(ptd)
-                        + MAX(total_oc_fixed)
-                        + MAX(non_committed_editable)
-                    ) AS eac,
-
-                    (
-                        MAX(asbl)
-                        -
+                    ROUND(SUM(asbl), 2) AS asbl,
+                    ROUND(SUM(asbl_loa), 2) AS asbl_loa,
+                    ROUND(SUM(ptd), 2) AS ptd,
+                    ROUND(SUM(open_commitment), 2) AS open_commitment,
+                    ROUND(SUM(non_committed), 2) AS non_committed,
+                    ROUND(SUM(eac), 2) AS eac,
+                    ROUND(SUM(eac_vs_asbl), 2) AS eac_vs_asbl
+                FROM (
+                    SELECT
+                        customer,
+                        bu,
+                        loa_id,
+                        loa_name,
+                        cost_revenue,
+                        categories,
+                        MAX(asbl) AS asbl,
+                        MAX(asbl_loa) AS asbl_loa,
+                        SUM(ptd) AS ptd,
+                        MAX(total_oc_fixed) AS open_commitment,
+                        MAX(non_committed_editable) AS non_committed,
                         (
                             SUM(ptd)
                             + MAX(total_oc_fixed)
                             + MAX(non_committed_editable)
-                        )
-                    ) AS eac_vs_asbl
-
-                FROM final_dashboard_table
-
-                ${whereSql}
-
+                        ) AS eac,
+                        (
+                            MAX(asbl)
+                            -
+                            (
+                                SUM(ptd)
+                                + MAX(total_oc_fixed)
+                                + MAX(non_committed_editable)
+                            )
+                        ) AS eac_vs_asbl
+                    FROM final_dashboard_table
+                    ${whereSql}
+                    GROUP BY
+                        customer,
+                        bu,
+                        loa_id,
+                        loa_name,
+                        cost_revenue,
+                        categories
+                ) x
                 GROUP BY
                     customer,
-                    bu,
-                    loa_id,
-                    loa_name,
-                    cost_revenue,
-                    categories
-
-            ) x
-
-            GROUP BY
-                customer,
-                bu
-
-            ORDER BY
-                customer ASC,
-                asbl DESC
-        `;
+                    bu
+                ORDER BY
+                    customer ASC,
+                    asbl DESC
+            `;
 
         const [rows] = await db.query(sql, params);
-
         res.json(rows);
-
     } catch (error) {
-
         res.status(500).json({
             error: error.message
         });
-
     }
-
 };
 
 // 4. Negative LOA Detailed Table
@@ -2459,4 +2272,351 @@ exports.checkPendingChanges = async (req, res) => {
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
+};
+
+// erp resource page - table view
+exports.getERPResource = async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1;
+    const pageSize = parseInt(req.query.pageSize) || 50;
+    const search = req.query.search || '';
+
+    const offset = (page - 1) * pageSize;
+
+    let whereClause = '';
+    let params = [];
+
+    if (search) {
+      whereClause = `
+        WHERE
+          tr_global_period LIKE ?
+          OR lm_nokia_id_name LIKE ?
+          OR resource_nokia_id_name LIKE ?
+          OR home_country LIKE ?
+          OR customer_team LIKE ?
+          OR gic_name LIKE ?
+      `;
+
+      const searchValue = `%${search}%`;
+
+      params = [
+        searchValue,
+        searchValue,
+        searchValue,
+        searchValue,
+        searchValue,
+        searchValue
+      ];
+    }
+
+    const [countRows] = await db.query(
+      `SELECT COUNT(*) as total
+       FROM erp_resource
+       ${whereClause}`,
+      params
+    );
+
+    const totalRecords = countRows[0].total;
+
+    const [rows] = await db.query(
+      `
+      SELECT *
+      FROM erp_resource
+      ${whereClause}
+      ORDER BY id ASC
+      LIMIT ? OFFSET ?
+      `,
+      [...params, pageSize, offset]
+    );
+
+    res.json({
+      data: rows,
+      totalRecords,
+      page,
+      pageSize
+    });
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: 'Failed to fetch ERP Resource data'
+    });
+  }
+};
+
+// export ERP Resource data in excel
+exports.exportERPResource = async (req, res) => {
+  try {
+
+    const search = req.query.search || '';
+
+    let whereClause = '';
+    let params = [];
+
+    if (search) {
+      whereClause = `
+        WHERE
+          tr_global_period LIKE ?
+          OR lm_nokia_id_name LIKE ?
+          OR resource_nokia_id_name LIKE ?
+          OR home_country LIKE ?
+          OR customer_team LIKE ?
+      `;
+
+      const searchValue = `%${search}%`;
+
+      params = [
+        searchValue,
+        searchValue,
+        searchValue,
+        searchValue,
+        searchValue
+      ];
+    }
+
+    const [rows] = await db.query(
+      `
+      SELECT *
+      FROM erp_resource
+      ${whereClause}
+      ORDER BY id ASC
+      `,
+      params
+    );
+
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('ERP Resource');
+    const today = new Date();
+
+    const formattedDate = today.toLocaleDateString('en-GB', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+    }).replace(/ /g, '-'); // 16-Jun-2026
+
+
+    worksheet.columns = [
+      { header: 'ID', key: 'id', width: 10 },
+      { header: 'TR Global Period', key: 'tr_global_period', width: 20 },
+      { header: 'LM Nokia ID Name', key: 'lm_nokia_id_name', width: 35 },
+      { header: 'Home Country', key: 'home_country', width: 20 },
+      { header: 'Resource ERP Type', key: 'resource_erp_type', width: 20 },
+      { header: 'Resource Person Number', key: 'resource_person_number', width: 20 },
+      { header: 'Resource Nokia ID Name', key: 'resource_nokia_id_name', width: 35 },
+      { header: 'Time Entry Date', key: 'time_entry_date', width: 20 },
+      { header: 'Recorded Hours', key: 'recorded_hours', width: 15 },
+      { header: 'Time Entry Status', key: 'time_entry_status', width: 20 },
+      { header: 'Daily Working Hours', key: 'daily_working_hours', width: 20 },
+      { header: 'TR WBS/Care Contract/Opp', key: 'tr_wbs_care_contract_opp', width: 35 },
+      { header: 'TR WBS Description', key: 'tr_wbs_care_contract_opp_description', width: 50 },
+      { header: 'SVO ID', key: 'svo_id', width: 20 },
+      { header: 'SVO Description', key: 'svo_description', width: 40 },
+      { header: 'GIC', key: 'gic', width: 20 },
+      { header: 'GIC Name', key: 'gic_name', width: 30 },
+      { header: 'Customer Team', key: 'customer_team', width: 30 },
+      { header: 'Time Approval Date', key: 'time_approval_date', width: 20 },
+      { header: 'LM Email', key: 'lm_email', width: 35 },
+      { header: 'Resource Email', key: 'resource_email', width: 35 }
+    //   { header: 'Created By', key: 'created_by', width: 25 },
+    //   { header: 'Created At', key: 'created_at', width: 25 }
+    ];
+
+    rows.forEach(row => {
+      worksheet.addRow(row);
+    });
+
+    worksheet.getRow(1).font = {
+      bold: true
+    };
+
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename=ERP_Resource_${formattedDate}.xlsx`
+    );
+    await workbook.xlsx.write(res);
+
+    res.end();
+
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({
+      message: 'Excel export failed'
+    });
+  }
+};
+
+// Excel Date Formatter to safely parse Excel dates to MySQL 'YYYY-MM-DD' format
+const formatSqlDate = (val) => {
+  if (!val) return null;
+  if (val instanceof Date) {
+    // Convert JS Date object into date format of mysql YYYY-MM-DD 
+    return val.toISOString().split('T')[0];
+  }
+
+  // direct send if string, or if cell is blank then NULL return
+  return typeof val === 'string' && val.trim() !== '' ? val : null;
+};
+
+// 2. 🔥 Fuzzy Match Helper: Case, Space, and Punctuation insensitive matcher
+const getValueByAliases = (normalizedRow, aliases) => {
+  for (const alias of aliases) {
+    // a. Exact match with lowercase alias
+    if (normalizedRow[alias] !== undefined) {
+      return normalizedRow[alias];
+    }
+    
+    // b. Fallback: Strip all non-alphanumeric characters (fuzzy clean match)
+    // E.g., 'tr wbs/care contract/opp' and 'TR WBS CARE CONTRACT OPP' both become 'trwbscarecontractopp'
+    const cleanAlias = alias.replace(/[^a-z0-9]/g, '');
+    for (const key of Object.keys(normalizedRow)) {
+      const cleanKey = key.replace(/[^a-z0-9]/g, '');
+      if (cleanKey === cleanAlias) {
+        return normalizedRow[key];
+      }
+    }
+  }
+  return null;
+};
+
+
+// Cross ERP data upload file logic 
+exports.uploadERPResource = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        message: 'Please upload a file'
+      });
+    }
+
+    const workbook = XLSX.readFile(req.file.path, { cellDates: true });
+    const sheetName = workbook.SheetNames[0];
+    
+    const created_by = req.body.created_by || (req.user && req.user.email) || 'System';
+    console.log("Uploaded By:", created_by);
+    
+    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName]);
+    console.log("Total Rows parsed:", rows.length);
+
+    const currentMonth = new Date().toLocaleDateString(
+      'en-US',
+      {
+        month: 'short',
+        year: 'numeric'
+      }
+    ).replace(' ', '-');
+
+    for (const row of rows) {
+      // A. Normalize current row keys to lower case and trim extra spaces
+      const normalizedRow = {};
+      for (const key of Object.keys(row)) {
+        normalizedRow[key.toLowerCase().trim()] = row[key];
+      }
+
+      // B. Retrieve values using flexible aliases (helps handle lowercase/uppercase/caps/typos)
+      const tr_global_period = getValueByAliases(normalizedRow, ['tr global period', 'trglobalperiod']);
+      const lm_nokia_id_name = getValueByAliases(normalizedRow, ['lm nokia id, name', 'lm nokia id name', 'lmnokiaidname']);
+      const home_country = getValueByAliases(normalizedRow, ['home country', 'homecountry']);
+      const resource_erp_type = getValueByAliases(normalizedRow, ['resource erp type', 'resourceerptype']);
+      
+      // Handles spelling variations ('persn.' vs 'person')
+      const resource_person_number = getValueByAliases(normalizedRow, ['resource persn. number', 'resource persn number', 'resource person number', 'resourcepersonnumber']);
+      const resource_nokia_id_name = getValueByAliases(normalizedRow, ['resource nokia id, name', 'resource nokia id name', 'resourcenokiaidname']);
+      
+      const time_entry_date = formatSqlDate(getValueByAliases(normalizedRow, ['time entry date', 'timeentrydate']));
+      const recorded_hours = getValueByAliases(normalizedRow, ['recorded hours', 'recordedhours']);
+      const time_entry_status = getValueByAliases(normalizedRow, ['time entry status', 'timeentrystatus']);
+      const daily_working_hours = getValueByAliases(normalizedRow, ['daily working hours', 'dailyworkinghours']);
+      
+      // Handles slash variation ('wbs/care' vs 'wbs care')
+      const tr_wbs_care_contract_opp = getValueByAliases(normalizedRow, ['tr wbs/care contract/opp', 'tr wbs care contract opp', 'trwbscarecontractopp']);
+      const tr_wbs_care_contract_opp_description = getValueByAliases(normalizedRow, ['tr wbs/care contract/opp description', 'tr wbs care contract opp description', 'trwbscarecontractoppdescription']);
+      
+      const svo_id = getValueByAliases(normalizedRow, ['svo id', 'svoid']);
+      const svo_description = getValueByAliases(normalizedRow, ['svo description', 'svodescription']);
+      const gic = getValueByAliases(normalizedRow, ['gic']);
+      const gic_name = getValueByAliases(normalizedRow, ['gic name', 'gicname']);
+      
+      // Flexible lookup for Customer Team columns
+      const customer_team = getValueByAliases(normalizedRow, ['ct (customer team)', 'ct customer team', 'customer team', 'ct', 'customerteam']);
+      
+      const time_approval_date = formatSqlDate(getValueByAliases(normalizedRow, ['time approval date', 'timeapprovaldate']));
+      const lm_email = getValueByAliases(normalizedRow, ['lm email', 'lmemail']);
+      const resource_email = getValueByAliases(normalizedRow, ['resource email', 'resourceemail']);
+
+      await db.query(
+        `
+        INSERT INTO erp_resource
+        (
+          tr_global_period,
+          lm_nokia_id_name,
+          home_country,
+          resource_erp_type,
+          resource_person_number,
+          resource_nokia_id_name,
+          time_entry_date,
+          recorded_hours,
+          time_entry_status,
+          daily_working_hours,
+          tr_wbs_care_contract_opp,
+          tr_wbs_care_contract_opp_description,
+          svo_id,
+          svo_description,
+          gic,
+          gic_name,
+          customer_team,
+          time_approval_date,
+          lm_email,
+          resource_email,
+          month,
+          created_by
+        )
+        VALUES
+        (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        `,
+        [
+          tr_global_period,
+          lm_nokia_id_name,
+          home_country,
+          resource_erp_type,
+          resource_person_number,
+          resource_nokia_id_name,
+          time_entry_date,
+          recorded_hours,
+          time_entry_status,
+          daily_working_hours,
+          tr_wbs_care_contract_opp,
+          tr_wbs_care_contract_opp_description,
+          svo_id,
+          svo_description,
+          gic,
+          gic_name,
+          customer_team,
+          time_approval_date,
+          lm_email,
+          resource_email,
+          currentMonth,
+          created_by
+        ]
+      );
+    }
+
+    fs.unlinkSync(req.file.path);
+
+    res.json({
+      success: true,
+      uploadedRows: rows.length,
+      month: currentMonth
+    });
+
+  } catch (err) {
+    console.error("UPLOAD ERROR => ", err);
+    res.status(500).json({
+      message: 'Upload failed: ' + err.message
+    });
+  }
 };
