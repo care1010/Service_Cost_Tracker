@@ -522,7 +522,7 @@ exports.exportDrillDown = async (req, res) => {
 };
 
 
-// Dropdown filter options for Summary View page
+// Dropdown filter options with native column escaping to prevent server crashes
 exports.getFilterOptions = async (req, res) => {
     try {
         const { 
@@ -563,15 +563,16 @@ exports.getFilterOptions = async (req, res) => {
                         conditions.push(`wbs LIKE ?`);
                         filterValues.push(`%${val}%`);
                     } else {
-                        conditions.push(`${key} = ?`);
+                        // Safely escape keys with backticks natively
+                        conditions.push(`\`${key}\` = ?`);
                         filterValues.push(val);
                     }
                 }
             });
 
-            const colSafe = db.escapeId(targetColumn);
+            // 🔥 FIX: Natively escape column names using backticks (100% Crash-Proof)
+            const colSafe = `\`${targetColumn}\``;
             
-            // 🔥 FIX: Push 'IS NOT NULL' directly to conditions array to prevent SQL Syntax Errors
             conditions.push(`${colSafe} IS NOT NULL`);
 
             const whereSql = `WHERE ${conditions.join(' AND ')}`;
@@ -581,7 +582,6 @@ exports.getFilterOptions = async (req, res) => {
             return rows.map(r => r.value);
         };
 
-        // 🔥 Added 'wbs_type' and 'wbs_description' to currentFilters to enable cascading sync
         const currentFilters = { 
             bu, 
             wbs, 
@@ -594,7 +594,7 @@ exports.getFilterOptions = async (req, res) => {
             wbs_description
         };
         
-        // 3. Parallel execution (Properly aligned variables)
+        // 3. Parallel execution (Crash proof)
         const [
             buOpts, 
             wbsOptsRaw, 
@@ -603,8 +603,8 @@ exports.getFilterOptions = async (req, res) => {
             loaNameOpts, 
             activeOpts, 
             periodOpts, 
-            wbsTypeOpts,        // Aligned correctly at Index 7
-            wbsDescriptionOpts  // Aligned correctly at Index 8
+            wbsTypeOpts,        
+            wbsDescriptionOpts  
         ] = await Promise.all([
             getFilteredDistinct('bu', currentFilters),
             getFilteredDistinct('wbs', currentFilters),
