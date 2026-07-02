@@ -2,17 +2,18 @@ import React, { useEffect } from 'react';
 import $ from 'jquery';
 import 'select2';
 import 'select2/dist/css/select2.min.css';
+import './FilterBar.css';
 import { HiOutlineRefresh, HiOutlineFilter } from "react-icons/hi";
 
 const FilterBar = ({ filters, options, onFilterChange, onReset }) => {
 
     const filterConfigs = [
         { label: 'BU', name: 'bu', span: 'lg:col-span-1' },
-        { label: 'Customer', name: 'customer', span: 'lg:col-span-1' },
+        { label: 'Customer', name: 'customer', span: 'lg:col-span-[1.5]' },
         { label: 'LOA ID', name: 'loa_id', span: 'lg:col-span-1' },
         { label: 'LOA Name', name: 'loa_name', span: 'lg:col-span-1' },
-        { label: 'WBS', name: 'wbs', span: 'lg:col-span-1' },
         { label: 'WBS Type', name: 'wbs_type', span: 'lg:col-span-1' },
+        { label: 'WBS', name: 'wbs', span: 'lg:col-span-1' },
         { label: 'WBS Description', name: 'wbs_description', span: 'lg:col-span-1' },
         { label: 'Active/Inactive', name: 'active_inactive', span: 'lg:col-span-[0.8]' }, // ya lg:col-span-1
         { label: 'Period', name: 'period', span: 'lg:col-span-1' },
@@ -23,6 +24,7 @@ const FilterBar = ({ filters, options, onFilterChange, onReset }) => {
         const selects = $('.select2-dropdown').select2({
             width: '100%',
             placeholder: "Search...",
+            color: "#000000"
         });
 
         selects.on('change', (e) => {
@@ -44,7 +46,7 @@ const FilterBar = ({ filters, options, onFilterChange, onReset }) => {
 
     return (
     <div className="bg-white/90 backdrop-blur-md p-3 rounded-[2rem] mb-4 
-    shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-200">
+    shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-slate-300">
 
         {/* Filters Grid */}
         <div className="grid grid-cols-2 md:grid-cols-6 lg:grid-cols-12 gap-2 items-end">
@@ -52,12 +54,11 @@ const FilterBar = ({ filters, options, onFilterChange, onReset }) => {
             {filterConfigs.map((cfg) => (
                 <div
                     key={cfg.name}
-                    className={`${cfg.span} bg-slate-50/70 border border-slate-200 rounded-2xl p-1
+                    className={`${cfg.span} bg-slate-50/70 border border-grey-200 rounded-2xl p-1
                     transition-all duration-300 hover:shadow-md hover:border-blue-100`}
                 >
 
-                    <label className="text-[12px] font-black 
-                    text-slate-600 mb-1 ml-1 uppercase tracking-wide block">
+                    <label className="text-[13px] font-normal text-black-900 mb-1 ml-1 block">
                         {cfg.label}
                     </label>
 
@@ -70,37 +71,37 @@ const FilterBar = ({ filters, options, onFilterChange, onReset }) => {
                         <option value="All">All</option>
 
                         {
-    (cfg.name === 'period'
-        ? options.period
-            ?.filter(
-                (p) =>
-                    p &&
-                    p !== '0-P' &&
-                    /^\d{4}-P\d+$/.test(p)
-            )
-            ?.sort((a, b) => {
+                            (cfg.name === 'period'
+                                ? options.period
+                                    ?.filter(
+                                        (p) =>
+                                            p &&
+                                            p !== '0-P' &&
+                                            /^\d{4}-P\d+$/.test(p)
+                                    )
+                                    ?.sort((a, b) => {
 
-                const [yearA, periodA] = a.split('-P');
-                const [yearB, periodB] = b.split('-P');
+                                        const [yearA, periodA] = a.split('-P');
+                                        const [yearB, periodB] = b.split('-P');
 
-                // Year Descending
-                if (Number(yearA) !== Number(yearB)) {
-                    return Number(yearB) - Number(yearA);
-                }
+                                        // Year Descending
+                                        if (Number(yearA) !== Number(yearB)) {
+                                            return Number(yearB) - Number(yearA);
+                                        }
 
-                // Period Descending
-                return Number(periodB) - Number(periodA);
-            })
+                                        // Period Descending
+                                        return Number(periodB) - Number(periodA);
+                                    })
 
-        : options[cfg.name]
-    )?.map((opt, i) => (
+                                : options[cfg.name]
+                            )?.map((opt, i) => (
 
-        <option key={i} value={opt}>
-            {opt}
-        </option>
+                                <option key={i} value={opt}>
+                                    {opt}
+                                </option>
 
-    ))
-}
+                            ))
+                        }
                     </select>
 
                 </div>
@@ -114,14 +115,14 @@ const FilterBar = ({ filters, options, onFilterChange, onReset }) => {
                     flex items-center justify-center gap-2 transition-all duration-300 
                     hover:scale-105 hover:shadow-md w-[70%] h-[70%] mb-3 ml-8"
                     style={{
-                        background: 'linear-gradient(135deg, #f43f5e, #e11d48)',
+                        background: 'linear-gradient(#4169e1)',
                     }}
                 >
                     <span className="text-sm transition-transform duration-300 group-hover:rotate-180">
                         <HiOutlineRefresh />
                     </span>
 
-                    <span className="text-[15px] font-black tracking-wide uppercase">
+                    <span className="text-[13px] font-black tracking-wide uppercase">
                         Reset Filters
                     </span>
                 </button>

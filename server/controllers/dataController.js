@@ -41,11 +41,11 @@ const applyRLS = (
 };
 
 // ==============================
-// COMMON Filters FUNCTION
+// COMMON Dashboard Filters FUNCTION
 // ==============================
 const applyDashboardFilters = (
     query, conditions, params) => {
-    const {years, periods, customers, loa_names, active_inactive} = query;
+    const {years, periods, customers, loa_names, active_inactive, wbs_type } = query;
     // YEAR FILTER
     if (years) {
         const yearArray = years.split(',');
@@ -90,6 +90,12 @@ const applyDashboardFilters = (
     if (active_inactive) {
         conditions.push(`active_inactive = ?`);
         params.push(active_inactive);
+    }
+
+    // 🔥 NEW WBS TYPE FILTER FOR DASHBOARD GRAPHS
+    if (wbs_type && wbs_type !== 'All') {
+        conditions.push(`wbs_type = ?`);
+        params.push(wbs_type);
     }
 };
 
@@ -138,7 +144,7 @@ exports.getWbsSummary = async (req, res) => {
         }
 
         //  Dropdown Filters (Strict Check)
-        const allowedFilters = ['bu', 'wbs', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period'];
+        const allowedFilters = ['bu', 'wbs', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period', 'wbs_type', 'wbs_description'];
         allowedFilters.forEach(key => {
             let value = req.query[key];
             if (Array.isArray(value)) value = value[0];
@@ -516,13 +522,28 @@ exports.exportDrillDown = async (req, res) => {
 };
 
 
-// --- 2. getFilterOptions mein loa_name ki list add karein ---
+// Dropdown filter options for Summary View page
 exports.getFilterOptions = async (req, res) => {
     try {
-        const { type, allowedCustomers, bu, wbs, customer, loa_id, loa_name, active_inactive, period } = req.query;
+        const { 
+            type, 
+            allowedCustomers, 
+            bu, 
+            wbs, 
+            customer, 
+            loa_id, 
+            loa_name, 
+            active_inactive, 
+            period, 
+            wbs_type, 
+            wbs_description 
+        } = req.query;
 
         // 1. Base Conditions
-        let baseConditions = ["categories NOT IN ('Local Materials', 'Not to considered')", "cost_revenue <> 'NTC'"];
+        let baseConditions = [
+            "categories NOT IN ('Local Materials', 'Not to considered')", 
+            "cost_revenue <> 'NTC'"
+        ];
         let baseParams = [];
 
         applyRLS(type, allowedCustomers, baseConditions, baseParams);
@@ -532,7 +553,7 @@ exports.getFilterOptions = async (req, res) => {
             let conditions = [...baseConditions];
             let filterValues = [...baseParams];
 
-            // Baaki filters apply karein
+            // Apply active filters except the target column itself
             Object.keys(currentFilters).forEach(key => {
                 if (key !== targetColumn && currentFilters[key] && currentFilters[key] !== 'All' && currentFilters[key] !== '') {
                     let val = currentFilters[key];
@@ -548,27 +569,52 @@ exports.getFilterOptions = async (req, res) => {
                 }
             });
 
-            const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-            
-            // 🔥 FIX: Column name ko escapeId se safe banaya taaki '?' ke saath mix na ho
             const colSafe = db.escapeId(targetColumn);
-            const sql = `SELECT DISTINCT ${colSafe} as value FROM final_dashboard_table ${whereSql} AND ${colSafe} IS NOT NULL ORDER BY ${colSafe}`;
+            
+            // 🔥 FIX: Push 'IS NOT NULL' directly to conditions array to prevent SQL Syntax Errors
+            conditions.push(`${colSafe} IS NOT NULL`);
+
+            const whereSql = `WHERE ${conditions.join(' AND ')}`;
+            const sql = `SELECT DISTINCT ${colSafe} as value FROM final_dashboard_table ${whereSql} ORDER BY ${colSafe}`;
 
             const [rows] = await db.query(sql, filterValues);
             return rows.map(r => r.value);
         };
 
-        const currentFilters = { bu, wbs, customer, loa_id, loa_name, active_inactive, period };
+        // 🔥 Added 'wbs_type' and 'wbs_description' to currentFilters to enable cascading sync
+        const currentFilters = { 
+            bu, 
+            wbs, 
+            customer, 
+            loa_id, 
+            loa_name, 
+            active_inactive, 
+            period,
+            wbs_type,
+            wbs_description
+        };
         
-        // 3. Parallel execution
-        const [buOpts, wbsOptsRaw, custOpts, loaIdOpts, loaNameOpts, activeOpts, periodOpts] = await Promise.all([
+        // 3. Parallel execution (Properly aligned variables)
+        const [
+            buOpts, 
+            wbsOptsRaw, 
+            custOpts, 
+            loaIdOpts, 
+            loaNameOpts, 
+            activeOpts, 
+            periodOpts, 
+            wbsTypeOpts,        // Aligned correctly at Index 7
+            wbsDescriptionOpts  // Aligned correctly at Index 8
+        ] = await Promise.all([
             getFilteredDistinct('bu', currentFilters),
             getFilteredDistinct('wbs', currentFilters),
             getFilteredDistinct('customer', currentFilters),
             getFilteredDistinct('loa_id', currentFilters),
             getFilteredDistinct('loa_name', currentFilters),
             getFilteredDistinct('active_inactive', currentFilters),
-            getFilteredDistinct('period', currentFilters)
+            getFilteredDistinct('period', currentFilters),
+            getFilteredDistinct('wbs_type', currentFilters),
+            getFilteredDistinct('wbs_description', currentFilters),
         ]);
 
         // 4. WBS Comma Splitting Logic (Safe) for filter dropdown
@@ -593,7 +639,9 @@ exports.getFilterOptions = async (req, res) => {
             loa_id: loaIdOpts,
             loa_name: loaNameOpts,
             active_inactive: activeOpts,
-            period: periodOpts
+            period: periodOpts,
+            wbs_type: wbsTypeOpts,
+            wbs_description: wbsDescriptionOpts,
         });
 
     } catch (error) {
@@ -1163,8 +1211,8 @@ exports.fullRefresh = async (req, res) => {
         // 2. Naya data bharein (Explicit Columns)
         const insertSql = `
             INSERT INTO final_dashboard_table 
-            (bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, asbl, asbl_loa, non_committed, active_inactive, period, ptd, open_commitment_KEUR, eac, eac_vs_asbl, unique_key)
-            SELECT bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, asbl, asbl_loa, non_committed, active_inactive, period, ptd, open_commitment_KEUR, eac, eac_vs_asbl, unique_key 
+            (bu, customer, loa_id, loa_name, cost_revenue, categories, wbs,wbs_type, wbs_description, asbl, asbl_loa, non_committed, active_inactive, period, ptd, open_commitment_KEUR, eac, eac_vs_asbl, unique_key)
+            SELECT bu, customer, loa_id, loa_name, cost_revenue, categories, wbs,wbs_type, wbs_description, asbl, asbl_loa, non_committed, active_inactive, period, ptd, open_commitment_KEUR, eac, eac_vs_asbl, unique_key 
             FROM final_dashboard
         `;
         await db.query(insertSql);
@@ -1308,7 +1356,7 @@ exports.getDashboardFilters = async (req, res) => {
 // 2. Filtered BU Analytics
 exports.getBuAnalytics = async (req, res) => {
     try {
-        const { years, periods, customers, loa_names, active_inactive, showAll, type, allowedCustomers } = req.query;
+        const { years, periods, customers, loa_names, active_inactive, wbs_type, showAll, type, allowedCustomers } = req.query;
         let conditions = [
             "categories NOT IN ('Local Materials', 'Not to considered')",
             "cost_revenue <> 'NTC'",
@@ -1373,6 +1421,12 @@ exports.getBuAnalytics = async (req, res) => {
             params.push(active_inactive);
         }
 
+        // 🔥 Added WBS Type condition
+        if (wbs_type && wbs_type !== 'All') {
+            conditions.push(`wbs_type = ?`);
+            params.push(wbs_type);
+        }
+
         const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
         const sql = `
             SELECT
@@ -1415,7 +1469,7 @@ exports.getBuAnalytics = async (req, res) => {
 // 3. Filtered LOA Analytics
 exports.getLoaAnalytics = async (req, res) => {
     try {
-        const { years, periods, customers, loa_names, active_inactive, showAll, type, allowedCustomers } = req.query;
+        const { years, periods, customers, loa_names, active_inactive, wbs_type, showAll, type, allowedCustomers } = req.query;
         const limitSql =
             showAll === 'true'
                 ? ''
@@ -1484,6 +1538,12 @@ exports.getLoaAnalytics = async (req, res) => {
         if (active_inactive) {
             conditions.push(`active_inactive = ?`);
             params.push(active_inactive);
+        }
+
+        // 🔥 Added WBS Type condition
+        if (wbs_type && wbs_type !== 'All') {
+            conditions.push(`wbs_type = ?`);
+            params.push(wbs_type);
         }
 
         const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';

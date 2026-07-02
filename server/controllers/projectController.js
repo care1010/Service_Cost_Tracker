@@ -23,7 +23,7 @@ const CATEGORY_MAP = [
     { cat: "DUTIES CUST PR OG", type: "Cost" }, { cat: "OTHER DIR CUST PR OG", type: "Cost" },
     { cat: "CR RISKÂ CUST PR OG", type: "Cost" }, { cat: "CONTR BOND CUST PR O", type: "Cost" },
     { cat: "BANK FEES CUST PR OG", type: "Cost" }, { cat: "LETTER OF CRÂ CUST P", type: "Cost" },
-    { cat: "DISC INTÂ CUST PR OG", type: "Cost" }, { cat: "EXTEND WARRÂ CUST PR", type: "Cost" },
+    { cat: "DISC INTÂ COM CUST", type: "Cost" }, { cat: "EXTEND WARRÂ CUST PR", type: "Cost" },
     { cat: "ADD WARR PROV CUST P", type: "Cost" }, { cat: "REL EX WAR PROV C PR", type: "Cost" },
     { cat: "IMPORT FREIGHT FOR", type: "Cost" }, { cat: "Other", type: "Cost" },
     { cat: "I&C Services + DD Resources", type: "Cost" }, { cat: "TPM +EMS Resources", type: "Cost" },
@@ -38,61 +38,180 @@ exports.processProjectPaste = async (req, res) => {
     try {
         const lines = rawText.trim().split(/\r?\n/).map(l => l.trim()).filter(l => l !== '');
         const headers = lines[0].split('\t').map(h => h.trim().toUpperCase());
-        const dataLines = (headers.includes('BU') || headers.includes('LOA_ID')) ? lines.slice(1) : lines;
+        const dataLines = lines.slice(1);
+
+        // Dynamic Column Index Mapping
+        const idxBu = headers.findIndex(h => h.includes('BUSINESS DIVISION') || h === 'BU');
+        const idxCustomer = headers.findIndex(h => h.includes('CT NAME') || h === 'CUSTOMER_');
+        const idxLoaId = headers.findIndex(h => h.includes('OPPORTUNITY CODE') || h === 'LOA_ID');
+        const idxLoaName = headers.findIndex(h => h.includes('PROJECT DESCRIPTION') || h === 'LOA_NAME');
+        const idxWbsType = headers.findIndex(h => h.includes('WBS TYPE'));
+        const idxWbsElement = headers.findIndex(h => h === 'WBS');
+        const idxWbsDesc = headers.findIndex(h => h.includes('WBS DESCRIPTION'));
+        const idxMerged = headers.findIndex(h => h === 'MERGED');
+
+        if (idxLoaId === -1 || idxWbsElement === -1) {
+            return res.status(400).json({ error: "Invalid Excel Template! Opportunity Code and WBS columns must be present." });
+        }
+
+        const projectGroups = {};
+        
+        // Carry-forward states for merged cells
+        let current_bu = "";
+        let current_customer = "";
+        let current_loa_id = "";
+        let current_loa_name = "";
+        let current_merged_wbs = "";
+
+        for (let line of dataLines) {
+            if (line.trim() === '') continue; // Skip truly empty lines safely
+
+            let cols = line.split('\t').map(c => c.trim());
+
+            // 🔥 MASTER FIX: If browser/excel stripped leading empty cells on row 2,3,4, pad them dynamically
+            if (cols.length < headers.length) {
+                const paddingCount = headers.length - cols.length;
+                const padding = Array(paddingCount).fill("");
+                cols.unshift(...padding); // Prepend empty elements to perfectly align indexes
+            }
+
+            // Mapping columns dynamically based on detected indexes
+            const bu = (idxBu !== -1 && cols[idxBu]) ? cols[idxBu] : current_bu;
+            const customer = (idxCustomer !== -1 && cols[idxCustomer]) ? cols[idxCustomer] : current_customer;
+            const loa_id = (idxLoaId !== -1 && cols[idxLoaId]) ? cols[idxLoaId] : current_loa_id;
+            const loa_name = (idxLoaName !== -1 && cols[idxLoaName]) ? cols[idxLoaName] : current_loa_name;
+            const wbs_type = (idxWbsType !== -1 && cols[idxWbsType]) ? cols[idxWbsType] : null;
+            const wbs_element = (idxWbsElement !== -1 && cols[idxWbsElement]) ? cols[idxWbsElement] : null;
+            const wbs_description = (idxWbsDesc !== -1 && cols[idxWbsDesc]) ? cols[idxWbsDesc] : null;
+            const merged_wbs = (idxMerged !== -1 && cols[idxMerged]) ? cols[idxMerged] : current_merged_wbs;
+
+            // Update carry-forward state safely
+            if (idxBu !== -1 && cols[idxBu]) current_bu = cols[idxBu];
+            if (idxCustomer !== -1 && cols[idxCustomer]) current_customer = cols[idxCustomer];
+            if (idxLoaId !== -1 && cols[idxLoaId]) current_loa_id = cols[idxLoaId];
+            if (idxLoaName !== -1 && cols[idxLoaName]) current_loa_name = cols[idxLoaName];
+            if (idxMerged !== -1 && cols[idxMerged]) current_merged_wbs = cols[idxMerged];
+
+            if (!loa_id) continue;
+
+            if (!projectGroups[loa_id]) {
+                projectGroups[loa_id] = {
+                    bu,
+                    customer,
+                    loa_id,
+                    loa_name,
+                    merged_wbs,
+                    wbs_rows: []
+                };
+            }
+
+            if (wbs_element) {
+                projectGroups[loa_id].wbs_rows.push({
+                    wbs_type,
+                    wbs_element,
+                    wbs_description
+                });
+            }
+        }
 
         let processedLoas = new Set();
         let skipCount = 0;
+        const created_by = req.user?.email || 'System';
 
-        for (let line of dataLines) {
-            const cols = line.split('\t').map(c => c.trim());
-            if (cols.length < 5) continue;
+        for (const loa_id of Object.keys(projectGroups)) {
+            const group = projectGroups[loa_id];
+            const { bu, customer, loa_name, merged_wbs, wbs_rows } = group;
 
-            const bu = cols[0], customer = cols[1], project_amc = cols[3], loa_id = cols[4], loa_name = cols[5];
-            if (!loa_id) continue;
+            if (wbs_rows.length === 0) continue;
 
-            // 1. WBS Cleaning (Metadata ko list se bahar nikalna)
-            let rawWbs = cols.slice(7).filter(w => w && w !== '');
-            let pastedWbsList = rawWbs.filter(w => 
-                w.toUpperCase() !== loa_id.toUpperCase() && 
-                w.toUpperCase() !== loa_name.toUpperCase()
-            );
-
-            // 2. Check if Project Exists
+            // Check if Project exists in summary
             const [exSummary] = await db.query("SELECT wbs FROM summary WHERE TRIM(loa_id) = ? LIMIT 1", [loa_id]);
 
             if (exSummary.length > 0) {
                 // --- CASE: UPDATE EXISTING PROJECT ---
                 let dbWbsArray = exSummary[0].wbs ? exSummary[0].wbs.split(',').map(w => w.trim()) : [];
-                let newWbsElements = pastedWbsList.filter(w => !dbWbsArray.map(dw => dw.toUpperCase()).includes(w.toUpperCase()));
+                
+                // Compare with actual existing rows in mapping table instead of summary.wbs list (Desync Proof)
+                const [exMappings] = await db.query(
+                    "SELECT TRIM(wbs_element) as wbs_element FROM wbs_loa_id_mapping1 WHERE TRIM(loa_id) = ?",
+                    [loa_id]
+                );
+                const existingMappingWbs = exMappings.map(m => m.wbs_element.toUpperCase());
+
+                let newWbsElements = wbs_rows.filter(row => 
+                    !existingMappingWbs.includes(row.wbs_element.toUpperCase())
+                );
 
                 if (newWbsElements.length === 0) {
-                    skipCount++;
+                    skipCount += wbs_rows.length;
                     continue;
                 } else {
-                    // 🔥 GLOBAL SYNC LOGIC
-                    const updatedWbsList = [...dbWbsArray, ...newWbsElements];
+                    const newWbsNames = newWbsElements.map(row => row.wbs_element);
+                    const updatedWbsList = [...dbWbsArray, ...newWbsNames];
                     const updatedWbsString = updatedWbsList.join(',');
 
                     // A. Update Summary Table (All 54 rows for this LOA)
                     await db.query("UPDATE summary SET wbs = ? WHERE TRIM(loa_id) = ?", [updatedWbsString, loa_id]);
 
-                    // B. Update Existing Mapping Rows (Purane WBS ki list update karein)
-                    await db.query("UPDATE wbs_loa_id_mapping SET wbs = ? WHERE TRIM(loa_id) = ?", [updatedWbsString, loa_id]);
+                    // B. Update Existing Mapping Rows
+                    await db.query("UPDATE wbs_loa_id_mapping1 SET wbs = ? WHERE TRIM(loa_id) = ?", [updatedWbsString, loa_id]);
 
-                    // C. Insert New Mapping Rows (Sirf naye WBS ke liye)
-                    const newMappingRows = newWbsElements.map(w => [w, updatedWbsString, loa_id, project_amc]);
-                    await db.query(`INSERT INTO wbs_loa_id_mapping (wbs_element, wbs, loa_id, warranty_wbs) VALUES ?`, [newMappingRows]);
+                    // C. Insert New Mapping Rows
+                    const newMappingRows = newWbsElements.map(row => [
+                        loa_id,                // Column 1: loa_id
+                        row.wbs_type,          // Column 2: wbs_type
+                        row.wbs_element,       // Column 3: wbs_element (Individual WBS Element)
+                        row.wbs_description,   // Column 4: wbs_description
+                        updatedWbsString,      // Column 5: wbs (Merged comma-separated string)
+                        created_by             // Column 6: created_by
+                    ]);
+
+                    await db.query(`
+                        INSERT INTO wbs_loa_id_mapping1 
+                        (loa_id, wbs_type, wbs_element, wbs_description, wbs, created_by) 
+                        VALUES ?
+                    `, [newMappingRows]);
                     
                     processedLoas.add(loa_id);
                 }
             } else {
                 // --- CASE: INSERT NEW PROJECT ---
-                const combinedWbs = pastedWbsList.join(',');
-                const summaryRows = CATEGORY_MAP.map(item => [bu, customer, loa_id, loa_name, item.type, item.cat, combinedWbs, 0, 'Active']);
-                await db.query(`INSERT INTO summary (bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, asbl, active_inactive) VALUES ?`, [summaryRows]);
+                const finalMergedWbs = merged_wbs || wbs_rows.map(r => r.wbs_element).join(',');
 
-                const mappingRows = pastedWbsList.map(w => [w, combinedWbs, loa_id, project_amc]);
-                await db.query(`INSERT INTO wbs_loa_id_mapping (wbs_element, wbs, loa_id, warranty_wbs) VALUES ?`, [mappingRows]);
+                // A. Insert into summary table
+                const summaryRows = CATEGORY_MAP.map(item => [
+                    bu, 
+                    customer, 
+                    loa_id, 
+                    loa_name, 
+                    item.type, 
+                    item.cat, 
+                    finalMergedWbs, 
+                    0, 
+                    'Active'
+                ]);
+                
+                await db.query(`
+                    INSERT INTO summary 
+                    (bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, asbl, active_inactive) 
+                    VALUES ?
+                `, [summaryRows]);
+
+                // B. Insert into wbs_loa_id_mapping1
+                const mappingRows = wbs_rows.map(row => [
+                    loa_id,                // Column 1: loa_id
+                    row.wbs_type,          // Column 2: wbs_type
+                    row.wbs_element,       // Column 3: wbs_element (Individual WBS Element)
+                    row.wbs_description,   // Column 4: wbs_description
+                    finalMergedWbs,        // Column 5: wbs (Merged comma-separated string)
+                    created_by             // Column 6: created_by
+                ]);
+
+                await db.query(`
+                    INSERT INTO wbs_loa_id_mapping1 
+                    (loa_id, wbs_type, wbs_element, wbs_description, wbs, created_by) 
+                    VALUES ?
+                `, [mappingRows]);
                 
                 processedLoas.add(loa_id);
             }
@@ -108,8 +227,8 @@ exports.processProjectPaste = async (req, res) => {
             await db.query("DELETE FROM final_dashboard_table WHERE loa_id IN (?)", [loaList]);
             await db.query(`
                 INSERT INTO final_dashboard_table 
-                (bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, asbl, asbl_loa, non_committed, active_inactive, period, ptd, open_commitment_KEUR, eac, eac_vs_asbl, unique_key)
-                SELECT bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, asbl, asbl_loa, non_committed, active_inactive, period, ptd, open_commitment_KEUR, eac, eac_vs_asbl, unique_key 
+                (bu, customer, loa_id, loa_name, cost_revenue, categories, wbs,wbs_type, wbs_description, asbl, asbl_loa, non_committed, active_inactive, period, ptd, open_commitment_KEUR, eac, eac_vs_asbl, unique_key)
+                SELECT bu, customer, loa_id, loa_name, cost_revenue, categories, wbs,wbs_type, wbs_description, asbl, asbl_loa, non_committed, active_inactive, period, ptd, open_commitment_KEUR, eac, eac_vs_asbl, unique_key 
                 FROM final_dashboard WHERE loa_id IN (?)
             `, [loaList]);
 
@@ -125,7 +244,7 @@ exports.processProjectPaste = async (req, res) => {
             `, [loaList, loaList]);
         }
 
-        res.status(200).json({ message: `Success! Processed: ${processedLoas.size}, Skipped: ${skipCount}` });
+        res.status(200).json({ message: `Processed: ${processedLoas.size} Projects, Skipped data: ${skipCount}` });
 
     } catch (error) {
         console.error("CRITICAL ERROR:", error);

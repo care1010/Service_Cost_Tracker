@@ -40,7 +40,7 @@ const handleLogout = () => {
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'summary', label: 'Summary View' },
     { id: 'erp_resource', label: 'Cross ERP'},
-    { id: 'add-project', label: 'Add Project' },
+    { id: 'add-project', label: 'Add Project/WBS' },
     { id: 'asbl', label: 'ASBL' },
     // { id: 'loa-view', label: 'Loa Wise View' },
     // Inhe sirf admin ya super_admin ko dikhao

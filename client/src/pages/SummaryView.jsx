@@ -11,7 +11,7 @@ import { HiOutlineFilter, HiOutlineViewGrid, HiOutlineSearch, HiOutlineRefresh }
 const SummaryView = ({ user }) => {
     // 1. SAARE STATES (Hamesha sabse upar)
     const [filters, setFilters] = useState({
-        bu: 'All', customer: 'All', loa_id: 'All', loa_name: 'All',  wbs: 'All', active_inactive: 'Active', period: 'All'
+        bu: 'All', customer: 'All', loa_id: 'All', loa_name: 'All', wbs_type: 'All', wbs_description: 'All',  wbs: 'All', active_inactive: 'Active', period: 'All'
     });
     const [options, setOptions] = useState({});
     const [kpiData, setKpiData] = useState(null);
@@ -77,7 +77,7 @@ const SummaryView = ({ user }) => {
     const handleFilterChange = (name, value) => setFilters(prev => ({ ...prev, [name]: value }));
     
     const handleReset = () => setFilters({ 
-        bu: 'All', customer: 'All', loa_id: 'All', loa_name: 'All', wbs: 'All', active_inactive: 'Active', period: 'All' 
+        bu: 'All', customer: 'All', loa_id: 'All', loa_name: 'All', wbs_type: 'All', wbs: 'All', wbs_description: 'All', active_inactive: 'Active', period: 'All' 
     });
 
     const handleKpiUpdate = useCallback((data) => {
@@ -295,7 +295,7 @@ const startExport = (exportCollapseView) => {
         { header: 'ASBL', field: 'asbl' },
         { header: 'ASBL LOA', field: 'asbl_loa' },
         { header: 'PTD', field: 'ptd', clickable: true },
-        { header: 'Open Commitment (KEUR)', field: 'open_commitment', clickable: true },
+        { header: 'Open Commitment', field: 'open_commitment', clickable: true },
         { header: 'Non Committed', field: 'non_committed' },
         { header: 'EAC', field: 'eac' },
         { header: 'EAC vs ASBL', field: 'eac_vs_asbl' }
@@ -379,7 +379,7 @@ const startExport = (exportCollapseView) => {
                                 flex items-center gap-2 transition-all duration-300 
                                 hover:scale-105 hover:shadow-xl"
                                 style={{
-                                    background: 'linear-gradient(135deg, #f59e0b, #d97706)',
+                                    background: 'linear-gradient(#8fbc8f)',
                                 }}
                             >
                                 <span className="text-lg transition-transform duration-300 group-hover:-translate-y-[1px]">

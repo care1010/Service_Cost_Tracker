@@ -12,9 +12,11 @@ const Dashboard = ({ user }) => {
     const [buData, setBuData] = useState([]);
     const [loaData, setLoaData] = useState([]);
     const [selectedStatus, setSelectedStatus] = useState('Active');
+    // 🔥 New dedicated state for WBS Type
+    const [selectedWbsType, setSelectedWbsType] = useState('All');
 
     // FILTER OPTIONS for YEARS, PERIODS, CUSTOMERS
-    const [filterOptions, setFilterOptions] = useState({ years: [], periods: [], customers: [], loa_names: []});
+    const [filterOptions, setFilterOptions] = useState({ years: [], periods: [], customers: [], loa_names: [], wbs_types: [] });
 
     const [selectedYears, setSelectedYears] = useState([]);
     const [selectedPeriods, setSelectedPeriods] = useState([]);
@@ -66,7 +68,7 @@ useEffect(() => {
 
 useEffect(() => {
     fetchTrendData();
-}, [selectedTrendLoa, selectedStatus ]);
+}, [selectedTrendLoa, selectedStatus, selectedWbsType ]);
 
 const fetchTrendData = async () => {
     try {
@@ -88,7 +90,7 @@ const fetchTrendData = async () => {
 // fetching table data for BU and Cost
 useEffect(() => {
     fetchTableData();
-}, [tableView, selectedYears, selectedPeriods, selectedCustomers, selectedLoas, selectedStatus]);
+}, [tableView, selectedYears, selectedPeriods, selectedCustomers, selectedLoas, selectedStatus, selectedWbsType]);
 
 const fetchTableData = async () => {
 
@@ -145,6 +147,7 @@ const fetchTableData = async () => {
                     customers,
                     loa_names,
                     active_inactive: selectedStatus,
+                    wbs_type: selectedWbsType, // 🔥 Added new filter
                     type: user?.type,
                     allowedCustomers: allowedCustomers.join(',')
                 }
@@ -354,8 +357,8 @@ const exportToExcel = () => {
                             loa_names,
                             active_inactive: selectedStatus,
                             type: user?.type,
-                            allowedCustomers:
-                            allowedCustomers.join(',')
+                            wbs_type: selectedWbsType, // 🔥 Added
+                            allowedCustomers: allowedCustomers.join(',')
                         }
                     }
                 );
@@ -370,7 +373,8 @@ const exportToExcel = () => {
         selectedPeriods,
         selectedCustomers,
         selectedLoas,
-        selectedStatus
+        selectedStatus,
+        selectedWbsType // 🔥 added dependency for new filter
     ]);
 
     // =========================================
@@ -400,8 +404,8 @@ const exportToExcel = () => {
                                 active_inactive: selectedStatus,
                                 showAll: showAllLoa,
                                 type: user?.type,
-                                allowedCustomers:
-                                allowedCustomers.join(',')
+                                wbs_type: selectedWbsType, // 🔥 Added new filter
+                                allowedCustomers: allowedCustomers.join(',')
                             }
                         }
                     ),
@@ -417,6 +421,7 @@ const exportToExcel = () => {
                                 active_inactive: selectedStatus,
                                 showAll: showAllLoa,
                                 type: user?.type,
+                                wbs_type: selectedWbsType, // 🔥 Added new filter
                                 allowedCustomers:
                                 allowedCustomers.join(',')
                             }
@@ -435,7 +440,7 @@ const exportToExcel = () => {
             }
         };
         fetchData();
-    }, [selectedYears, selectedPeriods, selectedCustomers, selectedLoas, showAllLoa, selectedStatus,]);
+    }, [selectedYears, selectedPeriods, selectedCustomers, selectedLoas, showAllLoa, selectedStatus, selectedWbsType]);
 
     // =========================================
     // YEAR CHANGE
@@ -511,6 +516,7 @@ const resetAllFilters = () => {
     setSelectedPeriods([]);
     setSelectedCustomers([]);
     setSelectedLoas([]);
+    setSelectedWbsType('All'); // 🔥 Reset to All
     setLoaSearch('');
     setShowAllLoa(false);
     // Default Active
@@ -723,21 +729,18 @@ const displayLoaData = showAllLoa
                         </div>
                         {/* Loa Name filter END*/}
 
+                        {/* 🔥 5. Dynamic WBS TYPE Filter (Populates dynamically from DB) */}
                         <div className="w-[160px]">
-                            <p className="text-[11px] font-black uppercase text-slate-500 mb-2">
-                                WBS Type
-                            </p>
-
+                            <p className="text-[11px] font-black uppercase text-slate-500 mb-2">WBS Type</p>
                             <select
-                                value={selectedStatus}
-                                onChange={(e) => setSelectedStatus(e.target.value)}
+                                value={selectedWbsType}
+                                onChange={(e) => setSelectedWbsType(e.target.value)}
                                 className="w-full bg-white border border-slate-300 rounded-2xl px-4 py-3 shadow-sm text-sm font-medium text-slate-700"
                             >
-                                <option value="Active">Project</option>
-                                <option value="Inactive">AMC</option>
-                                <option value="Inactive">Warranty</option>
-                                <option value="">All</option>
-                                {/* <span>▼</span> */}
+                                <option value="All">All</option>
+                                {filterOptions.wbs_types && filterOptions.wbs_types.map((type) => (
+                                    <option key={type} value={type}>{type}</option>
+                                ))}
                             </select>
                         </div>
 
@@ -1131,7 +1134,7 @@ const displayLoaData = showAllLoa
 
     <div className="bg-purple-50 border border-purple-200 rounded-2xl px-5 py-4 min-w-[220px]">
         <div className="text-sm text-purple-700 font-semibold">
-            EAC Completion
+            EAC vs ASBL
         </div>
 
         <div className="text-3xl font-black text-purple-600">
