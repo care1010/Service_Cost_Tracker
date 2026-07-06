@@ -24,61 +24,32 @@ exports.uploadPtdData = async (req, res) => {
         const workbook = xlsx.readFile(req.file.path, { cellDates: true });
         const sheetNames = workbook.SheetNames;
         let affectedLoas = new Set();
-        const batchSize = 500; // Optimal batch size for SQL IN/OR clauses
+        const batchSize = 500;
 
         // ==========================================
-        // --- 1. CJI5 SHEET PROCESSING ---
+        // --- 1. CJI5 SHEET PROCESSING (REPLACE MODE) ---
         // ==========================================
         if (sheetNames.includes('CJI5')) {
             const cji5Data = xlsx.utils.sheet_to_json(workbook.Sheets['CJI5']);
 
-            // 🔥 1.1 GRANULAR DUPLICATE VALIDATION FOR CJI5 (WBS Element + Year + Per)
-            // Extracting unique WBS_Year_Per combinations from Excel to prevent multiple redundant SQL hits
-            const cji5UniquePairs = Array.from(
-                new Set(
-                    cji5Data
-                        .filter(row => row['WBS Element'] && row['Year'] && row['Per'])
-                        .map(row => `${row['WBS Element'].toString().trim()}_${row['Year'].toString().trim()}_${row['Per'].toString().trim()}`)
-                )
-            ).map(str => {
-                const [wbs_element, year, per] = str.split('_');
-                return { wbs_element, year, per };
-            });
-
-            // Batch-checking database for existing mappings to ensure high performance
-            for (let i = 0; i < cji5UniquePairs.length; i += batchSize) {
-                const batch = cji5UniquePairs.slice(i, i + batchSize);
-                const conditions = batch.map(() => "(wbs_element = ? AND year = ? AND per = ?)").join(" OR ");
-                const params = batch.flatMap(item => [item.wbs_element, item.year, item.per]);
-
-                const [duplicates] = await db.query(
-                    `SELECT wbs_element, year, per FROM cji5_new WHERE ${conditions} LIMIT 1`,
-                    params
-                );
-
-                if (duplicates.length > 0) {
-                    const dup = duplicates[0];
-                    return res.status(400).json({
-                        error: `CJI5 data already exists for WBS Element: ${dup.wbs_element} under Year ${dup.year} - Period ${dup.per}. Duplicate upload is not allowed.`
-                    });
-                }
-            }
-
-            // 1.2 Insert CJI5 Rows
+            // 🔥 REPLACE MODE: Truncate existing data first, no need for duplicate check
             await db.query("TRUNCATE TABLE cji5_new");
-            const cji5Rows = cji5Data.map(row => {
-                if(row['LOA_ID']) affectedLoas.add(row['LOA_ID'].toString().trim());
-                return [
-                    row['Project Def.'], row['WBS Element'], row['RefDocNo'], row['Item'],
-                    row['CO object name'], row['Supplier'], row['Name'], row['Year'],
-                    row['Per'], row['Cost elem.'], row['Cost element descr.'], row['Matl Group'],
-                    row['Material'], row['Description'], row['User Name'], row['DocC'],
-                    row['CoCode'], row['Exch. Rate'], row['Quantity'], row['Qty/plan'],
-                    formatExcelDate(row['Debit date']), formatExcelDate(row['Doc. Date']),
-                    row['Report currency'], row['Val.in rep.cur.'], row['TCurr'], row['Value TCur'], 
-                    row['Obj Curr.'], row['Value in Obj. Crcy']
-                ];
-            });
+
+            const cji5Rows = cji5Data
+                .filter(row => row['WBS Element']) // Skip empty rows
+                .map(row => {
+                    if (row['LOA_ID']) affectedLoas.add(row['LOA_ID'].toString().trim());
+                    return [
+                        row['Project Def.'], row['WBS Element'], row['RefDocNo'], row['Item'],
+                        row['CO object name'], row['Supplier'], row['Name'], row['Year'],
+                        row['Per'], row['Cost elem.'], row['Cost element descr.'], row['Matl Group'],
+                        row['Material'], row['Description'], row['User Name'], row['DocC'],
+                        row['CoCode'], row['Exch. Rate'], row['Quantity'], row['Qty/plan'],
+                        formatExcelDate(row['Debit date']), formatExcelDate(row['Doc. Date']),
+                        row['Report currency'], row['Val.in rep.cur.'], row['TCurr'], row['Value TCur'], 
+                        row['Obj Curr.'], row['Value in Obj. Crcy']
+                    ];
+                });
 
             if (cji5Rows.length > 0) {
                 const sql = `INSERT INTO cji5_new (project_def, wbs_element, refdocno, item, co_object_name, supplier, name, year, per, cost_element, cost_element_descr, matl_group, material, description, user_name, docc, cocode, exch_rate, quantity, qty_plan, debit_date, doc_date, report_currency, val_in_rep_cur, tcurr, value_tcur, obj_curr, value_in_obj_crcy) VALUES ?`;
@@ -87,13 +58,12 @@ exports.uploadPtdData = async (req, res) => {
         }
 
         // ==========================================
-        // --- 2. CJ74 SHEET PROCESSING ---
+        // --- 2. CJ74 SHEET PROCESSING (APPEND MODE) ---
         // ==========================================
         if (sheetNames.includes('CJ74')) {
             const cj74Data = xlsx.utils.sheet_to_json(workbook.Sheets['CJ74']);
 
-            // 🔥 2.1 GRANULAR DUPLICATE VALIDATION FOR CJ74 (Object/WBS + Year + Per)
-            // Extracting unique Object_Year_Per combinations from Excel
+            // 🔥 APPEND MODE: Granular duplicate validation to prevent re-uploading same data
             const cj74UniquePairs = Array.from(
                 new Set(
                     cj74Data
@@ -105,7 +75,7 @@ exports.uploadPtdData = async (req, res) => {
                 return { object_1, year, per };
             });
 
-            // Batch-checking database for existing records
+            // Batch-check to prevent duplicates
             for (let i = 0; i < cj74UniquePairs.length; i += batchSize) {
                 const batch = cj74UniquePairs.slice(i, i + batchSize);
                 const conditions = batch.map(() => "(object_1 = ? AND year = ? AND per = ?)").join(" OR ");
@@ -119,26 +89,28 @@ exports.uploadPtdData = async (req, res) => {
                 if (duplicates.length > 0) {
                     const dup = duplicates[0];
                     return res.status(400).json({
-                        error: `CJ74 data already exists for Object: ${dup.object_1} under Year ${dup.year} - Period ${dup.per}. Duplicate upload is not allowed.`
+                        error: `CJ74 data already exists for WBS/Object: ${dup.object_1} under Year ${dup.year} - Period ${dup.per}. Duplicate upload is not allowed.`
                     });
                 }
             }
 
-            // 2.2 Actual Insert Process for CJ74
-            const cj74Rows = cj74Data.map(row => {
-                if(row['LOA_ID']) affectedLoas.add(row['LOA_ID'].toString().trim());
-                return [
-                    row['CoCd'], row['Year'], row['Per'], row['Project def.'], 
-                    row['Object'], row['Object'], row['Object'], row['Profit Ctr'], 
-                    row['Cost Element'], row['Cost element name'], row['Cost element descr.'], 
-                    row['Pur. Doc.'], row['Purchase order text'], row['DocumentNo'], 
-                    row['Material'], row['Material Description'], row['Name'], row['RefDocNo'], 
-                    row['frm'], row['User Name'], row['Offst.acct'], row['Name of offsetting account'], 
-                    row['Quantity'], formatExcelDate(row['Created on']), formatExcelDate(row['Postg Date']), 
-                    formatExcelDate(row['Doc. Date']), row['TCurr'], row['Value TranCurr'], 
-                    row['ObCur'], row['Value in Obj. Crcy'], row['RCurr'], row['Val.in RC']
-                ];
-            });
+            // Actual Append Process
+            const cj74Rows = cj74Data
+                .filter(row => row['Object']) // Skip empty rows
+                .map(row => {
+                    if (row['LOA_ID']) affectedLoas.add(row['LOA_ID'].toString().trim());
+                    return [
+                        row['CoCd'], row['Year'], row['Per'], row['Project def.'], 
+                        row['Object'], row['Object'], row['Object'], row['Profit Ctr'], 
+                        row['Cost Element'], row['Cost element name'], row['Cost element descr.'], 
+                        row['Pur. Doc.'], row['Purchase order text'], row['DocumentNo'], 
+                        row['Material'], row['Material Description'], row['Name'], row['RefDocNo'], 
+                        row['frm'], row['User Name'], row['Offst.acct'], row['Name of offsetting account'], 
+                        row['Quantity'], formatExcelDate(row['Created on']), formatExcelDate(row['Postg Date']), 
+                        formatExcelDate(row['Doc. Date']), row['TCurr'], row['Value TranCurr'], 
+                        row['ObCur'], row['Value in Obj. Crcy'], row['RCurr'], row['Val.in RC']
+                    ];
+                });
 
             if (cj74Rows.length > 0) {
                 const sql = `INSERT INTO cj74_new (cocd, year, per, proj_def, object_1, object_2, object_3, profit_ctr, cost_element, cost_element_name, cost_element_descr, pur_doc, purchase_order_text, document_no, material, material_description, name1, refdocno, frm, user_name, offst_acct, name_of_offsetting_account, quantity, created_on, postg_date, doc_date, tcurr, value_trancurr, obcur, val_in_obj_crcy, rcurr, val_in_rc) VALUES ?`;
@@ -150,6 +122,8 @@ exports.uploadPtdData = async (req, res) => {
         // --- 3. DIRECT SPEED SYNC ---
         // ==========================================
         const loaList = Array.from(affectedLoas).filter(id => id);
+        
+        // Agar excel me LOA_ID column mapped na ho to sab sync karo
         if (loaList.length > 0) {
             await db.query(`
                 UPDATE final_dashboard_table f
@@ -165,7 +139,7 @@ exports.uploadPtdData = async (req, res) => {
             `, [loaList]);
         }
 
-        res.status(200).json({ message: "PTD Updated and Dashboard Synced in seconds!" });
+        res.status(200).json({ message: "PTD Data Uploaded and Dashboard Synced Successfully!" });
     } catch (error) { 
         console.error("PTD ERROR:", error); 
         res.status(500).json({ error: error.message }); 
