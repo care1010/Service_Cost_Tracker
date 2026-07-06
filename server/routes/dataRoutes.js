@@ -114,4 +114,9 @@ router.get('/erp-resource-export', dataController.exportERPResource);
 
 router.post('/erp-resource/upload',  upload.single('file'), dataController.uploadERPResource);
 
+// Example routes mapping
+router.post('/upload-project-file', upload.single('file'), projectController.uploadProjectFile);
+
+router.get('/project-wbs-options', asblController.getProjectWbsOptions);
+
 module.exports = router;

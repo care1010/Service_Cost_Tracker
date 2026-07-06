@@ -77,7 +77,8 @@ const fetchTrendData = async () => {
             {
                 params: {
                     loa_name: selectedTrendLoa,
-                    active_inactive: selectedStatus
+                    active_inactive: selectedStatus,
+                    wbs_type: selectedWbsType // 🔥 Sync Trend
                 }
             }
         );
@@ -729,13 +730,17 @@ const displayLoaData = showAllLoa
                         </div>
                         {/* Loa Name filter END*/}
 
-                        {/* 🔥 5. Dynamic WBS TYPE Filter (Populates dynamically from DB) */}
-                        <div className="w-[160px]">
+                        {/* 🔥 5. Dynamic WBS TYPE Filter (Highlight with Glow effect if set to 'All') */}
+                        <div className={`w-[160px] p-0.5 rounded-2xl transition-all duration-300 ${
+                            selectedWbsType === 'All' 
+                                ? 'ring-2 ring-orange-500/50 border-orange-300 animate-pulse bg-orange-50/20' 
+                                : ''
+                        }`}>
                             <p className="text-[11px] font-black uppercase text-slate-500 mb-2">WBS Type</p>
                             <select
                                 value={selectedWbsType}
                                 onChange={(e) => setSelectedWbsType(e.target.value)}
-                                className="w-full bg-white border border-slate-300 rounded-2xl px-4 py-3 shadow-sm text-sm font-medium text-slate-700"
+                                className="w-full bg-white border border-slate-300 rounded-2xl px-4 py-3 shadow-sm text-sm font-medium text-slate-700 outline-none"
                             >
                                 <option value="All">All</option>
                                 {filterOptions.wbs_types && filterOptions.wbs_types.map((type) => (
@@ -900,6 +905,17 @@ const displayLoaData = showAllLoa
                     </div>
                 </div>
             </div>
+
+            {/* 🔥 NEW SOFT WARNING ALERT BANNER ON DASHBOARD PAGE IF WBS TYPE IS NOT SELECTED */}
+            {selectedWbsType === 'All' && (
+                <div className="mb-4 p-4 border border-orange-200 bg-orange-50/80 rounded-3xl text-sm text-orange-800 flex items-center gap-3 animate-pulse">
+                    <span className="text-lg">⚠️</span>
+                    <div>
+                        <span className="font-extrabold uppercase tracking-wide mr-1.5">ASBL & PTD Analytics Locked:</span> 
+                        Please select a specific <strong>WBS Type</strong> (Project, AMC, or Warranty) from the filter bar above to unlock and view the ASBL and PTD columns/graphs.
+                    </div>
+                </div>
+            )}
 
             {user?.type !== 'user' && (
             <div className="mt-6 bg-white p-4 rounded-xl shadow">
@@ -1079,12 +1095,17 @@ const displayLoaData = showAllLoa
                                     className="hover:bg-gray-50"
                                 >
                                     {columnsToShow.map((col) => (
-                                    <td
-                                        key={col}
-                                        className="border px-3 py-2"
-                                    >
-                                        {row[col]}
-                                    </td>
+                                        <td
+                                            key={col}
+                                            className="border px-3 py-2"
+                                        >
+                                            {/*  ASBL & PTD will remain completely blank when hidden */}
+                                            {(col === 'asbl' || col === 'ptd') && row[col] === null ? (
+                                                "" 
+                                            ) : (
+                                                row[col]
+                                            )}
+                                        </td>
                                     ))}
                                 </tr>
                                 ))

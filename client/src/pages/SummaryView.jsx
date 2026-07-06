@@ -9,7 +9,7 @@ import Swal from 'sweetalert2';
 import { HiOutlineFilter, HiOutlineViewGrid, HiOutlineSearch, HiOutlineRefresh } from "react-icons/hi";
 
 const SummaryView = ({ user }) => {
-    // 1. SAARE STATES (Hamesha sabse upar)
+    // 1. SAARE STATES
     const [filters, setFilters] = useState({
         bu: 'All', customer: 'All', loa_id: 'All', loa_name: 'All', wbs_type: 'All', wbs_description: 'All',  wbs: 'All', active_inactive: 'Active', period: 'All'
     });
@@ -20,17 +20,14 @@ const SummaryView = ({ user }) => {
     const [loading, setLoading] = useState(false);
     const [isReviewMode, setIsReviewMode] = useState(false);
     const [collapseView, setCollapseView] = useState(false);
-    const [negativeLoaView, setNegativeLoaView] = useState(false);
 
-    //  1. Review Button Click Handler
+    // 1. Review Button Click Handler
     const handleReviewClick = async () => {
         try {
             const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/data/check-pending-changes`);
-            
             if (res.data.count > 0) {
-                setIsReviewMode(true); // Agar changes hain toh Review page par bhejien
+                setIsReviewMode(true); 
             } else {
-                // 🔥 2. No Changes Popup
                 Swal.fire({
                     icon: 'info',
                     title: 'No Changes',
@@ -45,35 +42,30 @@ const SummaryView = ({ user }) => {
         }
     };
 
-    // 2. SAARE EFFECTS (Hooks order maintain karne ke liye)
-    // SummaryView.jsx mein fetchOptions ko update karein
-
     useEffect(() => {
-    const fetchOptions = async () => {
-        try {
-            const userType = user?.type || 'user';
-            const customers = user?.allowedCustomers ? user.allowedCustomers.join(',') : '';
-            
-            // URLSearchParams use karna sabse safe hai
-            const params = new URLSearchParams({
-                ...filters,
-                type: userType,
-                allowedCustomers: customers
-            });
+        const fetchOptions = async () => {
+            try {
+                const userType = user?.type || 'user';
+                const customers = user?.allowedCustomers ? user.allowedCustomers.join(',') : '';
+                
+                const params = new URLSearchParams({
+                    ...filters,
+                    type: userType,
+                    allowedCustomers: customers
+                });
 
-            const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/data/filter-options?${params.toString()}`);
-            setOptions(res.data);
-        } catch (err) {
-            console.error("Error fetching filter options:", err);
+                const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/data/filter-options?${params.toString()}`);
+                setOptions(res.data);
+            } catch (err) {
+                console.error("Error fetching filter options:", err);
+            }
+        };
+
+        if (user) {
+            fetchOptions();
         }
-    };
+    }, [user, filters]);
 
-    if (user) {
-        fetchOptions();
-    }
-}, [user, filters]); // Filters badalne par dropdowns refresh honge
-
-    // 3. SAARE HANDLERS (useCallback hooks)
     const handleFilterChange = (name, value) => setFilters(prev => ({ ...prev, [name]: value }));
     
     const handleReset = () => setFilters({ 
@@ -85,188 +77,82 @@ const SummaryView = ({ user }) => {
     }, []);
 
     const handleFullExport = async () => {
+        const result = await Swal.fire({
+            title: 'Select Export View',
+            text: 'Choose which view you want to export',
+            icon: 'question',
+            showDenyButton: true,
+            showCancelButton: true,
+            confirmButtonText: 'Export at Cost Level',
+            denyButtonText: 'Export at Cost Element Level',
+            confirmButtonColor: '#16a34a',
+            denyButtonColor: '#4169e1',
+            cancelButtonColor: '#6b7280'
+        });
 
-    const result = await Swal.fire({
-        title: 'Select Export View',
-        text: 'Choose which view you want to export',
-        icon: 'question',
-        showDenyButton: true,
-        showCancelButton: true,
-
-        confirmButtonText: 'Export at Cost Level',
-        denyButtonText: 'Export at Cost Element Level',
-
-        confirmButtonColor: '#16a34a',
-        denyButtonColor: '#4169e1',
-        cancelButtonColor: '#6b7280'
-    });
-
-    let exportCollapseView = false;
-
-    if (result.isConfirmed) {
-        // Collapse View Export
-        exportCollapseView = true;
-    }
-    else if (result.isDenied) {
-        // Expand View Export
-        exportCollapseView = false;
-    }
-    else {
-        return;
-    }
-
-    const exportUrl = new URL(
-        `${process.env.REACT_APP_API_URL}/api/data/export-excel`
-    );
-
-    const userType = user?.type || 'user';
-
-    const allowedCustomers =
-        Array.isArray(user?.allowedCustomers)
-            ? user.allowedCustomers.join(',')
-            : user?.allowedCustomers || '';
-
-    exportUrl.searchParams.append(
-        'type',
-        userType
-    );
-
-    exportUrl.searchParams.append(
-        'allowedCustomers',
-        allowedCustomers
-    );
-
-    exportUrl.searchParams.append(
-        'showAll',
-        showAll
-    );
-
-    // 👇 Popup se selected view bhejenge
-    exportUrl.searchParams.append(
-        'collapseView',
-        exportCollapseView
-    );
-
-    Object.keys(filters).forEach(key => {
-
-        if (
-            filters[key]
-            &&
-            filters[key] !== 'All'
-        ) {
-            exportUrl.searchParams.append(
-                key,
-                filters[key]
-            );
+        let exportCollapseView = false;
+        if (result.isConfirmed) {
+            exportCollapseView = true;
+        } else if (result.isDenied) {
+            exportCollapseView = false;
+        } else {
+            return;
         }
-    });
 
-    window.location.href = exportUrl.toString();
-};
+        const exportUrl = new URL(`${process.env.REACT_APP_API_URL}/api/data/export-excel`);
+        const userType = user?.type || 'user';
+        const allowedCustomers = Array.isArray(user?.allowedCustomers) ? user.allowedCustomers.join(',') : user?.allowedCustomers || '';
 
-const startExport = (exportCollapseView) => {
+        exportUrl.searchParams.append('type', userType);
+        exportUrl.searchParams.append('allowedCustomers', allowedCustomers);
+        exportUrl.searchParams.append('showAll', showAll);
+        exportUrl.searchParams.append('collapseView', exportCollapseView);
 
-    const exportUrl = new URL(
-        `${process.env.REACT_APP_API_URL}/api/data/export-excel`
-    );
+        Object.keys(filters).forEach(key => {
+            if (filters[key] && filters[key] !== 'All') {
+                exportUrl.searchParams.append(key, filters[key]);
+            }
+        });
 
-    const userType = user?.type || 'user';
-
-    const allowedCustomers =
-        Array.isArray(user?.allowedCustomers)
-            ? user.allowedCustomers.join(',')
-            : user?.allowedCustomers || '';
-
-    exportUrl.searchParams.append(
-        'type',
-        userType
-    );
-
-    exportUrl.searchParams.append(
-        'allowedCustomers',
-        allowedCustomers
-    );
-
-    exportUrl.searchParams.append(
-        'showAll',
-        showAll
-    );
-
-    exportUrl.searchParams.append(
-        'collapseView',
-        exportCollapseView
-    );
-
-    Object.keys(filters).forEach(key => {
-
-        if (
-            filters[key]
-            &&
-            filters[key] !== 'All'
-        ) {
-            exportUrl.searchParams.append(
-                key,
-                filters[key]
-            );
-        }
-    });
-
-    window.location.href =
-        exportUrl.toString();
-};
+        window.location.href = exportUrl.toString();
+    };
 
     const handleFullRefresh = async () => {
-
-    const result = await Swal.fire({
-        title: "Sync Database?",
-        text: "This process may take 1-2 minutes.",
-        icon: "warning",
-        showCancelButton: true,
-        confirmButtonText: "Yes, Sync",
-    });
-
-    if (!result.isConfirmed) return;
-
-    Swal.fire({
-        title: "Syncing Database...",
-        text: "Please wait",
-        allowOutsideClick: false,
-        allowEscapeKey: false,
-        didOpen: () => {
-            Swal.showLoading();
-        }
-    });
-
-    try {
-        const res = await axios.post(
-            `${process.env.REACT_APP_API_URL}/api/data/full-refresh`
-        );
-
-        await Swal.fire({
-            icon: "success",
-            title: "Sync Completed",
-            text: res.data.message
+        const result = await Swal.fire({
+            title: "Sync Database?",
+            text: "This process may take 1-2 minutes.",
+            icon: "warning",
+            showCancelButton: true,
+            confirmButtonText: "Yes, Sync",
         });
 
-        window.location.reload();
+        if (!result.isConfirmed) return;
 
-    } catch (err) {
         Swal.fire({
-            icon: "error",
-            title: "Sync Failed",
-            text: "Something went wrong"
+            title: "Syncing Database...",
+            text: "Please wait",
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            didOpen: () => {
+                Swal.showLoading();
+            }
         });
-    }
-};
 
-    const handleNegativeLOA = () => {
-        // parent rows only
-        const filteredData = tableData.filter(row => {
-            const value = Number(row["EAC vs ASBL"]) || 0;
-            return value <= 0 && Number(row["ASBL"]) > 0;
-        });
-        setNegativeLOAData(filteredData);
-        setShowNegativeLOA(true);
+        try {
+            const res = await axios.post(`${process.env.REACT_APP_API_URL}/api/data/full-refresh`);
+            await Swal.fire({
+                icon: "success",
+                title: "Sync Completed",
+                text: res.data.message
+            });
+            window.location.reload();
+        } catch (err) {
+            Swal.fire({
+                icon: "error",
+                title: "Sync Failed",
+                text: "Something went wrong"
+            });
+        }
     };
 
     const handleAsblSubmit = (data) => {
@@ -276,14 +162,14 @@ const startExport = (exportCollapseView) => {
     // 4. LOGIC CALCULATIONS
     const queryParams = new URLSearchParams(filters);
     queryParams.append('showAll', showAll);
-    queryParams.append('type', user?.type); // Role bhejien
+    queryParams.append('type', user?.type); 
     if (user?.allowedCustomers) {
-        queryParams.append('allowedCustomers', user.allowedCustomers.join(',')); // Customers bhejien
-}
+        queryParams.append('allowedCustomers', user.allowedCustomers.join(',')); 
+    }
 
     const dynamicApiUrl = collapseView
-    ? `${process.env.REACT_APP_API_URL}/api/data/wbs-summary-collapse?${queryParams.toString()}`
-    : `${process.env.REACT_APP_API_URL}/api/data/wbs-summary?${queryParams.toString()}`;
+        ? `${process.env.REACT_APP_API_URL}/api/data/wbs-summary-collapse?${queryParams.toString()}`
+        : `${process.env.REACT_APP_API_URL}/api/data/wbs-summary?${queryParams.toString()}`;
 
     const tableColumns = [
         { header: 'BU', field: 'bu' },
@@ -301,12 +187,10 @@ const startExport = (exportCollapseView) => {
         { header: 'EAC vs ASBL', field: 'eac_vs_asbl' }
     ];
 
-    // 🔥 5. CONDITIONAL RETURN (Hamesha saare hooks ke BAAD aana chahiye)
     if (isReviewMode) {
         return <ReviewChanges onBack={() => setIsReviewMode(false)} />;
     }
 
-    // 6. FINAL UI RETURN
     return (
         <div className="p-5 bg-[#f8fafc] min-h-screen relative">
             {loading && (
@@ -318,50 +202,46 @@ const startExport = (exportCollapseView) => {
 
             <FilterBar filters={filters} options={options} onFilterChange={handleFilterChange} onReset={handleReset} />
             
+            {/* 🔥 NEW DYNAMIC WARNING BANNER IF WBS TYPE IS NOT SELECTED */}
+            {filters.wbs_type === 'All' && (
+                <div className="mb-4 p-4 border border-orange-200 bg-orange-50/80 rounded-3xl text-sm text-orange-800 flex items-center gap-3 animate-pulse">
+                    <span className="text-lg">⚠️</span>
+                    <div>
+                        <span className="font-extrabold uppercase tracking-wide mr-1.5">ASBL Columns Locked:</span> 
+                        Please select a specific <strong>WBS Type</strong> (Project, AMC, or Warranty) from the filter bar above to unlock and view the ASBL values.
+                    </div>
+                </div>
+            )}
+
             <div className="flex flex-col lg:flex-row gap-4 mb-6 items-stretch">
                 <div className="flex-1">
                     <KpiCards data={kpiData} />
                 </div>
                 
                 <div className="flex gap-3">
-                    {/* Export Excel - Sabko dikhega */}
                     <button
                         onClick={handleFullExport}
-                        className="group text-white px-4 py-2 rounded-2xl shadow-md 
-                        flex items-center gap-2 transition-all duration-300 
-                        hover:scale-105 hover:shadow-xl"
-                        style={{
-                            background: 'linear-gradient(135deg, #4169e1, #3157c9)',
-                        }}
+                        className="group text-white px-4 py-2 rounded-2xl shadow-md flex items-center gap-2 transition-all duration-300 hover:scale-105 hover:shadow-xl"
+                        style={{ background: 'linear-gradient(135deg, #4169e1, #3157c9)' }}
                     >
-                        <span className="text-lg transition-transform duration-300 group-hover:-translate-y-[1px]">
-                            📥
-                        </span>
-
+                        <span className="text-lg transition-transform duration-300 group-hover:-translate-y-[1px]">📥</span>
                         <div className="flex flex-col leading-tight text-left">
-                            
-                            <span className="text-sm font-black">
-                                Export
-                            </span>
+                            <span className="text-sm font-black">Export</span>
                         </div>
                     </button>
 
-                    {/* Toggle Categories - Sabko dikhega */}
                     <button
                         onClick={() => setShowAll(!showAll)}
-                        className="group text-white px-4 py-2 rounded-2xl shadow-md 
-                        flex items-center gap-2 transition-all duration-300 
-                        hover:scale-105 hover:shadow-xl"
+                        className="group text-white px-4 py-2 rounded-2xl shadow-md flex items-center gap-2 transition-all duration-300 hover:scale-105 hover:shadow-xl"
                         style={{
                             background: showAll
-                                ? 'linear-gradient(135deg, #f97316, #ea580c)'   // Orange when active
-                                : 'linear-gradient(135deg, #4169e1, #3157c9)', // Blue when inactive
+                                ? 'linear-gradient(135deg, #f97316, #ea580c)'   
+                                : 'linear-gradient(135deg, #4169e1, #3157c9)', 
                         }}
                     >
                         <span className="text-lg transition-transform duration-300 group-hover:-translate-y-[1px]">
                             {showAll ? <HiOutlineFilter /> : <HiOutlineViewGrid />}
                         </span>
-
                         <div className="flex flex-col leading-tight text-left">
                             <span className="text-sm font-black">
                                 {showAll ? 'Active Categories' : 'All Categories'}
@@ -369,53 +249,31 @@ const startExport = (exportCollapseView) => {
                         </div>
                     </button>
 
-                {/*  ROLE CHECK: Sirf Admin/Super Admin ko dikhega */}
                     {(user?.type === 'admin' || user?.type === 'super_admin') && (
                         <>
-                        {/* Review Changes Button */}
                             <button
                                 onClick={handleReviewClick}
-                                className="group text-white px-4 py-2 rounded-2xl shadow-md 
-                                flex items-center gap-2 transition-all duration-300 
-                                hover:scale-105 hover:shadow-xl"
-                                style={{
-                                    background: 'linear-gradient(#8fbc8f)',
-                                }}
+                                className="group text-white px-4 py-2 rounded-2xl shadow-md flex items-center gap-2 transition-all duration-300 hover:scale-105 hover:shadow-xl"
+                                style={{ background: 'linear-gradient(#8fbc8f)' }}
                             >
-                                <span className="text-lg transition-transform duration-300 group-hover:-translate-y-[1px]">
-                                    <HiOutlineSearch />
-                                </span>
-
+                                <span className="text-lg transition-transform duration-300 group-hover:-translate-y-[1px]"><HiOutlineSearch /></span>
                                 <div className="flex flex-col leading-tight text-left">
-                                    <span className="text-sm font-black">
-                                        Review
-                                    </span>
+                                    <span className="text-sm font-black">Review</span>
                                 </div>
                             </button>
 
-                            {/* Full Sync Button */}
                             <button
                                 onClick={handleFullRefresh}
-                                className="group text-white px-4 py-2 rounded-2xl shadow-md 
-                                flex items-center gap-2 transition-all duration-300 
-                                hover:scale-105 hover:shadow-xl"
-                                style={{
-                                    background: 'linear-gradient(135deg, #1e293b, #000000)',
-                                }}
+                                className="group text-white px-4 py-2 rounded-2xl shadow-md flex items-center gap-2 transition-all duration-300 hover:scale-105 hover:shadow-xl"
+                                style={{ background: 'linear-gradient(135deg, #1e293b, #000000)' }}
                             >
-                                <span className="text-lg transition-transform duration-300 group-hover:rotate-180">
-                                    <HiOutlineRefresh />
-                                </span>
-
+                                <span className="text-lg transition-transform duration-300 group-hover:rotate-180"><HiOutlineRefresh /></span>
                                 <div className="flex flex-col leading-tight text-left">
-                                    <span className="text-sm font-black">
-                                        Sync Database
-                                    </span>
+                                    <span className="text-sm font-black">Sync Database</span>
                                 </div>
                             </button>
                         </>
                     )}
-                    
                 </div>
             </div>
 
@@ -424,12 +282,11 @@ const startExport = (exportCollapseView) => {
             </div>
 
             <AsblModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSubmit={handleAsblSubmit} />
-                <div className="mt-6 mb-4 px-4 py-3 border border-amber-200 rounded-lg text-sm text-slate-800 bg-amber-50">
-                    <span className="font-bold text-amber-800">Note:</span>{" "}
-                    This tool is to be used to track Services Cost "– EAC vs ASBL".
-                    Please ignore revenue figures, as these figures are not validated.
-                </div>
-
+            <div className="mt-6 mb-4 px-4 py-3 border border-amber-200 rounded-lg text-sm text-slate-800 bg-amber-50">
+                <span className="font-bold text-amber-800">Note:</span>{" "}
+                This tool is to be used to track Services Cost "– EAC vs ASBL".
+                Please ignore revenue figures, as these figures are not validated.
+            </div>
         </div>
     );
 };
