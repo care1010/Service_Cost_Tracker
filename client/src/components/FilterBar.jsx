@@ -21,28 +21,27 @@ const FilterBar = ({ filters, options, onFilterChange, onReset }) => {
 
     useEffect(() => {
 
-        const selects = $('.select2-dropdown').select2({
-            width: '100%',
-            placeholder: "Search...",
-            color: "#000000"
-        });
+    $('.select2-dropdown').each(function () {
+        if ($(this).hasClass("select2-hidden-accessible")) {
+            $(this).select2('destroy');
+        }
+    });
 
-        selects.on('change', (e) => {
-            const { name, value } = e.target;
-            onFilterChange(name, value);
-        });
+    const selects = $('.select2-dropdown').select2({
+        width: '100%',
+        placeholder: "Search..."
+    });
 
-        filterConfigs.forEach(cfg => {
-            $(`select[name="${cfg.name}"]`)
-                .val(filters[cfg.name] || 'All')
-                .trigger('change.select2');
-        });
+    selects.off('change').on('change', function () {
+        onFilterChange(this.name, this.value);
+    });
 
-        return () => {
-            selects.off('change');
-        };
+    return () => {
+        selects.off('change');
+        selects.select2('destroy');
+    };
 
-    }, [options]);
+}, [options, , filters]);
 
     return (
     <div className="bg-white/90 backdrop-blur-md p-3 rounded-[2rem] mb-4 
@@ -58,7 +57,7 @@ const FilterBar = ({ filters, options, onFilterChange, onReset }) => {
                     transition-all duration-300 hover:shadow-md hover:border-blue-100`}
                 >
 
-                    <label className="text-[13px] font-normal text-black-900 mb-1 ml-1 block">
+                    <label className="text-[14px] font-normal text-black-900 mb-1 ml-1 block">
                         {cfg.label}
                     </label>
 
@@ -122,7 +121,7 @@ const FilterBar = ({ filters, options, onFilterChange, onReset }) => {
                         <HiOutlineRefresh />
                     </span>
 
-                    <span className="text-[13px] font-black tracking-wide uppercase">
+                    <span className="text-[14px] font-black tracking-wide uppercase">
                         Reset Filters
                     </span>
                 </button>

@@ -202,13 +202,15 @@ const SummaryView = ({ user }) => {
 
             <FilterBar filters={filters} options={options} onFilterChange={handleFilterChange} onReset={handleReset} />
             
-            {/* 🔥 NEW DYNAMIC WARNING BANNER IF WBS TYPE IS NOT SELECTED */}
-            {filters.wbs_type === 'All' && (
+            {/* 🔥 UPDATED DYNAMIC WARNING BANNER IF WBS TYPE IS NOT SELECTED OR IF IT IS 'Warranty/Other' */}
+            {(!filters.wbs_type || filters.wbs_type === 'All' || filters.wbs_type.toLowerCase() === 'warranty/other') && (
                 <div className="mb-4 p-4 border border-orange-200 bg-orange-50/80 rounded-3xl text-sm text-orange-800 flex items-center gap-3 animate-pulse">
                     <span className="text-lg">⚠️</span>
                     <div>
                         <span className="font-extrabold uppercase tracking-wide mr-1.5">ASBL Columns Locked:</span> 
-                        Please select a specific <strong>WBS Type</strong> (Project, AMC, or Warranty) from the filter bar above to unlock and view the ASBL values.
+                        {filters.wbs_type?.toLowerCase() === 'warranty/other' 
+                            ? "ASBL values are not applicable for 'Warranty/Other' WBS Type."
+                            : "Please select a specific WBS Type (e.g. Project or AMC) from the filter bar above to unlock and view the ASBL values."}
                     </div>
                 </div>
             )}

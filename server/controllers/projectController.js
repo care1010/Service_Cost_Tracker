@@ -33,82 +33,77 @@ const CATEGORY_MAP = [
     { cat: "New Category", type: "Cost" }
 ];
 
-// 🔥 Standardized Core Processing Engine accepting normalized JSON rows
-const processProjectData = async (rows, created_by) => {
-    if (!rows || rows.length === 0) {
-        throw new Error("No data found to process!");
+// 🔥 Universal Engine: Accepts 2D Array
+const processProjectData = async (dataGrid, created_by) => {
+    if (!dataGrid || dataGrid.length < 2) {
+        throw new Error("No data found or headers missing!");
     }
 
-    // Get the keys from the first row (headers are already uppercase and trimmed)
-    const firstRowKeys = Object.keys(rows[0]);
+    const headers = dataGrid[0].map(h => String(h || "").trim().toUpperCase());
+    const idxBu = headers.findIndex(h => h.includes('BUSINESS DIVISION') || h === 'BU');
+    const idxCustomer = headers.findIndex(h => h.includes('CT NAME') || h === 'CUSTOMER_');
+    const idxLoaId = headers.findIndex(h => h.includes('OPPORTUNITY CODE') || h === 'LOA_ID');
+    const idxLoaName = headers.findIndex(h => h.includes('PROJECT DESCRIPTION') || h === 'LOA_NAME');
+    const idxWbsType = headers.findIndex(h => h.includes('WBS TYPE'));
+    const idxWbsElement = headers.findIndex(h => h === 'WBS');
+    const idxWbsDesc = headers.findIndex(h => h.includes('WBS DESCRIPTION'));
+    const idxMerged = headers.findIndex(h => h === 'MERGED');
 
-    // Dynamic Column Key Matching
-    const keyBu = firstRowKeys.find(k => k.includes('BUSINESS DIVISION') || k === 'BU');
-    const keyCustomer = firstRowKeys.find(k => k.includes('CT NAME') || k === 'CUSTOMER_');
-    const keyLoaId = firstRowKeys.find(k => k.includes('OPPORTUNITY CODE') || k === 'LOA_ID');
-    const keyLoaName = firstRowKeys.find(k => k.includes('PROJECT DESCRIPTION') || k === 'LOA_NAME');
-    const keyWbsType = firstRowKeys.find(k => k.includes('WBS TYPE'));
-    const keyWbsElement = firstRowKeys.find(k => k === 'WBS');
-    const keyWbsDesc = firstRowKeys.find(k => k.includes('WBS DESCRIPTION'));
-    const keyMerged = firstRowKeys.find(k => k === 'MERGED');
-
-    if (!keyLoaId || !keyWbsElement) {
+    if (idxLoaId === -1 || idxWbsElement === -1) {
         throw new Error("Invalid Excel Template! Opportunity Code and WBS columns must be present.");
     }
 
+    const dataLines = dataGrid.slice(1);
     const projectGroups = {};
     
-    // Carry-forward states for merged cells
+    // Carry-forward trackers
     let current_bu = "";
     let current_customer = "";
     let current_loa_id = "";
     let current_loa_name = "";
     let current_merged_wbs = "";
+    let current_wbs_type = "";
 
-    for (let row of rows) {
-        const raw_bu = row[keyBu];
-        const raw_customer = row[keyCustomer];
-        const raw_loa_id = row[keyLoaId];
-        const raw_loa_name = row[keyLoaName];
-        const raw_wbs_type = row[keyWbsType];
-        const raw_wbs_element = row[keyWbsElement];
-        const raw_wbs_description = row[keyWbsDesc];
-        const raw_merged_wbs = row[keyMerged];
+    for (let cols of dataLines) {
+        if (cols.every(c => !c || String(c).trim() === '')) continue;
 
-        const bu = raw_bu || current_bu;
-        const customer = raw_customer || current_customer;
-        const loa_id = raw_loa_id || current_loa_id;
-        const loa_name = raw_loa_name || current_loa_name;
-        const wbs_type = raw_wbs_type || null;
-        const wbs_element = raw_wbs_element || null;
-        const wbs_description = raw_wbs_description || null;
-        const merged_wbs = raw_merged_wbs || current_merged_wbs;
+        const raw_bu = cols[idxBu] ? String(cols[idxBu]).trim() : "";
+        const raw_customer = cols[idxCustomer] ? String(cols[idxCustomer]).trim() : "";
+        const raw_loa_id = cols[idxLoaId] ? String(cols[idxLoaId]).trim() : "";
+        const raw_loa_name = cols[idxLoaName] ? String(cols[idxLoaName]).trim() : "";
+        const raw_wbs_type = cols[idxWbsType] ? String(cols[idxWbsType]).trim() : "";
+        const raw_wbs_element = cols[idxWbsElement] ? String(cols[idxWbsElement]).trim() : "";
+        const raw_wbs_description = cols[idxWbsDesc] ? String(cols[idxWbsDesc]).trim() : "";
+        const raw_merged_wbs = cols[idxMerged] ? String(cols[idxMerged]).trim() : "";
 
-        // Update carry-forward state safely
         if (raw_bu) current_bu = raw_bu;
         if (raw_customer) current_customer = raw_customer;
         if (raw_loa_id) current_loa_id = raw_loa_id;
         if (raw_loa_name) current_loa_name = raw_loa_name;
         if (raw_merged_wbs) current_merged_wbs = raw_merged_wbs;
+        if (raw_wbs_type) current_wbs_type = raw_wbs_type;
+
+        const bu = raw_bu || current_bu;
+        const customer = raw_customer || current_customer;
+        const loa_id = raw_loa_id || current_loa_id;
+        const loa_name = raw_loa_name || current_loa_name;
+        const wbs_type = raw_wbs_type || current_wbs_type; 
+        const merged_wbs = raw_merged_wbs || current_merged_wbs;
+        const wbs_element = raw_wbs_element; 
+        const wbs_description = raw_wbs_description; 
 
         if (!loa_id) continue;
 
         if (!projectGroups[loa_id]) {
             projectGroups[loa_id] = {
-                bu,
-                customer,
-                loa_id,
-                loa_name,
-                merged_wbs,
-                wbs_rows: []
+                bu, customer, loa_id, loa_name, merged_wbs, wbs_rows: []
             };
         }
 
+        // Only add if WBS Element exists in this specific row
         if (wbs_element) {
             projectGroups[loa_id].wbs_rows.push({
-                wbs_type,
-                wbs_element,
-                wbs_description
+                wbs_type, wbs_element, wbs_description
             });
         }
     }
@@ -135,6 +130,7 @@ const processProjectData = async (rows, created_by) => {
             );
             const existingMappingWbs = exMappings.map(m => m.wbs_element.toUpperCase());
 
+            // Get only the TRULY NEW wbs_elements from the current upload
             let newWbsElements = wbs_rows.filter(row => 
                 !existingMappingWbs.includes(row.wbs_element.toUpperCase())
             );
@@ -144,20 +140,28 @@ const processProjectData = async (rows, created_by) => {
                 skippedLoas.add(loa_id); 
                 continue;
             } else {
+                // 🔥 MASTER FIX: Force uniqueness on the combined WBS list using Set()
                 const newWbsNames = newWbsElements.map(row => row.wbs_element);
-                const updatedWbsList = [...dbWbsArray, ...newWbsNames];
-                const updatedWbsString = updatedWbsList.join(',');
+                const uniqueWbsSet = new Set([...dbWbsArray, ...newWbsNames]); // Removes all duplicates
+                const updatedWbsString = Array.from(uniqueWbsSet).join(','); // "WBS1, WBS2"
 
+                // A. Update Summary Table
                 await db.query("UPDATE summary SET wbs = ? WHERE TRIM(loa_id) = ?", [updatedWbsString, loa_id]);
+                
+                // B. Update Existing Mapping Rows
                 await db.query("UPDATE wbs_loa_id_mapping1 SET wbs = ? WHERE TRIM(loa_id) = ?", [updatedWbsString, loa_id]);
 
-                const newMappingRows = newWbsElements.map(row => [
-                    loa_id,
-                    row.wbs_type,
-                    row.wbs_element,
-                    row.wbs_description,
-                    updatedWbsString,
-                    created_by
+                // C. Insert New Mapping Rows
+                // Remove duplicates within the newWbsElements array itself before inserting
+                const uniqueNewWbsMap = new Map();
+                newWbsElements.forEach(row => {
+                    if (!uniqueNewWbsMap.has(row.wbs_element.toUpperCase())) {
+                        uniqueNewWbsMap.set(row.wbs_element.toUpperCase(), row);
+                    }
+                });
+
+                const newMappingRows = Array.from(uniqueNewWbsMap.values()).map(row => [
+                    loa_id, row.wbs_type, row.wbs_element, row.wbs_description, updatedWbsString, created_by
                 ]);
 
                 await db.query(`
@@ -170,18 +174,14 @@ const processProjectData = async (rows, created_by) => {
             }
         } else {
             // --- CASE: INSERT NEW PROJECT ---
-            const finalMergedWbs = merged_wbs || wbs_rows.map(r => r.wbs_element).join(',');
+            
+            // 🔥 MASTER FIX: Force uniqueness on completely new projects as well
+            const wbsNamesFromExcel = wbs_rows.map(r => r.wbs_element);
+            const uniqueWbsSet = new Set(wbsNamesFromExcel); 
+            const finalMergedWbs = merged_wbs || Array.from(uniqueWbsSet).join(','); // "WBS1, WBS2"
 
             const summaryRows = CATEGORY_MAP.map(item => [
-                bu, 
-                customer, 
-                loa_id, 
-                loa_name, 
-                item.type, 
-                item.cat, 
-                finalMergedWbs, 
-                0, 
-                'Active'
+                bu, customer, loa_id, loa_name, item.type, item.cat, finalMergedWbs, 0, 'Active'
             ]);
             
             await db.query(`
@@ -190,13 +190,16 @@ const processProjectData = async (rows, created_by) => {
                 VALUES ?
             `, [summaryRows]);
 
-            const mappingRows = wbs_rows.map(row => [
-                loa_id,
-                row.wbs_type,
-                row.wbs_element,
-                row.wbs_description,
-                finalMergedWbs,
-                created_by
+            // Deduplicate rows for mapping table insertion
+            const uniqueWbsMap = new Map();
+            wbs_rows.forEach(row => {
+                if (!uniqueWbsMap.has(row.wbs_element.toUpperCase())) {
+                    uniqueWbsMap.set(row.wbs_element.toUpperCase(), row);
+                }
+            });
+
+            const mappingRows = Array.from(uniqueWbsMap.values()).map(row => [
+                loa_id, row.wbs_type, row.wbs_element, row.wbs_description, finalMergedWbs, created_by
             ]);
 
             await db.query(`
@@ -247,30 +250,19 @@ exports.processProjectPaste = async (req, res) => {
     if (!rawText || rawText.trim() === '') return res.status(400).json({ error: "No data pasted" });
 
     try {
-        const lines = rawText.trim().split(/\r?\n/).map(l => l.trim()).filter(l => l !== '');
-        const headers = lines[0].split('\t').map(h => h.trim().toUpperCase());
-        const dataLines = lines.slice(1);
-
-        // Normalize text lines to JSON objects
-        const rows = dataLines.map(line => {
-            const cols = line.split('\t').map(c => c.trim());
-            const rowObj = {};
-            headers.forEach((header, index) => {
-                rowObj[header] = cols[index] || "";
-            });
-            return rowObj;
-        });
+        const lines = rawText.trim().split(/\r?\n/).filter(l => l.trim() !== '');
+        const dataGrid = lines.map(line => line.split('\t'));
 
         const created_by = req.user?.email || 'System';
-        const result = await processProjectData(rows, created_by);
+        const result = await processProjectData(dataGrid, created_by);
         res.status(200).json({ message: result.message });
     } catch (error) {
-        console.error("PASTE PROCESSING ERROR:", error);
+        console.error("PASTE ERROR:", error);
         res.status(500).json({ error: error.message });
     }
 };
 
-// --- 🔥 B. Optimized File Upload endpoint (Uses sheet_to_json directly) ---
+// --- B. File Upload endpoint ---
 exports.uploadProjectFile = async (req, res) => {
     try {
         if (!req.file) {
@@ -281,30 +273,17 @@ exports.uploadProjectFile = async (req, res) => {
         const sheetName = workbook.SheetNames[0];
         const sheet = workbook.Sheets[sheetName];
 
-        // Parse sheet to raw json rows (retains empty fields as "")
-        const rawRows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-
-        // Normalize Excel rows keys to strict uppercase for 100% dynamic mapping
-        const rows = rawRows.map(row => {
-            const rowObj = {};
-            Object.keys(row).forEach(key => {
-                rowObj[key.trim().toUpperCase()] = String(row[key]).trim();
-            });
-            return rowObj;
-        });
+        const dataGrid = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "" });
 
         const created_by = req.user?.email || 'System';
-        const result = await processProjectData(rows, created_by);
+        const result = await processProjectData(dataGrid, created_by);
 
-        // Cleanup temp file
         fs.unlinkSync(req.file.path);
-
         res.status(200).json({ message: result.message });
+
     } catch (error) {
-        console.error("FILE UPLOAD ERROR:", error);
-        if (req.file && fs.existsSync(req.file.path)) {
-            fs.unlinkSync(req.file.path); 
-        }
+        console.error("UPLOAD ERROR:", error);
+        if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path); 
         res.status(500).json({ error: error.message });
     }
 };

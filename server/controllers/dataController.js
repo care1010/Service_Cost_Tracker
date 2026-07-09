@@ -94,12 +94,12 @@ exports.getWbsSummary = async (req, res) => {
         const limitIdx = parseInt(length) || 10;
 
         let wbsType = req.query.wbs_type;
-
         if (Array.isArray(wbsType)) {
             wbsType = wbsType[0];
         }
 
-        const showAsbl = wbsType && wbsType !== "All";
+        // 🔥 FIX: Hide ASBL if wbsType is 'All' OR 'Warranty/Other' (Case Insensitive)
+        const showAsbl = wbsType && wbsType !== "All" && wbsType.toLowerCase() !== "warranty/other";
 
         // console.log("[DEBUG] WBS Type:", wbsType);
         // console.log("[DEBUG] Show ASBL:", showAsbl);
@@ -231,12 +231,12 @@ exports.getWbsSummaryCollapse = async (req, res) => {
         const limitIdx = parseInt(length) || 10;
 
         let wbsType = req.query.wbs_type;
-
         if (Array.isArray(wbsType)) {
             wbsType = wbsType[0];
         }
 
-        const showAsbl = wbsType && wbsType !== "All";
+        // 🔥 FIX: Hide ASBL if wbsType is 'All' OR 'Warranty/Other' (Case Insensitive)
+        const showAsbl = wbsType && wbsType !== "All" && wbsType.toLowerCase() !== "warranty/other";
 
         console.log("[DEBUG] WBS Type:", wbsType);
         console.log("[DEBUG] Show ASBL:", showAsbl);
@@ -431,88 +431,86 @@ exports.exportDrillDown = async (req, res) => {
 exports.getFilterOptions = async (req, res) => {
     try {
         const { 
-            type, 
-            allowedCustomers, 
-            bu, 
-            wbs, 
-            customer, 
-            loa_id, 
-            loa_name, 
-            active_inactive, 
-            period, 
-            wbs_type, 
-            wbs_description 
+            type, allowedCustomers, bu, wbs, customer, loa_id, loa_name, 
+            active_inactive, period, wbs_type, wbs_description 
         } = req.query;
 
-        // 1. Base Conditions
         let baseConditions = [
-            "categories NOT IN ('Not to considered')", 
-            "cost_revenue <> 'NTC'"
+            "fdt.categories NOT IN ('Not to considered')", 
+            "fdt.cost_revenue <> 'NTC'"
         ];
         let baseParams = [];
 
         applyRLS(type, allowedCustomers, baseConditions, baseParams);
 
-        // 2. Optimized Helper Function
         const getFilteredDistinct = async (targetColumn, currentFilters) => {
             let conditions = [...baseConditions];
             let filterValues = [...baseParams];
 
-            // Apply active filters except the target column itself
+            // Apply regular filters
             Object.keys(currentFilters).forEach(key => {
                 if (key !== targetColumn && currentFilters[key] && currentFilters[key] !== 'All' && currentFilters[key] !== '') {
                     let val = currentFilters[key];
                     if (Array.isArray(val)) val = val[0];
 
-                    if (key === 'wbs') {
-                        conditions.push(`wbs LIKE ?`);
-                        filterValues.push(`%${val}%`);
+                    if (key === 'wbs' || key === 'wbs_type' || key === 'wbs_description') {
+                        // Inhe hum mapping join ke through niche handle karenge
                     } else {
-                        // Safely escape keys with backticks natively
-                        conditions.push(`\`${key}\` = ?`);
+                        conditions.push(`fdt.\`${key}\` = ?`);
                         filterValues.push(val);
                     }
                 }
             });
 
-            // 🔥 FIX: Natively escape column names using backticks (100% Crash-Proof)
-            const colSafe = `\`${targetColumn}\``;
-            
-            conditions.push(`${colSafe} IS NOT NULL`);
+            // Handle WBS specific filters using mapping table
+            let mapConditions = [];
+            if (currentFilters['wbs_type'] && currentFilters['wbs_type'] !== 'All' && targetColumn !== 'wbs_type') {
+                mapConditions.push(`map.wbs_type = ?`);
+                filterValues.push(currentFilters['wbs_type']);
+            }
+            if (currentFilters['wbs_description'] && currentFilters['wbs_description'] !== 'All' && targetColumn !== 'wbs_description') {
+                mapConditions.push(`map.wbs_description = ?`);
+                filterValues.push(currentFilters['wbs_description']);
+            }
+            if (currentFilters['wbs'] && currentFilters['wbs'] !== 'All' && targetColumn !== 'wbs') {
+                mapConditions.push(`map.wbs_element = ?`);
+                filterValues.push(currentFilters['wbs']);
+            }
 
-            const whereSql = `WHERE ${conditions.join(' AND ')}`;
-            const sql = `SELECT DISTINCT ${colSafe} as value FROM final_dashboard_table ${whereSql} ORDER BY ${colSafe}`;
+            // Decide Query based on target
+            if (['wbs', 'wbs_type', 'wbs_description'].includes(targetColumn)) {
+                let mapTarget = targetColumn === 'wbs' ? 'wbs_element' : targetColumn;
+                let joinSql = `INNER JOIN wbs_loa_id_mapping1 map ON fdt.loa_id = map.loa_id`;
+                conditions.push(`map.\`${mapTarget}\` IS NOT NULL`);
+                if (mapConditions.length > 0) conditions.push(...mapConditions);
 
-            const [rows] = await db.query(sql, filterValues);
-            return rows.map(r => r.value);
+                let whereSql = `WHERE ${conditions.join(' AND ')}`;
+                let sql = `SELECT DISTINCT map.\`${mapTarget}\` as value FROM final_dashboard_table fdt ${joinSql} ${whereSql} ORDER BY map.\`${mapTarget}\``;
+                
+                const [rows] = await db.query(sql, filterValues);
+                return rows.map(r => r.value);
+            } else {
+                let colSafe = `fdt.\`${targetColumn}\``;
+                conditions.push(`${colSafe} IS NOT NULL`);
+                if (mapConditions.length > 0) {
+                    conditions.push(`EXISTS (SELECT 1 FROM wbs_loa_id_mapping1 map WHERE map.loa_id = fdt.loa_id AND ${mapConditions.join(' AND ')})`);
+                }
+                
+                let whereSql = `WHERE ${conditions.join(' AND ')}`;
+                let sql = `SELECT DISTINCT ${colSafe} as value FROM final_dashboard_table fdt ${whereSql} ORDER BY ${colSafe}`;
+
+                const [rows] = await db.query(sql, filterValues);
+                return rows.map(r => r.value);
+            }
         };
 
-        const currentFilters = { 
-            bu, 
-            wbs, 
-            customer, 
-            loa_id, 
-            loa_name, 
-            active_inactive, 
-            period,
-            wbs_type,
-            wbs_description
-        };
+        const currentFilters = { bu, wbs, customer, loa_id, loa_name, active_inactive, period, wbs_type, wbs_description };
         
-        // 3. Parallel execution (Crash proof)
         const [
-            buOpts, 
-            wbsOptsRaw, 
-            custOpts, 
-            loaIdOpts, 
-            loaNameOpts, 
-            activeOpts, 
-            periodOpts, 
-            wbsTypeOpts,        
-            wbsDescriptionOpts  
+            buOpts, wbsOptsRaw, custOpts, loaIdOpts, loaNameOpts, activeOpts, periodOpts, wbsTypeOpts, wbsDescriptionOpts  
         ] = await Promise.all([
             getFilteredDistinct('bu', currentFilters),
-            getFilteredDistinct('wbs', currentFilters),
+            getFilteredDistinct('wbs', currentFilters), // Will return direct wbs_elements, no splitting needed!
             getFilteredDistinct('customer', currentFilters),
             getFilteredDistinct('loa_id', currentFilters),
             getFilteredDistinct('loa_name', currentFilters),
@@ -522,24 +520,9 @@ exports.getFilterOptions = async (req, res) => {
             getFilteredDistinct('wbs_description', currentFilters),
         ]);
 
-        // 4. WBS Comma Splitting Logic (Safe) for filter dropdown
-        let uniqueWbsSet = new Set();
-        if (Array.isArray(wbsOptsRaw)) {
-            wbsOptsRaw.forEach(str => {
-                if (str && typeof str === 'string') {
-                    str.split(',').forEach(item => {
-                        const trimmed = item.trim();
-                        if (trimmed) uniqueWbsSet.add(trimmed);
-                    });
-                }
-            });
-        }
-        const finalWbsOpts = Array.from(uniqueWbsSet).sort();
-
-        // 5. Final Response
         res.status(200).json({
             bu: buOpts,
-            wbs: finalWbsOpts,
+            wbs: wbsOptsRaw, // 🔥 Passed directly, no comma split required anymore
             customer: custOpts,
             loa_id: loaIdOpts,
             loa_name: loaNameOpts,
