@@ -76,467 +76,394 @@ const applyDashboardFilters = (query, conditions, params) => {
     }
 };
 
-//Main Summary Table data fetch with server side processing
-exports.getWbsSummary = async (req, res) => {
-    try {
-        // 🔥 FIX: Destructured wbs_type explicitly from query
-        const {
-            draw,
-            start,
-            length,
-            search,
-            showAll,
-            type,
-            allowedCustomers
-        } = req.query;
-
-        const startIdx = parseInt(start) || 0;
-        const limitIdx = parseInt(length) || 10;
-
-        let wbsType = req.query.wbs_type;
-        if (Array.isArray(wbsType)) {
-            wbsType = wbsType[0];
-        }
-
-        // 🔥 FIX: Hide ASBL if wbsType is 'All' OR 'Warranty/Other' (Case Insensitive)
-        const showAsbl = wbsType && wbsType !== "All" && wbsType.toLowerCase() !== "warranty/other";
-
-        // console.log("[DEBUG] WBS Type:", wbsType);
-        // console.log("[DEBUG] Show ASBL:", showAsbl);
-
-        const searchValue = req.query.search?.value || '';
-
-        // 1. Base Conditions
-        let conditions = [
-            "categories NOT IN ('Not to considered')",
-            "cost_revenue <> 'NTC'"
-        ];
-        let params = [];
-
-        if (searchValue) {
-            conditions.push(`
-                (
-                    bu LIKE ?
-                    OR customer LIKE ?
-                    OR loa_name LIKE ?
-                    OR loa_id LIKE ?
-                    OR categories LIKE ?
-                )
-            `);
-            const searchPattern = `%${searchValue}%`;
-            params.push(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern);
-        }
-
-        applyRLS(type, allowedCustomers, conditions, params);
-
-        if (showAll === 'false') {
-            conditions.push("(ABS(asbl) > 0.01 OR ABS(ptd) > 0.01 OR ABS(total_oc_fixed) > 0.01 OR ABS(non_committed_editable) > 0.01)");
-        }
-
-        // Dropdown Filters
-        const allowedFilters = ['bu', 'wbs', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period', 'wbs_type', 'wbs_description'];
-        allowedFilters.forEach(key => {
-            let value = req.query[key];
-            if (Array.isArray(value)) value = value[0];
-            if (value && value !== 'All' && value !== '') {
-                if (key === 'wbs') {
-                    conditions.push(`wbs LIKE ?`);
-                    params.push(`%${value}%`);
-                } else {
-                    conditions.push(`${key} = ?`);
-                    params.push(value);
-                }
-            }
-        });
-
-        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-
-        // KPIs: Hides ASBL sums if showAsbl is false
-        const kpiQuery = `
-            SELECT 
-                ${showAsbl ? "SUM(CASE WHEN cost_revenue = 'Revenue' THEN asbl ELSE 0 END)" : "0"} as asbl_rev,
-                ${showAsbl ? "SUM(CASE WHEN cost_revenue = 'Cost' THEN asbl ELSE 0 END)" : "0"} as asbl_cost,
-                SUM(CASE WHEN cost_revenue = 'Revenue' THEN ptd ELSE 0 END) as ptd_rev,
-                SUM(CASE WHEN cost_revenue = 'Cost' THEN ptd ELSE 0 END) as ptd_cost,
-                (SUM(CASE WHEN cost_revenue = 'Revenue' THEN ptd ELSE 0 END) + MAX(CASE WHEN cost_revenue = 'Revenue' THEN total_oc_fixed END) + MAX(CASE WHEN cost_revenue = 'Revenue' THEN non_committed_editable END)) AS eac_rev,
-                (SUM(CASE WHEN cost_revenue = 'Cost' THEN ptd ELSE 0 END) + MAX(CASE WHEN cost_revenue = 'Cost' THEN total_oc_fixed END) + MAX(CASE WHEN cost_revenue = 'Cost' THEN non_committed_editable END)) AS eac_cost
-            FROM final_dashboard_table
-            ${whereClause}
-        `;
-        const [kpiRes] = await db.query(kpiQuery, params);
-        const k = kpiRes[0];
-
-        const calcSm = (rev, cost) => {
-            const revenue = Math.abs(Number(rev) || 0);
-            const costVal = Number(cost) || 0;
-            if (revenue === 0) {
-                return "0.00";
-            }
-            return (((revenue - costVal) / revenue) * 100).toFixed(2);
-        };
-
-        const kpis = {
-            asbl_sm: calcSm(k.asbl_rev, k.asbl_cost),
-            ptd_sm: calcSm(k.ptd_rev, k.ptd_cost),
-            eac_sm: calcSm(k.eac_rev, k.eac_cost)
-        };
-
-        // Matrix Query
-        const matrixQuery = `
-            SELECT 
-                bu, customer, loa_id, loa_name, cost_revenue, categories,
-                MAX(unique_key) as unique_key, 
-                ${showAsbl ? 'COALESCE(MAX(asbl), 0)' : 'NULL'} as asbl, -- 🔥 Conditionally Hidden
-                COALESCE(MAX(asbl_loa), 0) as asbl_loa, -- 🔥 ALWAYS VISIBLE
-                COALESCE(SUM(ptd), 0) as ptd, 
-                COALESCE(MAX(total_oc_fixed), 0) as open_commitment, 
-                COALESCE(MAX(non_committed), 0) as non_committed_original,
-                COALESCE(MAX(non_committed_editable), 0) as non_committed,
-                (COALESCE(SUM(ptd), 0) + COALESCE(MAX(total_oc_fixed), 0) + COALESCE(MAX(non_committed_editable), 0)) as eac,
-                (${showAsbl ? 'COALESCE(MAX(asbl), 0)' : '0.00'} - (COALESCE(SUM(ptd), 0) + COALESCE(MAX(total_oc_fixed), 0) + COALESCE(MAX(non_committed_editable), 0))) as eac_vs_asbl
-            FROM final_dashboard_table
-            ${whereClause}
-            GROUP BY bu, customer, loa_id, loa_name, cost_revenue, categories
-            ORDER BY loa_name ASC, cost_revenue ASC
-        `;
-
-        const [countRes] = await db.query(`SELECT COUNT(*) as total FROM (${matrixQuery}) as temp`, params);
-        const [dataRows] = await db.query(`${matrixQuery} LIMIT ?, ?`, [...params, startIdx, limitIdx]);
-
-        res.status(200).json({
-            draw: parseInt(draw) || 0,
-            recordsTotal: countRes[0].total,
-            recordsFiltered: countRes[0].total,
-            data: dataRows,
-            kpis
-        });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-};
-
-// Collapse table of Summary View
-exports.getWbsSummaryCollapse = async (req, res) => {
-    try {
-        const {
-            draw,
-            start,
-            length,
-            type,
-            allowedCustomers,
-            showAll
-        } = req.query;
-
-        const startIdx = parseInt(start) || 0;
-        const limitIdx = parseInt(length) || 10;
-
-        let wbsType = req.query.wbs_type;
-        if (Array.isArray(wbsType)) {
-            wbsType = wbsType[0];
-        }
-
-        // 🔥 FIX: Hide ASBL if wbsType is 'All' OR 'Warranty/Other' (Case Insensitive)
-        const showAsbl = wbsType && wbsType !== "All" && wbsType.toLowerCase() !== "warranty/other";
-
-        console.log("[DEBUG] WBS Type:", wbsType);
-        console.log("[DEBUG] Show ASBL:", showAsbl);
-
-        const searchValue = req.query.search?.value || '';
-
-        let conditions = [
-            "categories NOT IN ('Not to considered')",
-            "cost_revenue <> 'NTC'"
-        ];
-        let params = [];
-
-        if (searchValue) {
-            conditions.push(`
-                (
-                    bu LIKE ?
-                    OR customer LIKE ?
-                    OR loa_name LIKE ?
-                    OR loa_id LIKE ?
-                )
-            `);
-            const searchPattern = `%${searchValue}%`;
-            params.push(searchPattern, searchPattern, searchPattern, searchPattern);
-        }
-
-        applyRLS(type, allowedCustomers, conditions, params);
-
-        if (showAll === 'false') {
-            conditions.push(`
-                (
-                    ABS(asbl) > 0.01
-                    OR ABS(ptd) > 0.01
-                    OR ABS(total_oc_fixed) > 0.01
-                    OR ABS(non_committed_editable) > 0.01
-                )
-            `);
-        }
-
-        const allowedFilters = ['bu', 'wbs', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period', 'wbs_type', 'wbs_description'];
-        allowedFilters.forEach(key => {
-            let value = req.query[key];
-            if (Array.isArray(value)) value = value[0];
-            if (value && value !== 'All' && value !== '') {
-                if (key === 'wbs') {
-                    conditions.push(`wbs LIKE ?`);
-                    params.push(`%${value}%`);
-                } else {
-                    conditions.push(`${key} = ?`);
-                    params.push(value);
-                }
-            }
-        });
-
-        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-
-        const sql = `
-            SELECT
-                bu,
-                customer,
-                loa_name,
-                loa_id,
-                cost_revenue,
-
-                ${showAsbl ? 'ROUND(MAX(asbl), 2)' : 'NULL'} AS asbl, -- 🔥 Conditionally Hidden
-                ROUND(MAX(asbl_loa), 2) AS asbl_loa, -- 🔥 ALWAYS VISIBLE
-                ROUND(SUM(ptd), 2) AS ptd,
-                ROUND(MAX(total_oc_fixed), 2) AS open_commitment,
-                ROUND(MAX(non_committed_editable), 2) AS non_committed,
-
-                ROUND(
-                    SUM(ptd)
-                    + MAX(total_oc_fixed)
-                    + MAX(non_committed_editable),
-                2) AS eac,
-
-                ROUND(
-                    ${showAsbl ? 'MAX(asbl)' : '0.00'}
-                    -
-                    (
-                        SUM(ptd)
-                        + MAX(total_oc_fixed)
-                        + MAX(non_committed_editable)
-                    ),
-                2) AS eac_vs_asbl
-
-            FROM final_dashboard_table
-            ${whereClause}
-            GROUP BY
-                bu,
-                customer,
-                loa_name,
-                loa_id,
-                cost_revenue
-            ORDER BY loa_name ASC
-        `;
-
-        const [countRes] = await db.query(`SELECT COUNT(*) as total FROM (${sql}) temp`, params);
-        const [rows] = await db.query(`${sql} LIMIT ?, ?`, [...params, startIdx, limitIdx]);
-
-        console.log("Collapse Rows Count:", countRes[0].total);
-
-        res.status(200).json({
-            draw: parseInt(draw) || 0,
-            recordsTotal: countRes[0].total,
-            recordsFiltered: countRes[0].total,
-            data: rows
-        });
-
-    } catch (error) {
-
-    console.error("========== WBS SUMMARY ERROR ==========");
-    console.error(error);
-    console.error(error.stack);
-
-    res.status(500).json({
-        success: false,
-        message: error.message
-    });
-}
-};
-
-
-exports.getDrillDownData = async (req, res) => {
-    try {
-        const { field, row } = req.body;
-        const uKey = row?.unique_key;
-
-        if (!uKey) {
-            return res.status(400).json({ error: "Unique Key is missing in request" });
-        }
-
-        let sql = '';
-        // 1. PTD Drilldown
-        if (field === 'ptd') {
-            sql = `SELECT * FROM v_cj74_transformed WHERE unique_key = ?`;
-        } 
-        // 2. Open Commitment Drilldown
-        else if (field === 'open_commitment') {
-            sql = `SELECT * FROM v_cji5_transformed WHERE unique_key = ?`;
-        }
-
-        const [rows] = await db.query(sql, [uKey]);
-        res.json(rows);
-
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-};
-
-exports.exportDrillDown = async (req, res) => {
-    try {
-        const { field, unique_key } = req.query;
-        if (!unique_key) return res.status(400).send("Missing Unique Key");
-
-        let sql = '';
-        // Filename se special characters saaf karein
-        const safeKey = unique_key.replace(/[^a-z0-9]/gi, '_');
-        const fileName = field === 'ptd' ? `PTD_${safeKey}.xlsx` : `OC_${safeKey}.xlsx`;
-
-        if (field === 'ptd') {
-            sql = `SELECT * FROM v_cj74_transformed WHERE unique_key = ?`;
-        } else {
-            sql = `SELECT * FROM v_cji5_transformed WHERE unique_key = ?`;
-        }
-
-        const [rows] = await db.query(sql, [unique_key]);
-
-        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-        // 🔥 FIX: Filename ko quotes mein dala taaki commas issue na karein
-        res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
-
-        const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: res });
-        const worksheet = workbook.addWorksheet('Details');
-
-        if (rows.length > 0) {
-            worksheet.columns = Object.keys(rows[0]).map(key => ({ 
-                header: key.replace(/_/g, ' ').toUpperCase(), 
-                key: key 
-            }));
-            rows.forEach(row => worksheet.addRow(row).commit());
-        }
-
-        await workbook.commit();
-    } catch (error) { 
-        console.error(error);
-        res.status(500).send("Export failed"); 
-    }
-};
-
-
-// Dropdown filter options with native column escaping to prevent server crashes
 exports.getFilterOptions = async (req, res) => {
     try {
-        const { 
-            type, allowedCustomers, bu, wbs, customer, loa_id, loa_name, 
-            active_inactive, period, wbs_type, wbs_description 
-        } = req.query;
+        const { type, allowedCustomers, bu, wbs, customer, loa_id, loa_name, active_inactive, period, wbs_type, wbs_description } = req.query;
 
-        let baseConditions = [
-            "fdt.categories NOT IN ('Not to considered')", 
-            "fdt.cost_revenue <> 'NTC'"
-        ];
+        let baseConditions = ["categories NOT IN ('Not to considered')", "cost_revenue <> 'NTC'"];
         let baseParams = [];
-
         applyRLS(type, allowedCustomers, baseConditions, baseParams);
 
         const getFilteredDistinct = async (targetColumn, currentFilters) => {
             let conditions = [...baseConditions];
             let filterValues = [...baseParams];
 
-            // Apply regular filters
+            // Filter Syncing Logic
             Object.keys(currentFilters).forEach(key => {
                 if (key !== targetColumn && currentFilters[key] && currentFilters[key] !== 'All' && currentFilters[key] !== '') {
-                    let val = currentFilters[key];
-                    if (Array.isArray(val)) val = val[0];
-
-                    if (key === 'wbs' || key === 'wbs_type' || key === 'wbs_description') {
-                        // Inhe hum mapping join ke through niche handle karenge
+                    let val = Array.isArray(currentFilters[key]) ? currentFilters[key][0] : currentFilters[key];
+                    
+                    // WBS filter user ne select kiya hai, toh hum single column check karenge
+                    if (key === 'wbs') {
+                        conditions.push(`wbs_element_single = ?`);
                     } else {
-                        conditions.push(`fdt.\`${key}\` = ?`);
-                        filterValues.push(val);
+                        conditions.push(`\`${key}\` = ?`);
                     }
+                    filterValues.push(val);
                 }
             });
 
-            // Handle WBS specific filters using mapping table
-            let mapConditions = [];
-            if (currentFilters['wbs_type'] && currentFilters['wbs_type'] !== 'All' && targetColumn !== 'wbs_type') {
-                mapConditions.push(`map.wbs_type = ?`);
-                filterValues.push(currentFilters['wbs_type']);
-            }
-            if (currentFilters['wbs_description'] && currentFilters['wbs_description'] !== 'All' && targetColumn !== 'wbs_description') {
-                mapConditions.push(`map.wbs_description = ?`);
-                filterValues.push(currentFilters['wbs_description']);
-            }
-            if (currentFilters['wbs'] && currentFilters['wbs'] !== 'All' && targetColumn !== 'wbs') {
-                mapConditions.push(`map.wbs_element = ?`);
-                filterValues.push(currentFilters['wbs']);
-            }
+            // Target column adjust karein (WBS dropdown ke liye hum single column se uthayenge)
+            let finalTarget = (targetColumn === 'wbs') ? 'wbs_element_single' : targetColumn;
 
-            // Decide Query based on target
-            if (['wbs', 'wbs_type', 'wbs_description'].includes(targetColumn)) {
-                let mapTarget = targetColumn === 'wbs' ? 'wbs_element' : targetColumn;
-                let joinSql = `INNER JOIN wbs_loa_id_mapping1 map ON fdt.loa_id = map.loa_id`;
-                conditions.push(`map.\`${mapTarget}\` IS NOT NULL`);
-                if (mapConditions.length > 0) conditions.push(...mapConditions);
+            const sql = `
+                SELECT DISTINCT \`${finalTarget}\` as value 
+                FROM final_dashboard_table 
+                WHERE ${conditions.join(' AND ')} AND \`${finalTarget}\` IS NOT NULL AND \`${finalTarget}\` <> ''
+                ORDER BY \`${finalTarget}\` ASC`;
 
-                let whereSql = `WHERE ${conditions.join(' AND ')}`;
-                let sql = `SELECT DISTINCT map.\`${mapTarget}\` as value FROM final_dashboard_table fdt ${joinSql} ${whereSql} ORDER BY map.\`${mapTarget}\``;
-                
-                const [rows] = await db.query(sql, filterValues);
-                return rows.map(r => r.value);
-            } else {
-                let colSafe = `fdt.\`${targetColumn}\``;
-                conditions.push(`${colSafe} IS NOT NULL`);
-                if (mapConditions.length > 0) {
-                    conditions.push(`EXISTS (SELECT 1 FROM wbs_loa_id_mapping1 map WHERE map.loa_id = fdt.loa_id AND ${mapConditions.join(' AND ')})`);
-                }
-                
-                let whereSql = `WHERE ${conditions.join(' AND ')}`;
-                let sql = `SELECT DISTINCT ${colSafe} as value FROM final_dashboard_table fdt ${whereSql} ORDER BY ${colSafe}`;
-
-                const [rows] = await db.query(sql, filterValues);
-                return rows.map(r => r.value);
-            }
+            const [rows] = await db.query(sql, filterValues);
+            return rows.map(r => r.value);
         };
 
         const currentFilters = { bu, wbs, customer, loa_id, loa_name, active_inactive, period, wbs_type, wbs_description };
         
-        const [
-            buOpts, wbsOptsRaw, custOpts, loaIdOpts, loaNameOpts, activeOpts, periodOpts, wbsTypeOpts, wbsDescriptionOpts  
-        ] = await Promise.all([
+        const [buOpts, wbsOpts, custOpts, loaIdOpts, loaNameOpts, activeOpts, periodOpts, wbsTypeOpts, wbsDescOpts] = await Promise.all([
             getFilteredDistinct('bu', currentFilters),
-            getFilteredDistinct('wbs', currentFilters), // Will return direct wbs_elements, no splitting needed!
+            getFilteredDistinct('wbs', currentFilters), // Yeh ab wbs_element_single se layega
             getFilteredDistinct('customer', currentFilters),
             getFilteredDistinct('loa_id', currentFilters),
             getFilteredDistinct('loa_name', currentFilters),
             getFilteredDistinct('active_inactive', currentFilters),
             getFilteredDistinct('period', currentFilters),
             getFilteredDistinct('wbs_type', currentFilters),
-            getFilteredDistinct('wbs_description', currentFilters),
+            getFilteredDistinct('wbs_description', currentFilters)
         ]);
 
         res.status(200).json({
             bu: buOpts,
-            wbs: wbsOptsRaw, // 🔥 Passed directly, no comma split required anymore
+            wbs: wbsOpts, // Ab comma-splitting ki zarurat nahi hai!
             customer: custOpts,
             loa_id: loaIdOpts,
             loa_name: loaNameOpts,
             active_inactive: activeOpts,
             period: periodOpts,
             wbs_type: wbsTypeOpts,
-            wbs_description: wbsDescriptionOpts,
+            wbs_description: wbsDescOpts
+        });
+    } catch (error) {
+        console.error("Filter Options Error:", error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+exports.getWbsSummary = async (req, res) => {
+    try {
+        const { draw, start, length, search, showAll, type, allowedCustomers } = req.query;
+        const startIdx = parseInt(start) || 0;
+        const limitIdx = parseInt(length) || 10;
+
+        let wbsType = req.query.wbs_type;
+        if (Array.isArray(wbsType)) wbsType = wbsType[0];
+        let wbsElem = req.query.wbs;
+        if (Array.isArray(wbsElem)) wbsElem = wbsElem[0];
+
+        // LOGIC: Show ASBL condition
+        const showAsbl = wbsType && wbsType !== "All" && wbsType !== "" && wbsType.toLowerCase() !== "warranty/other";
+
+        // Base conditions for RLS and NTC
+        let baseConditions = ["categories NOT IN ('Not to considered')", "cost_revenue <> 'NTC'"];
+        let baseParams = [];
+        applyRLS(type, allowedCustomers, baseConditions, baseParams);
+
+        // Individual filters (except wbs_type and wbs)
+        let filterConditions = [];
+        let filterParams = [];
+        const allowedFilters = ['bu', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period', 'wbs_description'];
+        allowedFilters.forEach(key => {
+            let val = req.query[key];
+            if (Array.isArray(val)) val = val[0];
+            if (val && val !== 'All' && val !== '') {
+                filterConditions.push(`\`${key}\` = ?`);
+                filterParams.push(val);
+            }
+        });
+
+        const combinedWhere = [...baseConditions, ...filterConditions].join(' AND ');
+        const allParams = [...baseParams, ...filterParams];
+
+        // Matrix Query Logic: 
+        // 1. PTD/OC is filtered by wbsType/wbsElem inside the SUM
+        // 2. ASBL is taken as MAX per Category regardless of WBS filter
+        const matrixQuery = `
+            SELECT 
+                bu, customer, loa_id, loa_name, cost_revenue, categories,
+                MAX(unique_key) as unique_key, 
+                
+                -- ASBL: Har category ka max (ASBL filter se azad hai)
+                ${showAsbl ? 'COALESCE(MAX(asbl), 0)' : "'-'"} as asbl,
+                
+                -- PTD: Filtered inside SUM (Conditional Aggregation)
+                COALESCE(SUM(CASE 
+                    WHEN (? = 'All' OR ? = '' OR wbs_type = ?) 
+                    AND (? = 'All' OR ? = '' OR wbs_element_single = ?) 
+                    THEN ptd ELSE 0 END), 0) as ptd,
+
+                COALESCE(MAX(total_oc_fixed), 0) as open_commitment, 
+                COALESCE(MAX(non_committed_editable), 0) as non_committed,
+                COALESCE(MAX(asbl_loa), 0) as asbl_loa
+            FROM final_dashboard_table
+            WHERE ${combinedWhere}
+            GROUP BY bu, customer, loa_id, loa_name, cost_revenue, categories
+            HAVING 1=1 
+            ${showAll === 'false' ? 'AND (ABS(asbl) > 0.01 OR ABS(ptd) > 0.01 OR ABS(open_commitment) > 0.01)' : ''}
+            ORDER BY loa_name ASC, cost_revenue ASC
+        `;
+
+        // Parameters for the conditional SUM inside matrixQuery
+        const sumParams = [
+            wbsType || 'All', wbsType || 'All', wbsType || '',
+            wbsElem || 'All', wbsElem || 'All', wbsElem || ''
+        ];
+
+        const [dataRows] = await db.query(`${matrixQuery} LIMIT ?, ?`, [...sumParams, ...allParams, startIdx, limitIdx]);
+        const [countRes] = await db.query(`SELECT COUNT(*) as total FROM (${matrixQuery}) as temp`, [...sumParams, ...allParams]);
+
+        // KPI Calculation based on dataRows level
+        const kpiQuery = `
+            SELECT 
+                SUM(CASE WHEN cost_revenue = 'Revenue' THEN cat_asbl ELSE 0 END) as asbl_rev,
+                SUM(CASE WHEN cost_revenue = 'Cost' THEN cat_asbl ELSE 0 END) as asbl_cost,
+                SUM(CASE WHEN cost_revenue = 'Revenue' THEN cat_ptd ELSE 0 END) as ptd_rev,
+                SUM(CASE WHEN cost_revenue = 'Cost' THEN cat_ptd ELSE 0 END) as ptd_cost
+            FROM (
+                SELECT cost_revenue, MAX(asbl) as cat_asbl, SUM(CASE WHEN (? = 'All' OR ? = '' OR wbs_type = ?) AND (? = 'All' OR ? = '' OR wbs_element_single = ?) THEN ptd ELSE 0 END) as cat_ptd
+                FROM final_dashboard_table
+                WHERE ${combinedWhere}
+                GROUP BY loa_id, categories, cost_revenue
+            ) as t
+        `;
+        const [kpiRes] = await db.query(kpiQuery, [...sumParams, ...allParams]);
+        const k = kpiRes[0];
+
+        const kpis = {
+            asbl_rev: showAsbl ? Number(k.asbl_rev || 0).toFixed(2) : "-",
+            asbl_cost: showAsbl ? Number(k.asbl_cost || 0).toFixed(2) : "-",
+            ptd_rev: Number(k.ptd_rev || 0).toFixed(2),
+            ptd_cost: Number(k.ptd_cost || 0).toFixed(2)
+        };
+
+        res.status(200).json({ draw: parseInt(draw) || 0, recordsTotal: countRes[0].total, recordsFiltered: countRes[0].total, data: dataRows, kpis });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: error.message });
+    }
+};
+
+exports.getWbsSummaryCollapse = async (req, res) => {
+    try {
+        const { draw, start, length, type, allowedCustomers, showAll } = req.query;
+        const startIdx = parseInt(start) || 0;
+        const limitIdx = parseInt(length) || 10;
+
+        let wbsType = req.query.wbs_type;
+        if (Array.isArray(wbsType)) wbsType = wbsType[0];
+        let wbsElem = req.query.wbs;
+        if (Array.isArray(wbsElem)) wbsElem = wbsElem[0];
+
+        const showAsbl = wbsType && wbsType !== "All" && wbsType !== "" && wbsType.toLowerCase() !== "warranty/other";
+
+        let conditions = ["categories NOT IN ('Not to considered')", "cost_revenue <> 'NTC'"];
+        let params = [];
+        applyRLS(type, allowedCustomers, conditions, params);
+
+        const allowedFilters = ['bu', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period', 'wbs_description'];
+        allowedFilters.forEach(key => {
+            let val = req.query[key];
+            if (Array.isArray(val)) val = val[0];
+            if (val && val !== 'All' && val !== '') {
+                conditions.push(`\`${key}\` = ?`);
+                params.push(val);
+            }
+        });
+
+        const whereClause = conditions.join(' AND ');
+        const sumParams = [
+            wbsType || 'All', wbsType || 'All', wbsType || '',
+            wbsElem || 'All', wbsElem || 'All', wbsElem || ''
+        ];
+
+        const sql = `
+            SELECT
+                bu, customer, loa_name, loa_id, cost_revenue,
+                ${showAsbl ? 'ROUND(MAX(asbl), 2)' : "'-'"} AS asbl, 
+                ROUND(MAX(asbl_loa), 2) AS asbl_loa,
+                ROUND(SUM(CASE WHEN (? = 'All' OR ? = '' OR wbs_type = ?) AND (? = 'All' OR ? = '' OR wbs_element_single = ?) THEN ptd ELSE 0 END), 2) AS ptd,
+                ROUND(MAX(total_oc_fixed), 2) AS open_commitment,
+                ROUND(MAX(non_committed_editable), 2) AS non_committed
+            FROM final_dashboard_table
+            WHERE ${whereClause}
+            GROUP BY bu, customer, loa_name, loa_id, cost_revenue
+            ORDER BY loa_name ASC
+        `;
+
+        const [dataRows] = await db.query(`${sql} LIMIT ?, ?`, [...sumParams, ...params, startIdx, limitIdx]);
+        const [countRes] = await db.query(`SELECT COUNT(*) as total FROM (${sql}) temp`, [...sumParams, ...params]);
+
+        res.status(200).json({ draw: parseInt(draw) || 0, recordsTotal: countRes[0].total, recordsFiltered: countRes[0].total, data: dataRows });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+
+exports.getDrillDownData = async (req, res) => {
+    try {
+        const { field, row, filters, start = 0, length = 100 } = req.body;
+
+        const loaId = row?.loa_id;
+        const category = row?.categories;
+
+        if (!loaId || !category) {
+            return res.status(400).json({ error: "Missing LOA ID or Category" });
+        }
+
+        const wbsType = filters?.wbs_type || "All";
+        const wbs = filters?.wbs || "All";
+
+        let sql = "";
+        let params = [];
+
+        // ===========================
+        // PTD Drilldown
+        // ===========================
+        if (field === "ptd") {
+
+        sql = `
+            SELECT
+                sap_wbs,
+                year,
+                per,
+                period,
+                ptd_val,
+                wbs_type,
+                wbs_description
+            FROM v_cj74_transformed
+            WHERE loa_id = ?
+            AND categories = ?
+            ${wT !== "All" ? "AND wbs_type = ?" : ""}
+            ${wE !== "All" ? "AND sap_wbs = ?" : ""}
+            ORDER BY year DESC,
+                    CAST(per AS UNSIGNED) DESC
+        `;
+
+        params = [loaId, category];
+
+        if (wT !== "All")
+            params.push(wT);
+
+        if (wE !== "All")
+            params.push(wE);
+    }
+
+        // ===========================
+        // OPEN COMMITMENT Drilldown
+        // ===========================
+        else {
+
+        sql = `
+            SELECT
+                sap_wbs,
+                year,
+                per,
+                oc_val,
+                wbs_type
+            FROM v_cji5_transformed
+            WHERE loa_id = ?
+            AND categories = ?
+            ${wT !== "All" ? "AND wbs_type = ?" : ""}
+            ${wE !== "All" ? "AND sap_wbs = ?" : ""}
+            ORDER BY year DESC,
+                    CAST(per AS UNSIGNED) DESC
+        `;
+
+        params = [loaId, category];
+
+        if (wT !== "All")
+            params.push(wT);
+
+        if (wE !== "All")
+            params.push(wE);
+    }
+
+        const [rows] = await db.query(sql, params);
+
+        res.status(200).json({
+            success: true,
+            count: rows.length,
+            data: rows
         });
 
     } catch (error) {
-        console.error("Filter Sync Error:", error.message);
-        res.status(500).json({ error: "Failed to load filters: " + error.message });
+        console.error("Drilldown Error:", error);
+
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
     }
 };
+
+exports.exportDrillDown = async (req, res) => {
+    try {
+        const { field, loa_id, categories, wbs_type, wbs } = req.query;
+
+        if (!loa_id || !categories) return res.status(400).send("Missing required parameters");
+
+        const wT = wbs_type || 'All';
+        const wE = wbs || 'All';
+
+        let sql = '';
+        const params = [loa_id, categories, wT, wT, wT, wE, wE, wE];
+        
+        const fileName = field === 'ptd' ? `PTD_${loa_id}_${categories}.xlsx` : `OC_${loa_id}_${categories}.xlsx`;
+
+        if (field === 'ptd') {
+            sql = `
+                SELECT * FROM v_cj74_transformed 
+                WHERE loa_id = ? AND categories = ?
+                AND (? = 'All' OR ? = '' OR wbs_type = ?)
+                AND (? = 'All' OR ? = '' OR sap_wbs = ?)
+            `;
+        } else {
+            sql = `
+                SELECT * FROM v_cji5_transformed 
+                WHERE loa_id = ? AND categories = ?
+                AND (? = 'All' OR ? = '' OR wbs_type = ?)
+                AND (? = 'All' OR ? = '' OR sap_wbs = ?)
+            `;
+        }
+
+        const [rows] = await db.query(sql, params);
+
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${fileName.replace(/\s+/g, '_')}"`);
+
+        const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: res });
+        const worksheet = workbook.addWorksheet('Details');
+
+        if (rows.length > 0) {
+            // Optimize: Headers generation
+            const columns = Object.keys(rows[0]).map(key => ({ 
+                header: key.replace(/_/g, ' ').toUpperCase(), 
+                key: key,
+                width: 20
+            }));
+            worksheet.columns = columns;
+
+            // Stream rows for speed
+            rows.forEach(row => {
+                worksheet.addRow(row).commit();
+            });
+        }
+
+        await workbook.commit();
+    } catch (error) { 
+        console.error("Export Error:", error);
+        res.status(500).send("Export failed"); 
+    }
+};
+
 
 // Non committed cell inputs from user update
 exports.updateNonCommitted = async (req, res) => {
@@ -1092,35 +1019,33 @@ exports.saveProjectData = async (req, res) => {
 exports.fullRefresh = async (req, res) => {
     try {
         console.log("Starting Full Sync...");
-        
-        // 1. Table saaf karein
         await db.query("TRUNCATE TABLE final_dashboard_table");
 
-        // 2. Naya data bharein (Explicit Columns)
+        // 🔥 Naya column 'wbs_element_single' yahan add kiya hai
         const insertSql = `
-            INSERT INTO final_dashboard_table 
-            (bu, customer, loa_id, loa_name, cost_revenue, categories, wbs,wbs_type, wbs_description, asbl, asbl_loa, non_committed, active_inactive, period, ptd, open_commitment_KEUR, eac, eac_vs_asbl, unique_key)
-            SELECT bu, customer, loa_id, loa_name, cost_revenue, categories, wbs,wbs_type, wbs_description, asbl, asbl_loa, non_committed, active_inactive, period, ptd, open_commitment_KEUR, eac, eac_vs_asbl, unique_key 
-            FROM final_dashboard
-        `;
+    INSERT INTO final_dashboard_table 
+    (bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, wbs_type, wbs_description, wbs_element_single, asbl, asbl_loa, non_committed, active_inactive, period, ptd, open_commitment_KEUR, eac, eac_vs_asbl, unique_key)
+    SELECT 
+     bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, wbs_type, wbs_description, wbs_element_single, asbl, asbl_loa, non_committed, active_inactive, period, ptd, open_commitment_KEUR, eac, eac_vs_asbl, unique_key 
+    FROM final_dashboard
+`;
         await db.query(insertSql);
 
-        // 3. total_oc_fixed update karein
+        // Update total_oc_fixed (optional, but keep it if you need it for KPIs)
         await db.query(`
             UPDATE final_dashboard_table t
             JOIN (
-                SELECT loa_name, categories, SUM(open_commitment_KEUR) as total_sum
+                SELECT loa_id, categories, SUM(open_commitment_KEUR) as total_sum
                 FROM final_dashboard_table
-                GROUP BY loa_name, categories
-            ) as src ON t.loa_name = src.loa_name AND t.categories = src.categories
+                GROUP BY loa_id, categories
+            ) as src ON t.loa_id = src.loa_id AND t.categories = src.categories
             SET t.total_oc_fixed = src.total_sum
         `);
 
-        console.log("Full Sync Complete!");
-        res.status(200).json({ message: "Full Dashboard Refresh Complete!" });
+        res.status(200).json({ message: "Sync Complete!" });
     } catch (error) {
         console.error("Full Refresh Error:", error);
-        res.status(500).json({ error: "Refresh failed: " + error.message });
+        res.status(500).json({ error: error.message });
     }
 };
 

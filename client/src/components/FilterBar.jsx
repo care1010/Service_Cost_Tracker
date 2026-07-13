@@ -13,7 +13,7 @@ const FilterBar = ({ filters, options, onFilterChange, onReset }) => {
         { label: 'LOA ID', name: 'loa_id', span: 'lg:col-span-1' },
         { label: 'LOA Name', name: 'loa_name', span: 'lg:col-span-1' },
         { label: 'WBS Type', name: 'wbs_type', span: 'lg:col-span-1' },
-        { label: 'WBS', name: 'wbs', span: 'lg:col-span-1' },
+        { label: 'WBS', name: 'wbs', span: 'lg:col-span-2' },
         { label: 'WBS Description', name: 'wbs_description', span: 'lg:col-span-1' },
         { label: 'Active/Inactive', name: 'active_inactive', span: 'lg:col-span-[0.8]' }, // ya lg:col-span-1
         { label: 'Period', name: 'period', span: 'lg:col-span-1' },

@@ -392,7 +392,7 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
                         category: $(this).data('category'),
                         value: $(this).data('value')
                     };
-                    navigate('/drilldown', { state: { field, row } });
+                    navigate('/drilldown', { state: { field, row, filters } });
                 });
             }
         });
