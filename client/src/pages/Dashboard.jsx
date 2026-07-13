@@ -446,27 +446,23 @@ const exportToExcel = () => {
     // =========================================
     // YEAR CHANGE
     // =========================================
-
     const handleYearChange = (year, checked) => {
         let updatedYears = [];
         if (checked) {
             updatedYears = [...selectedYears, year];
         } else {
-            updatedYears = selectedYears.filter(
-                (y) => y !== year
-            );
+            updatedYears = selectedYears.filter((y) => y !== year);
         }
 
         setSelectedYears(updatedYears);
 
         // AUTO SYNC PERIODS
         if (updatedYears.length > 0) {
-            const syncedPeriods =
-                filterOptions.periods.filter((p) =>
-                    updatedYears.some((y) =>
-                        p.startsWith(y)
-                    )
-                );
+            // 🔥 FIX: Check kiya hai ki 'p' null na ho aur usey string mein convert kiya hai
+            const syncedPeriods = (filterOptions.periods || []).filter((p) => {
+                if (!p) return false; // Agar period null hai toh skip karein
+                return updatedYears.some((y) => p.toString().startsWith(y));
+            });
             setSelectedPeriods(syncedPeriods);
         } else {
             setSelectedPeriods([]);
@@ -480,22 +476,18 @@ const exportToExcel = () => {
     const handlePeriodChange = (period, checked) => {
         let updatedPeriods = [];
         if (checked) {
-            updatedPeriods = [
-                ...selectedPeriods,
-                period
-            ];
+            updatedPeriods = [...selectedPeriods, period];
         } else {
-            updatedPeriods =
-                selectedPeriods.filter(
-                    (p) => p !== period
-                );
+            updatedPeriods = selectedPeriods.filter((p) => p !== period);
         }
         setSelectedPeriods(updatedPeriods);
+
+        // 🔥 Safety Check: p.split karne se pehle check karein p null na ho
         const syncedYears = [
             ...new Set(
-                updatedPeriods.map(
-                    (p) => p.split('-')[0]
-                )
+                updatedPeriods
+                    .filter(p => p != null) 
+                    .map((p) => p.toString().split('-')[0])
             )
         ];
         setSelectedYears(syncedYears);
