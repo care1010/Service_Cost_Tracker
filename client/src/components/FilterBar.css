@@ -1,78 +1,602 @@
-/* Selected box */
-.select2-container--default .select2-selection--single {
-    background: #004593 !important;
-    border: 1px solid #2563eb !important;
-    border-radius: 10px !important;
-    height: 38px !important;
-    color: white !important;
+/* ────────────────────────────────────────
+   FILTERBAR WRAPPER
+──────────────────────────────────────── */
+.fb-wrapper {
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(10px);
+  border: 1px solid #e2e8f0;
+  border-radius: 20px;
+  padding: 14px 16px 12px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.05);
+  position: relative;
+  z-index: 999;
 }
 
-.select2-container--default .select2-selection--single .select2-selection__rendered {
-    color: #ffffff !important;
+.fb-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
 }
 
-.select2-container--default .select2-selection__rendered {
-    color: #ffffff !important;
-    line-height: 36px !important;
-    padding-left: 12px !important;
+.fb-header-icon {
+  font-size: 15px;
+  color: #1d4ed8;
+  flex-shrink: 0;
 }
 
-.select2-container--default .select2-selection__arrow {
-    height: 38px !important;
+.fb-header-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
 }
 
-.select2-container--default .select2-selection__arrow b {
-    border-color: #fff transparent transparent transparent !important;
+/* ────────────────────────────────────────
+   GRID
+──────────────────────────────────────── */
+.fb-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 10px; /* Thoda gap badhaya taaki borders aapas mein na chipke */
+  align-items: end;
 }
 
-/* Dropdown list */
-.select2-dropdown {
-    background: #004593 !important;
-    border: 1px solid #2563eb !important;
+/* Har ek filter ka distinct box */
+.fb-cell {
+  grid-column: span var(--col-span, 1);
+  min-width: 0;
+  
+  /* 👇 NAYI STYLING: Border aur Background */
+  background: #f8fafc; /* Halka sa slate/blue background */
+  border: 1px solid #cbd5e1; /* Clear border */
+  border-radius: 12px; /* Smooth rounded corners */
+  padding: 6px 10px 10px 10px; /* Andar thodi space (padding) */
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.02); /* Halka sa andar ki taraf depth */
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
-.select2-results__option {
-    background: #004593 !important;
-    color: white !important;
+/* Hover karne par thoda aur highlight hoga */
+.fb-cell:hover {
+  border-color: #94a3b8;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.03);
 }
 
-.select2-results__option--highlighted {
-    background: #004593 !important;
-    color: white !important;
+.fb-reset-cell {
+  grid-column: span 1;
+  display: flex;
+  align-items: flex-end;
+  /* Reset button ko baaki filters ki height ke hisaab se align karne ke liye margin */
+  padding-bottom: 10px; 
 }
 
-.select2-results__option[aria-selected="true"] {
-    background: #1e40af !important;
-    color: white !important;
+/* ────────────────────────────────────────
+   RESET BUTTON
+──────────────────────────────────────── */
+.fb-reset-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 100%;
+  height: 34px;
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.02em;
+  transition: transform 0.2s, box-shadow 0.2s;
+  white-space: nowrap;
 }
 
-/* Dropdown max height */
-.select2-results > .select2-results__options {
-    max-height: 220px !important;
-    overflow-y: auto !important;
-    scroll-behavior: smooth;
+.fb-reset-btn:hover {
+  transform: scale(1.03);
+  box-shadow: 0 4px 14px rgba(29, 78, 216, 0.4);
 }
 
-/* Chrome, Edge */
-.select2-results__options::-webkit-scrollbar {
-    width: 5px;
+.fb-reset-btn:active {
+  transform: scale(0.97);
 }
 
-.select2-results__options::-webkit-scrollbar-track {
-    background: transparent;
+.fb-reset-icon {
+  font-size: 14px;
+  transition: transform 0.35s ease;
 }
 
-.select2-results__options::-webkit-scrollbar-thumb {
-    background: rgba(255,255,255,0.45);
-    border-radius: 20px;
+.fb-reset-btn:hover .fb-reset-icon {
+  transform: rotate(360deg);
 }
 
-.select2-results__options::-webkit-scrollbar-thumb:hover {
-    background: rgba(255,255,255,0.7);
+/* ────────────────────────────────────────
+   MULTI-SELECT CONTAINER
+──────────────────────────────────────── */
+.ms-container {
+  position: relative;
+  width: 100%;
 }
 
-/* Firefox */
-.select2-results__options {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(255,255,255,.45) transparent;
+/* Label row */
+.ms-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+  cursor: default;
+  user-select: none;
+}
+
+/* Blue label when filter is active */
+.ms-container--active .ms-label {
+  color: #1d4ed8;
+}
+
+/* Count badge on label */
+.ms-count-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #1d4ed8;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  line-height: 1;
+}
+
+/* ────────────────────────────────────────
+   TRIGGER BOX (the visible dropdown box)
+──────────────────────────────────────── */
+.ms-trigger {
+  width: 100%;
+  height: 34px;
+  background: #004593;
+  border: 1px solid #2563eb;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 0 8px;
+  cursor: pointer;
+  gap: 4px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  overflow: hidden;
+  text-align: left;
+}
+
+.ms-trigger:hover {
+  border-color: #60a5fa;
+}
+
+.ms-trigger--open {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 2px rgba(96, 165, 250, 0.25);
+}
+
+.ms-trigger:focus-visible {
+  outline: 2px solid #60a5fa;
+  outline-offset: 1px;
+}
+
+/* Left side of trigger */
+.ms-trigger-left {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+}
+
+/* Placeholder "All" text */
+.ms-placeholder {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  white-space: nowrap;
+}
+
+/* ── Pills row inside trigger ── */
+.ms-pills-row {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex-wrap: nowrap;
+  overflow: hidden;
+  width: 100%;
+}
+
+/* Individual pill */
+.ms-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: #1e40af;
+  border: 1px solid #60a5fa;
+  color: #fff;
+  border-radius: 5px;
+  padding: 1px 4px 1px 6px;
+  font-size: 11px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1.4;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ✕ inside pill */
+.ms-pill-x {
+  background: transparent;
+  border: none;
+  color: #93c5fd;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 1px;
+  display: flex;
+  align-items: center;
+  border-left: 1px solid rgba(96, 165, 250, 0.4);
+  padding-left: 3px;
+  flex-shrink: 0;
+  transition: color 0.12s;
+}
+
+.ms-pill-x:hover {
+  color: #fff;
+}
+
+/* +N overflow badge */
+.ms-pill-more {
+  background: #1e3a8a;
+  border: 1px solid #3b82f6;
+  color: #93c5fd;
+  border-radius: 5px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Chevron arrow */
+.ms-arrow {
+  font-size: 16px;
+  color: #fff;
+  flex-shrink: 0;
+  transition: transform 0.2s ease;
+}
+
+.ms-arrow--up {
+  transform: rotate(180deg);
+}
+
+/* ────────────────────────────────────────
+   DROPDOWN PANEL
+──────────────────────────────────────── */
+.ms-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: #003a7a;
+  border: 1px solid #2563eb;
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+  z-index: 9999;
+  overflow: hidden;
+  animation: dropIn 0.15s ease;
+}
+
+@keyframes dropIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Search input */
+.ms-search-wrap {
+  padding: 8px 8px 4px;
+}
+
+.ms-search {
+  width: 100%;
+  background: #002d60;
+  border: 1px solid #3b82f6;
+  border-radius: 6px;
+  color: #fff;
+  padding: 5px 10px;
+  font-size: 12px;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.ms-search:focus {
+  border-color: #60a5fa;
+}
+
+.ms-search::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* Options list */
+.ms-options-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 0;
+  max-height: 200px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255,255,255,0.25) transparent;
+}
+
+.ms-options-list::-webkit-scrollbar { width: 4px; }
+.ms-options-list::-webkit-scrollbar-track { background: transparent; }
+.ms-options-list::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.25);
+  border-radius: 20px;
+}
+
+/* No results text */
+.ms-no-results {
+  padding: 10px 12px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.45);
+  text-align: center;
+}
+
+/* Single option row */
+.ms-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  font-size: 12px;
+  color: #e2e8f0;
+  cursor: pointer;
+  transition: background 0.12s;
+  outline: none;
+}
+
+.ms-option:hover,
+.ms-option:focus {
+  background: #1d4ed8;
+  color: #fff;
+}
+
+.ms-option--selected {
+  background: #1e3a8a;
+  color: #93c5fd;
+}
+
+.ms-option--selected:hover,
+.ms-option--selected:focus {
+  background: #1d4ed8;
+  color: #fff;
+}
+
+/* Checkbox square */
+.ms-checkbox {
+  width: 15px;
+  height: 15px;
+  border: 1.5px solid #60a5fa;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  background: transparent;
+  transition: background 0.12s;
+}
+
+.ms-checkbox--checked {
+  background: #3b82f6;
+  border-color: #3b82f6;
+}
+
+.ms-check-icon {
+  font-size: 10px;
+  color: #fff;
+}
+
+.ms-option-text {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Dropdown footer */
+.ms-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px 8px;
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+.ms-footer-count {
+  font-size: 11px;
+  color: rgba(255,255,255,0.5);
+}
+
+.ms-footer-clear {
+  background: transparent;
+  border: none;
+  color: #f87171;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background 0.12s;
+}
+
+.ms-footer-clear:hover {
+  background: rgba(248, 113, 113, 0.15);
+}
+
+/* ────────────────────────────────────────
+   ACTIVE FILTERS BAR (chips below grid)
+──────────────────────────────────────── */
+.afb-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: #eff6ff;
+  border: 0.5px solid #bfdbfe;
+  border-radius: 12px;
+  animation: slideDown 0.18s ease;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.afb-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #1d4ed8;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.afb-label-icon {
+  font-size: 13px;
+}
+
+/* Individual chip */
+.afb-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #1e40af;
+  border: 1px solid #3b82f6;
+  border-radius: 20px;
+  padding: 3px 6px 3px 10px;
+  font-size: 11px;
+  animation: popIn 0.14s ease;
+}
+
+@keyframes popIn {
+  from { transform: scale(0.85); opacity: 0; }
+  to   { transform: scale(1);    opacity: 1; }
+}
+
+.afb-chip-key {
+  color: #93c5fd;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.afb-chip-val {
+  color: #fff;
+  font-weight: 500;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.afb-chip-x {
+  background: transparent;
+  border: none;
+  color: #93c5fd;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 2px;
+  display: flex;
+  align-items: center;
+  transition: color 0.12s;
+}
+
+.afb-chip-x:hover {
+  color: #fff;
+}
+
+/* Clear All */
+.afb-clear-all {
+  background: transparent;
+  border: none;
+  color: #ef4444;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-left: auto;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: background 0.12s;
+  white-space: nowrap;
+}
+
+.afb-clear-all:hover {
+  background: #fee2e2;
+}
+
+/* ────────────────────────────────────────
+   RESPONSIVE
+──────────────────────────────────────── */
+
+/* Tablet: 6-col grid */
+@media (max-width: 1023px) {
+  .fb-grid {
+    grid-template-columns: repeat(6, 1fr);
+  }
+  .fb-cell {
+    grid-column: span min(var(--col-span, 1), 3);
+  }
+  .fb-reset-cell {
+    grid-column: span 2;
+  }
+}
+
+/* Mobile: 2-col grid */
+@media (max-width: 767px) {
+  .fb-wrapper {
+    padding: 10px 10px 8px;
+    border-radius: 14px;
+  }
+  .fb-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 6px;
+  }
+  .fb-cell,
+  .fb-reset-cell {
+    grid-column: span 2;
+  }
+  .fb-reset-btn {
+    width: 100%;
+  }
+  /* On mobile, dropdown goes above if near bottom */
+  .ms-dropdown {
+    position: fixed;
+    left: 10px;
+    right: 10px;
+    top: auto;
+    bottom: 10px;
+    max-height: 60vh;
+    overflow-y: auto;
+  }
 }

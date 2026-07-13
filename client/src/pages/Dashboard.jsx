@@ -1,3 +1,4 @@
+import { HiOutlineFilter, HiOutlineViewGrid, HiOutlineSearch, HiOutlineRefresh, HiChevronDown } from "react-icons/hi";
 import React, { useEffect, useRef, useState } from 'react';
 import axios from 'axios';
 import { DataGrid } from '@mui/x-data-grid';
@@ -16,13 +17,17 @@ const Dashboard = ({ user }) => {
     const [selectedWbsType, setSelectedWbsType] = useState('All');
 
     // FILTER OPTIONS for YEARS, PERIODS, CUSTOMERS
-    const [filterOptions, setFilterOptions] = useState({ years: [], periods: [], customers: [], loa_names: [], wbs_types: [] });
+    const [filterOptions, setFilterOptions] = useState({ bus: [], years: [], periods: [], customers: [], loa_names: [], wbs_types: [] });
 
     const [selectedYears, setSelectedYears] = useState([]);
     const [selectedPeriods, setSelectedPeriods] = useState([]);
 
     const [showYearDropdown, setShowYearDropdown] = useState(false);
     const [showPeriodDropdown, setShowPeriodDropdown] = useState(false);
+
+    const [selectedBus, setSelectedBus] = useState([]); // 🔥 State for BU
+    const [showBuDropdown, setShowBuDropdown] = useState(false);
+    const buRef = useRef();
 
     const [showAllLoa, setShowAllLoa] = useState(false);
     const loaGraphRef = useRef();
@@ -91,7 +96,7 @@ const fetchTrendData = async () => {
 // fetching table data for BU and Cost
 useEffect(() => {
     fetchTableData();
-}, [tableView, selectedYears, selectedPeriods, selectedCustomers, selectedLoas, selectedStatus, selectedWbsType]);
+}, [tableView, selectedYears, selectedPeriods, selectedCustomers, selectedLoas, selectedStatus, selectedWbsType, selectedBus]);
 
 const fetchTableData = async () => {
 
@@ -126,6 +131,8 @@ const fetchTableData = async () => {
             endpoint = 'customer-bu-loa-view-table';
         }
 
+        const bu =
+            selectedBus.join(',');
         const years =
             selectedYears.join(',');
 
@@ -143,6 +150,7 @@ const fetchTableData = async () => {
             {
                 params: {
 
+                    bu: selectedBus.join(','), // 🔥 Pass BU
                     years,
                     periods,
                     customers,
@@ -283,6 +291,10 @@ const exportToExcel = () => {
 
         const handleClickOutside = (event) => {
 
+            if (buRef.current && !buRef.current.contains(event.target)) {
+                    setShowBuDropdown(false);
+                }
+
             if (
                 yearRef.current &&
                 !yearRef.current.contains(event.target)
@@ -336,6 +348,8 @@ const exportToExcel = () => {
     useEffect(() => {
     const fetchFilters = async () => {
         try {
+                const bu =
+                    selectedBus.join(',');
                 const years =
                     selectedYears.join(',');
 
@@ -352,6 +366,7 @@ const exportToExcel = () => {
                     `${process.env.REACT_APP_API_URL}/api/data/dashboard-filters`,
                     {
                         params: {
+                            bu,
                             years,
                             periods,
                             customers,
@@ -370,6 +385,7 @@ const exportToExcel = () => {
         };
         fetchFilters();
     }, [
+        selectedBus,
         selectedYears,
         selectedPeriods,
         selectedCustomers,
@@ -387,6 +403,7 @@ const exportToExcel = () => {
             try {
                 setLoading(true);
 
+                const bu = selectedBus.join(',');
                 const years = selectedYears.join(',');
                 const periods = selectedPeriods.join(',');
                 const customers = selectedCustomers.join(',');
@@ -398,6 +415,7 @@ const exportToExcel = () => {
                         `${process.env.REACT_APP_API_URL}/api/data/analytics-bu`,
                         {
                             params: {
+                                bu,
                                 years,
                                 periods,
                                 customers,
@@ -415,6 +433,7 @@ const exportToExcel = () => {
                         `${process.env.REACT_APP_API_URL}/api/data/analytics-loa`,
                         {
                             params: {
+                                bu,
                                 years,
                                 periods,
                                 customers,
@@ -441,7 +460,7 @@ const exportToExcel = () => {
             }
         };
         fetchData();
-    }, [selectedYears, selectedPeriods, selectedCustomers, selectedLoas, showAllLoa, selectedStatus, selectedWbsType]);
+    }, [selectedYears, selectedPeriods, selectedCustomers, selectedLoas, showAllLoa, selectedStatus, selectedWbsType, selectedBus]);
 
     // =========================================
     // YEAR CHANGE
@@ -505,6 +524,7 @@ const filteredTopLoaOptions = (filterOptions.loa_names || []).filter((loa) =>
 );
 
 const resetAllFilters = () => {
+    setSelectedBus([]);
     setSelectedYears([]);
     setSelectedPeriods([]);
     setSelectedCustomers([]);
@@ -530,6 +550,14 @@ const totalEAC = buData.reduce(
     (sum, item) => sum + Number(item.eac || 0),
     0
 );
+
+const predefinedOrder = ['IP', 'Optics', 'FN'];
+const sortedBuData = [...buData].sort((a, b) => {
+    const indexA = predefinedOrder.indexOf(a.bu);
+    const indexB = predefinedOrder.indexOf(b.bu);
+    // Agar koi naya BU aata hai jo list mein nahi hai, toh usey last mein rakho
+    return (indexA === -1 ? 99 : indexA) - (indexB === -1 ? 99 : indexB);
+});
 
 const ptdCompletion =
     totalASBL > 0
@@ -563,6 +591,42 @@ const displayLoaData = showAllLoa
 
                     {/* FILTERS BAR */}
                     <div className="flex flex-col md:flex-row gap-5">
+
+                        {/* 🔥 NEW BU FILTER */}
+                        <div ref={buRef} className="relative w-[180px]">
+                            <p className="text-[11px] font-black uppercase text-slate-500 mb-2">Select BU</p>
+                            <button onClick={() => setShowBuDropdown(!showBuDropdown)} className="w-full bg-white border border-slate-300 rounded-2xl px-4 py-3 shadow-sm text-left">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm font-medium text-slate-700 truncate">
+                                        {selectedBus.length > 0 ? `${selectedBus.length} Selected` : 'Choose BU'}
+                                    </span>
+                                    <HiChevronDown />
+                                </div>
+                            </button>
+                            {showBuDropdown && (
+                                <div className="absolute top-full left-0 mt-2 w-full bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-3 max-h-[260px] overflow-y-auto">
+                                    <div className="flex justify-between mb-3">
+                                        <button className="text-[10px] font-bold text-blue-600" onClick={() => setSelectedBus(filterOptions.bus)}>Select All</button>
+                                        <button className="text-[10px] font-bold text-red-500" onClick={() => setSelectedBus([])}>Clear</button>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {filterOptions.bus.map((bu) => (
+                                            <label key={bu} className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-100 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedBus.includes(bu)}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) setSelectedBus([...selectedBus, bu]);
+                                                        else setSelectedBus(selectedBus.filter(x => x !== bu));
+                                                    }}
+                                                />
+                                                <span className="text-sm font-medium text-slate-700">{bu}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
 
                         {/* 1. Customer Filter */}
                         <div ref={customerRef} className="relative w-[240px]">
@@ -1117,139 +1181,119 @@ const displayLoaData = showAllLoa
             </div>
             )}
 
-            {/* BU GRAPH */}
-
-            <div className="bg-white rounded-[2rem] shadow-lg p-6 relative">
+            {/* BU GRAPH SECTION */}
+            <div className="bg-white rounded-[2rem] shadow-lg p-6 relative border border-slate-200">
                 {loading && (
                     <div className="absolute inset-0 bg-white/60 z-10 flex items-center justify-center rounded-[2rem]">
                         <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
                     </div>
                 )}
-                <h2 className="text-2xl font-black text-slate-800 mb-6">
-                    Business Unit View
-                </h2>
+                
+                <div className="mb-6">
+                    <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tight">Business Unit View</h2>
+                    <p className="text-slate-400 text-sm">Performance metrics per Business Unit</p>
+                </div>
 
-                <div className="flex gap-4 mb-6 flex-wrap">
+                {/* 6 KPI Boxes */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                    {sortedBuData.map((item) => {
+                        const ptdPerc = item.asbl > 0 ? ((item.ptd / item.asbl) * 100).toFixed(1) : "0.0";
+                        const eacPerc = item.asbl > 0 ? ((item.eac / item.asbl) * 100).toFixed(1) : "0.0";
 
-    <div className="bg-green-50 border border-green-200 rounded-2xl px-5 py-4 min-w-[220px]">
-        <div className="text-sm text-green-700 font-semibold">
-            PTD Completion
-        </div>
+                        return (
+                            <div key={item.bu} className="bg-slate-50 border border-slate-200 rounded-3xl p-4 shadow-sm hover:shadow-md transition-all">
+                                <div className="text-xs font-black text-blue-800 uppercase mb-3 px-3 py-1.5 bg-blue-100/50 rounded-xl inline-block border border-blue-200">
+                                    BU: {item.bu}
+                                </div>
+                                
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="bg-white p-3 rounded-2xl border border-green-100 text-center">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">PTD Comp.</p>
+                                        <p className="text-lg font-black text-green-600">{ptdPerc}%</p>
+                                    </div>
+                                    <div className="bg-white p-3 rounded-2xl border border-purple-100 text-center">
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">EAC Comp.</p>
+                                        <p className="text-lg font-black text-purple-600">{eacPerc}%</p>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
 
-        <div className="text-3xl font-black text-green-600">
-            {ptdCompletion}%
-        </div>
-
-        <div className="text-xs text-slate-500 mt-1">
-            {totalPTD.toFixed(2)} / {totalASBL.toFixed(2)}
-        </div>
-    </div>
-
-    <div className="bg-purple-50 border border-purple-200 rounded-2xl px-5 py-4 min-w-[220px]">
-        <div className="text-sm text-purple-700 font-semibold">
-            EAC vs ASBL
-        </div>
-
-        <div className="text-3xl font-black text-purple-600">
-            {eacCompletion}%
-        </div>
-
-        <div className="text-xs text-slate-500 mt-1">
-            {totalEAC.toFixed(2)} / {totalASBL.toFixed(2)}
-        </div>
-    </div>
-
-</div>
-
-                <div className="w-full h-[420px] min-w-0">
-                    <ResponsiveContainer width="100%" height="100%" minWidth={300}>
-                        <BarChart data={buData}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="bu" />
-                            <YAxis />
-
-                            <Tooltip
-    formatter={(value, name, props) => {
-        const row = props.payload;
-
-        if (name === "ptd") {
-            const completion =
-                row.asbl > 0
-                    ? ((row.ptd / row.asbl) * 100).toFixed(1)
-                    : "0.0";
-
-            return [
-                `${Number(value).toFixed(2)} (${completion}%)`,
-                "PTD"
-            ];
-        }
-
-        if (name === "eac") {
-            const completion =
-                row.asbl > 0
-                    ? ((row.eac / row.asbl) * 100).toFixed(1)
-                    : "0.0";
-
-            return [
-                `${Number(value).toFixed(2)} (${completion}%)`,
-                "EAC"
-            ];
-        }
-
-        return [
-            Number(value).toFixed(2),
-            name.toUpperCase()
-        ];
-    }}
-/>
-
-                            <Legend
-                                formatter={(value) => value.toUpperCase()}
+                {/* GRAPH - Increased barSize and adjusted gap */}
+                <div className="w-full h-[480px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                        <BarChart 
+                            data={sortedBuData} 
+                            margin={{ top: 40, right: 30, left: 20, bottom: 20 }}
+                            barGap={10}          /* 🔥 Bars ke beech ka gap */
+                            barCategoryGap="20%" /* 🔥 Categories ke beech ka gap (Kam karne se bar wide hogi) */
+                        >
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                            <XAxis 
+                                dataKey="bu" 
+                                axisLine={false} 
+                                tickLine={false} 
+                                tick={{ fill: '#1e293b', fontSize: 13, fontWeight: 900 }} 
+                                dy={10}
                             />
+                            <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 11 }} />
+                            
+                            <Tooltip
+                                cursor={{ fill: '#f8fafc' }}
+                                contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px -5px rgba(0,0,0,0.1)' }}
+                                formatter={(value, name, props) => {
+                                    const row = props.payload;
+                                    const valStr = Number(value).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+                                    if (name === "ptd") {
+                                        const perc = row.asbl > 0 ? ((row.ptd / row.asbl) * 100).toFixed(1) : "0.0";
+                                        return [`${valStr} (${perc}%)`, "PTD"];
+                                    }
+                                    if (name === "eac") {
+                                        const perc = row.asbl > 0 ? ((row.eac / row.asbl) * 100).toFixed(1) : "0.0";
+                                        return [`${valStr} (${perc}%)`, "EAC"];
+                                    }
+                                    return [valStr, name.toUpperCase()];
+                                }}
+                            />
+                            
+                            <Legend verticalAlign="top" align="right" height={50} iconType="circle" />
 
-                            <Bar dataKey="asbl" fill="#2563eb">
-                                <LabelList
-                                    dataKey="asbl"
-                                    position="top"
-                                    formatter={(value) => Number(value).toFixed(2)}
-                                    style={{
-                                        fontSize: '11px',
-                                        fontWeight: 'bold',
-                                        fill: '#1e293b'
-                                    }}
+                            {/* 🔥 Increased barSize to 70 for wider bars */}
+                            <Bar dataKey="asbl" name="asbl" fill="#2563eb" radius={[8, 8, 0, 0]} barSize={120}>
+                                <LabelList 
+                                    dataKey="asbl" 
+                                    position="top" 
+                                    formatter={(v) => Number(v).toFixed(0)} 
+                                    style={{ fontSize: '11px', fontWeight: '800', fill: '#1e293b' }} 
+                                    offset={10}
                                 />
                             </Bar>
-
-                            <Bar dataKey="ptd" fill="#10b981">
-                                <LabelList
-                                    dataKey="ptd"
-                                    position="top"
-                                    formatter={(value) => Number(value).toFixed(2)}
-                                    style={{
-                                        fontSize: '11px',
-                                        fontWeight: 'bold',
-                                        fill: '#1e293b'
-                                    }}
+                            
+                            <Bar dataKey="ptd" name="ptd" fill="#10b981" radius={[8, 8, 0, 0]} barSize={120}>
+                                <LabelList 
+                                    dataKey="ptd" 
+                                    position="top" 
+                                    formatter={(v) => Number(v).toFixed(0)} 
+                                    style={{ fontSize: '11px', fontWeight: '800', fill: '#1e293b' }} 
+                                    offset={10}
                                 />
                             </Bar>
-
-                            <Bar dataKey="eac" fill="#8b5cf6">
-                                <LabelList
-                                    dataKey="eac"
-                                    position="top"
-                                    formatter={(value) => Number(value).toFixed(2)}
-                                    style={{
-                                        fontSize: '11px',
-                                        fontWeight: 'bold',
-                                        fill: '#1e293b'
-                                    }}
+                            
+                            <Bar dataKey="eac" name="eac" fill="#8b5cf6" radius={[8, 8, 0, 0]} barSize={120}>
+                                <LabelList 
+                                    dataKey="eac" 
+                                    position="top" 
+                                    formatter={(v) => Number(v).toFixed(0)} 
+                                    style={{ fontSize: '11px', fontWeight: '800', fill: '#1e293b' }} 
+                                    offset={10}
                                 />
                             </Bar>
                         </BarChart>
                     </ResponsiveContainer>
                 </div>
             </div>
-
             {/* LOA GRAPH */}
             <div
                 ref={loaGraphRef}
