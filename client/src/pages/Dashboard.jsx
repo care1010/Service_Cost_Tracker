@@ -29,6 +29,11 @@ const Dashboard = ({ user }) => {
     const [showBuDropdown, setShowBuDropdown] = useState(false);
     const buRef = useRef();
 
+    // 🔥 NAYA: Category Type State
+    const [selectedCategoryTypes, setSelectedCategoryTypes] = useState(['All']);
+    const [showCategoryTypeDropdown, setShowCategoryTypeDropdown] = useState(false);
+    const categoryTypeRef = useRef();
+
     const [showAllLoa, setShowAllLoa] = useState(false);
     const loaGraphRef = useRef();
 
@@ -83,7 +88,8 @@ const fetchTrendData = async () => {
                 params: {
                     loa_name: selectedTrendLoa,
                     active_inactive: selectedStatus,
-                    wbs_type: selectedWbsType // 🔥 Sync Trend
+                    wbs_type: selectedWbsType, // 🔥 Sync Trend
+                    category_type: selectedCategoryTypes.join(',') // 🔥 YAHAN ADD KIYA
                 }
             }
         );
@@ -96,7 +102,7 @@ const fetchTrendData = async () => {
 // fetching table data for BU and Cost
 useEffect(() => {
     fetchTableData();
-}, [tableView, selectedYears, selectedPeriods, selectedCustomers, selectedLoas, selectedStatus, selectedWbsType, selectedBus]);
+}, [tableView, selectedYears, selectedPeriods, selectedCustomers, selectedLoas, selectedStatus, selectedWbsType, selectedBus, selectedCategoryTypes]);
 
 const fetchTableData = async () => {
 
@@ -133,6 +139,7 @@ const fetchTableData = async () => {
 
         const bu =
             selectedBus.join(',');
+        const category_type = selectedCategoryTypes.join(',');
         const years =
             selectedYears.join(',');
 
@@ -157,6 +164,7 @@ const fetchTableData = async () => {
                     loa_names,
                     active_inactive: selectedStatus,
                     wbs_type: selectedWbsType, // 🔥 Added new filter
+                    category_type: selectedCategoryTypes.join(','), // 🔥 Added Category Type filter
                     type: user?.type,
                     allowedCustomers: allowedCustomers.join(',')
                 }
@@ -295,6 +303,10 @@ const exportToExcel = () => {
                     setShowBuDropdown(false);
                 }
 
+            if (categoryTypeRef.current && !categoryTypeRef.current.contains(event.target)) {
+                setShowCategoryTypeDropdown(false);
+            }
+
             if (
                 yearRef.current &&
                 !yearRef.current.contains(event.target)
@@ -350,6 +362,7 @@ const exportToExcel = () => {
         try {
                 const bu =
                     selectedBus.join(',');
+                const category_type = selectedCategoryTypes.join(',');
                 const years =
                     selectedYears.join(',');
 
@@ -374,6 +387,7 @@ const exportToExcel = () => {
                             active_inactive: selectedStatus,
                             type: user?.type,
                             wbs_type: selectedWbsType, // 🔥 Added
+                            category_type: selectedCategoryTypes.join(','), // 🔥 Added
                             allowedCustomers: allowedCustomers.join(',')
                         }
                     }
@@ -403,51 +417,39 @@ const exportToExcel = () => {
             try {
                 setLoading(true);
 
+                // Saare parameters ko ek baar yahan extract kar liya
                 const bu = selectedBus.join(',');
                 const years = selectedYears.join(',');
                 const periods = selectedPeriods.join(',');
                 const customers = selectedCustomers.join(',');
                 const loa_names = selectedLoas.join(',');
+                const category_type = selectedCategoryTypes.join(','); // 🔥 NAYA PARAMETER
+
+                // Common params object bana diya taaki API mein pass karna aasan ho
+                const commonParams = {
+                    bu,
+                    years,
+                    periods,
+                    customers,
+                    loa_names,
+                    category_type, // 🔥 YAHAN DAAL DIYA (Ab ye dono API mein automatically jayega)
+                    active_inactive: selectedStatus,
+                    showAll: showAllLoa,
+                    type: user?.type,
+                    wbs_type: selectedWbsType,
+                    allowedCustomers: allowedCustomers.join(',')
+                };
 
                 const [buRes, loaRes] = await Promise.all([
+                    // BU Analytics API
+                    axios.get(`${process.env.REACT_APP_API_URL}/api/data/analytics-bu`, {
+                        params: commonParams
+                    }),
 
-                    axios.get(
-                        `${process.env.REACT_APP_API_URL}/api/data/analytics-bu`,
-                        {
-                            params: {
-                                bu,
-                                years,
-                                periods,
-                                customers,
-                                loa_names,
-                                active_inactive: selectedStatus,
-                                showAll: showAllLoa,
-                                type: user?.type,
-                                wbs_type: selectedWbsType, // 🔥 Added new filter
-                                allowedCustomers: allowedCustomers.join(',')
-                            }
-                        }
-                    ),
-
-                    axios.get(
-                        `${process.env.REACT_APP_API_URL}/api/data/analytics-loa`,
-                        {
-                            params: {
-                                bu,
-                                years,
-                                periods,
-                                customers,
-                                loa_names,
-                                active_inactive: selectedStatus,
-                                showAll: showAllLoa,
-                                type: user?.type,
-                                wbs_type: selectedWbsType, // 🔥 Added new filter
-                                allowedCustomers:
-                                allowedCustomers.join(',')
-                            }
-                        }
-                    )
-
+                    // LOA Analytics API (Yahan miss hua tha pichli baar)
+                    axios.get(`${process.env.REACT_APP_API_URL}/api/data/analytics-loa`, {
+                        params: commonParams
+                    })
                 ]);
 
                 setBuData(buRes.data);
@@ -534,6 +536,7 @@ const resetAllFilters = () => {
     setShowAllLoa(false);
     // Default Active
     setSelectedStatus('Active')
+    setSelectedCategoryTypes(['All']); // Add this inside reset function
 };
 
 const totalASBL = buData.reduce(
@@ -621,6 +624,42 @@ const displayLoaData = showAllLoa
                                                     }}
                                                 />
                                                 <span className="text-sm font-medium text-slate-700">{bu}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* 🔥 NEW CATEGORY TYPE FILTER */}
+                        <div ref={categoryTypeRef} className="relative w-[180px]">
+                            <p className="text-[11px] font-black uppercase text-slate-500 mb-2">Category Type</p>
+                            <button onClick={() => setShowCategoryTypeDropdown(!showCategoryTypeDropdown)} className="w-full bg-white border border-slate-300 rounded-2xl px-4 py-3 shadow-sm text-left">
+                                <div className="flex items-center justify-between">
+                                    <span className="text-sm font-medium text-slate-700 truncate">
+                                        {selectedCategoryTypes.length > 0 ? `${selectedCategoryTypes.length} Selected` : 'Choose Category'}
+                                    </span>
+                                    <HiChevronDown />
+                                </div>
+                            </button>
+                            {showCategoryTypeDropdown && (
+                                <div className="absolute top-full left-0 mt-2 w-full bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-3 max-h-[260px] overflow-y-auto">
+                                    <div className="flex justify-between mb-3">
+                                        <button className="text-[10px] font-bold text-blue-600" onClick={() => setSelectedCategoryTypes(['All', 'Local Materials'])}>Select All</button>
+                                        <button className="text-[10px] font-bold text-red-500" onClick={() => setSelectedCategoryTypes([])}>Clear</button>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {['All', 'Local Materials'].map((cat) => (
+                                            <label key={cat} className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-100 cursor-pointer">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedCategoryTypes.includes(cat)}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) setSelectedCategoryTypes([...selectedCategoryTypes, cat]);
+                                                        else setSelectedCategoryTypes(selectedCategoryTypes.filter(x => x !== cat));
+                                                    }}
+                                                />
+                                                <span className="text-sm font-medium text-slate-700">{cat}</span>
                                             </label>
                                         ))}
                                     </div>

@@ -238,9 +238,10 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
                     if (type === 'display' && drillFields.includes(col.field)) {
                         return `
                             <span
-                                class="drill-link text-grey-700 font-bold cursor-pointer hover:underline"
+                                class="drill-link text-blue-600 font-bold cursor-pointer hover:underline"
                                 data-field="${col.field}"
                                 data-uniquekey="${row.unique_key}"
+                                data-loaid="${row.loa_id}" 
                                 data-loa="${row.loa_name}"
                                 data-category="${row.categories}"
                                 data-value="${data}"
@@ -385,14 +386,14 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
                 table.find('tbody').off('click', '.drill-link').on('click', '.drill-link', function (e) {
                     e.stopPropagation();
                     const field = $(this).data('field');
-                    const uKey = $(this).data('uniquekey');
                     const row = {
-                        unique_key: uKey,
+                        unique_key: $(this).data('uniquekey'),
+                        loa_id: $(this).data('loaid'),      // 🔥 YEH ADD KIYA HAI
                         loa_name: $(this).data('loa'),
-                        category: $(this).data('category'),
+                        categories: $(this).data('category'), 
                         value: $(this).data('value')
                     };
-                    navigate('/drilldown', { state: { field, row, filters } });
+                    navigate('/drilldown', { state: { field, row, filters: filtersRef.current } });
                 });
             }
         });

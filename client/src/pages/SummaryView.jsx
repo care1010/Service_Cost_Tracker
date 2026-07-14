@@ -11,8 +11,9 @@ import { HiOutlineFilter, HiOutlineViewGrid, HiOutlineSearch, HiOutlineRefresh }
 const SummaryView = ({ user }) => {
     // 1. SAARE STATES
     const [filters, setFilters] = useState({
-        bu: 'All', customer: 'All', loa_id: 'All', loa_name: 'All', wbs_type: 'All', wbs_description: 'All',  wbs: 'All', active_inactive: 'Active', period: 'All'
+        category_type: ['All'], bu: [], customer: [], loa_id: [], loa_name: [], wbs_type: [], wbs_description: [], wbs: [], active_inactive: ['Active'], period: []
     });
+
     const [options, setOptions] = useState({});
     const [kpiData, setKpiData] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -69,7 +70,7 @@ const SummaryView = ({ user }) => {
     const handleFilterChange = (name, value) => setFilters(prev => ({ ...prev, [name]: value }));
     
     const handleReset = () => setFilters({ 
-        bu: 'All', customer: 'All', loa_id: 'All', loa_name: 'All', wbs_type: 'All', wbs: 'All', wbs_description: 'All', active_inactive: 'Active', period: 'All' 
+        category_type: ['All'], bu: [], customer: [], loa_id: [], loa_name: [], wbs_type: [], wbs: [], wbs_description: [], active_inactive: ['Active'], period: [] 
     });
 
     const handleKpiUpdate = useCallback((data) => {

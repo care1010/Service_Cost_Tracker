@@ -43,8 +43,30 @@ const applyRLS = (
 // ==============================
 // COMMON Dashboard Filters FUNCTION
 // ==============================
+// ==============================
+// COMMON Dashboard Filters FUNCTION
+// ==============================
 const applyDashboardFilters = (query, conditions, params) => {
-    const { bu, years, periods, customers, loa_names, active_inactive } = query;
+    const { bu, years, periods, customers, loa_names, active_inactive, category_type } = query;
+
+    // 🔥 CUSTOM CATEGORY TYPE LOGIC (Hide Local Materials by Default)
+    if (!category_type) {
+        conditions.push(`categories <> 'Local Materials'`);
+    } else {
+        let catArr = Array.isArray(category_type) ? category_type : category_type.split(',').map(v => v.trim());
+        const hasAll = catArr.includes('All');
+        const hasLM = catArr.includes('Local Materials');
+
+        if (hasAll && !hasLM) {
+            conditions.push(`categories <> 'Local Materials'`);
+        } else if (!hasAll && hasLM) {
+            conditions.push(`categories = 'Local Materials'`);
+        } else if (hasAll && hasLM) {
+            // Dono selected hain -> Sab kuch dikhao (No filter)
+        } else {
+            conditions.push(`categories <> 'Local Materials'`);
+        }
+    }
 
     // 🔥 BU Filter Logic (Multi-select support)
     if (bu) {
@@ -82,6 +104,33 @@ const applyDashboardFilters = (query, conditions, params) => {
 };
 
 
+// ==============================
+// CUSTOM CATEGORY TYPE FILTER
+// ==============================
+const applyCategoryTypeFilter = (catType, conditions) => {
+    if (!catType) {
+        conditions.push(`categories <> 'Local Materials'`); // Default hidden
+        return;
+    }
+    
+    let catArr = Array.isArray(catType) ? catType : catType.split(',').map(v => v.trim());
+    const hasAll = catArr.includes('All');
+    const hasLM = catArr.includes('Local Materials');
+
+    if (hasAll && !hasLM) {
+        // Sirf All selected hai -> Hide Local Materials
+        conditions.push(`categories <> 'Local Materials'`);
+    } else if (!hasAll && hasLM) {
+        // Sirf Local Materials selected hai -> Show ONLY Local Materials
+        conditions.push(`categories = 'Local Materials'`);
+    } else if (hasAll && hasLM) {
+        // Dono selected hain -> Sab kuch dikhao (No restriction)
+    } else {
+        // Agar galti se dono uncheck ho jayein toh default hide kardo
+        conditions.push(`categories <> 'Local Materials'`);
+    }
+};
+
 // --- 1. Helper function (Params normalize karne ke liye) ---
 const getValArray = (val) => {
     if (!val || val === 'All' || val === '' || (Array.isArray(val) && val.length === 0)) return null;
@@ -90,59 +139,135 @@ const getValArray = (val) => {
     return arr.length > 0 ? arr : null;
 };
 
+
+// ==============================
+// Summary View Filters FUNCTION
+// ==============================
+// ==============================
+// Summary View Filters FUNCTION
+// ==============================
 exports.getFilterOptions = async (req, res) => {
     try {
-        const { type, allowedCustomers } = req.query;
+        const { type, allowedCustomers, bu, wbs, customer, loa_id, loa_name, active_inactive, period, wbs_type, wbs_description } = req.query;
 
-        // Base Rules
+        // Base Rules for Project Table
         let baseConditions = ["categories NOT IN ('Not to considered')", "cost_revenue <> 'NTC'"];
         let baseParams = [];
         applyRLS(type, allowedCustomers, baseConditions, baseParams);
+        
+        // 🔥 YAHAN CATEGORY TYPE FILTER APPLY KIYA
+        applyCategoryTypeFilter(req.query.category_type, baseConditions);
 
         const getFilteredDistinct = async (targetColumn, currentFilters) => {
-            let conditions = [...baseConditions];
-            let filterValues = [...baseParams];
-
-            // 🔥 WHITELIST: Sirf inhi columns par filter apply hoga
-            const dbFilters = ['bu', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period', 'wbs_type', 'wbs_description', 'wbs'];
-
-            dbFilters.forEach(key => {
-                // targetColumn ko skip karein taaki dropdown khud ko filter na kare
-                if (key !== targetColumn) {
-                    const vals = getValArray(currentFilters[key]);
-                    if (vals) {
-                        const dbCol = (key === 'wbs') ? 'wbs_element_single' : `\`${key}\``;
-                        conditions.push(`${dbCol} IN (?)`);
-                        filterValues.push(vals);
-                    }
-                }
-            });
-
-            // Target column logic (Frontend 'wbs' is 'wbs_element_single' in DB)
-            const finalTarget = (targetColumn === 'wbs') ? 'wbs_element_single' : `\`${targetColumn}\``;
             
-            const sql = `
-                SELECT DISTINCT ${finalTarget} as value 
-                FROM final_dashboard_table 
-                WHERE ${conditions.join(' AND ')} 
-                AND ${finalTarget} IS NOT NULL AND ${finalTarget} <> ''
-                ORDER BY ${finalTarget} ASC`;
+            const isWbsTarget = ['wbs', 'wbs_type', 'wbs_description'].includes(targetColumn);
 
-            const [rows] = await db.query(sql, filterValues);
-            return rows.map(r => r.value);
+            if (isWbsTarget) {
+                let mapTarget = targetColumn === 'wbs' ? 'wbs_element' : targetColumn;
+                let mapConds = [`map.\`${mapTarget}\` IS NOT NULL`, `map.\`${mapTarget}\` <> ''`];
+                let mapParams = [];
+
+                const wbsFields = { 'wbs': 'wbs_element', 'wbs_type': 'wbs_type', 'wbs_description': 'wbs_description' };
+                Object.keys(wbsFields).forEach(k => {
+                    if (k !== targetColumn) {
+                        const vals = getValArray(currentFilters[k]);
+                        if (vals) {
+                            mapConds.push(`map.\`${wbsFields[k]}\` IN (${vals.map(()=>'?').join(',')})`);
+                            mapParams.push(...vals);
+                        }
+                    }
+                });
+
+                let projConds = [];
+                let projParams = [];
+                applyRLS(type, allowedCustomers, projConds, projParams);
+                
+                // Base filter apply on LOA search too
+                applyCategoryTypeFilter(req.query.category_type, projConds);
+
+                ['bu', 'customer', 'loa_id', 'loa_name'].forEach(k => {
+                    const vals = getValArray(currentFilters[k]);
+                    if (vals) {
+                        projConds.push(`fdt.\`${k}\` IN (${vals.map(()=>'?').join(',')})`);
+                        projParams.push(...vals);
+                    }
+                });
+
+                if (projConds.length > 0) {
+                    const sql = `
+                        SELECT DISTINCT map.\`${mapTarget}\` as value 
+                        FROM wbs_loa_id_mapping1 map
+                        INNER JOIN final_dashboard_table fdt ON map.loa_id = fdt.loa_id
+                        WHERE ${[...mapConds, ...projConds].join(' AND ')}
+                        ORDER BY map.\`${mapTarget}\` ASC
+                    `;
+                    const [rows] = await db.query(sql, [...mapParams, ...projParams]);
+                    return rows.map(r => r.value);
+                } else {
+                    const sql = `
+                        SELECT DISTINCT \`${mapTarget}\` as value 
+                        FROM wbs_loa_id_mapping1 map
+                        WHERE ${mapConds.join(' AND ')}
+                        ORDER BY \`${mapTarget}\` ASC
+                    `;
+                    const [rows] = await db.query(sql, mapParams);
+                    return rows.map(r => r.value);
+                }
+            } 
+            else {
+                let conds = [...baseConditions];
+                let params = [...baseParams];
+
+                const dbFilters = ['bu', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period'];
+                dbFilters.forEach(k => {
+                    if (k !== targetColumn) {
+                        const vals = getValArray(currentFilters[k]);
+                        if (vals) {
+                            conds.push(`\`${k}\` IN (${vals.map(()=>'?').join(',')})`);
+                            params.push(...vals);
+                        }
+                    }
+                });
+
+                let wbsConds = [];
+                let wbsParams = [];
+                const wbsFields = { 'wbs': 'wbs_element', 'wbs_type': 'wbs_type', 'wbs_description': 'wbs_description' };
+                Object.keys(wbsFields).forEach(k => {
+                    const vals = getValArray(currentFilters[k]);
+                    if (vals) {
+                        wbsConds.push(`map.\`${wbsFields[k]}\` IN (${vals.map(()=>'?').join(',')})`);
+                        wbsParams.push(...vals);
+                    }
+                });
+
+                if (wbsConds.length > 0) {
+                    conds.push(`EXISTS (SELECT 1 FROM wbs_loa_id_mapping1 map WHERE map.loa_id = final_dashboard_table.loa_id AND ${wbsConds.join(' AND ')})`);
+                    params.push(...wbsParams);
+                }
+
+                const sql = `
+                    SELECT DISTINCT \`${targetColumn}\` as value 
+                    FROM final_dashboard_table 
+                    WHERE ${conds.join(' AND ')} 
+                    AND \`${targetColumn}\` IS NOT NULL AND \`${targetColumn}\` <> ''
+                    ORDER BY \`${targetColumn}\` ASC`;
+
+                const [rows] = await db.query(sql, params);
+                return rows.map(r => r.value);
+            }
         };
 
-        // Saare keys jinke options chahiye
+        const currentFilters = { bu, wbs, customer, loa_id, loa_name, active_inactive, period, wbs_type, wbs_description };
         const keys = ['bu', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period', 'wbs_type', 'wbs_description', 'wbs'];
         
-        // Parallel execution for speed
-        const results = await Promise.all(keys.map(k => getFilteredDistinct(k, req.query)));
+        const results = await Promise.all(keys.map(k => getFilteredDistinct(k, currentFilters)));
         
-        // Construct response
-        const response = {};
-        keys.forEach((key, index) => {
-            response[key] = results[index];
-        });
+        // 🔥 FRONTEND DROPDOWN KE LIYE STATIC OPTIONS BHEJE
+        const response = {
+            category_type: ['All', 'Local Materials']
+        };
+        
+        keys.forEach((key, index) => { response[key] = results[index]; });
 
         res.status(200).json(response);
 
@@ -152,27 +277,29 @@ exports.getFilterOptions = async (req, res) => {
     }
 };
 
+// ==========================================
+// 3. MAIN SUMMARY TABLE (Expand View)
+// ==========================================
 exports.getWbsSummary = async (req, res) => {
     try {
         const { draw, start, length, showAll, type, allowedCustomers } = req.query;
         const startIdx = parseInt(start) || 0;
         const limitIdx = parseInt(length) || 10;
 
-        // 1. Normalize Special Filters (Inhe WHERE clause mein nahi dalenge)
         const wTArr = getValArray(req.query.wbs_type);
         const wEArr = getValArray(req.query.wbs);
         const wDArr = getValArray(req.query.wbs_description);
 
         const showAsbl = wTArr && !wTArr.some(t => t.toLowerCase().includes("warranty"));
 
-        // 2. Base Conditions (RLS & NTC)
         let conditions = ["categories NOT IN ('Not to considered')", "cost_revenue <> 'NTC'"];
         let baseParams = [];
         applyRLS(type, allowedCustomers, conditions, baseParams);
+        
+        // 🔥 YAHAN CATEGORY TYPE FILTER APPLY KIYA
+        applyCategoryTypeFilter(req.query.category_type, conditions);
 
-        // 3. Main Filter Loop (Sirf wahi filters jo poore LOA par apply hote hain)
         let filterParams = [];
-        // 🔥 'wbs_type' aur 'wbs_description' ko yahan se nikaal diya hai taaki categories na chupen
         const dbFilters = ['bu', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period'];
         
         dbFilters.forEach(key => {
@@ -185,41 +312,38 @@ exports.getWbsSummary = async (req, res) => {
 
         const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-        // 4. Matrix Query (Conditional Aggregation)
+        const wT_sql = wTArr ? 'wbs_type IN (?)' : '1=1';
+        const wE_sql = wEArr ? 'wbs_element_single IN (?)' : '1=1';
+        const wD_sql = wDArr ? 'wbs_description IN (?)' : '1=1';
+        const wbsCondSql = `(${wT_sql}) AND (${wE_sql}) AND (${wD_sql})`;
+
+        let wbsParams = [];
+        if (wTArr) wbsParams.push(wTArr);
+        if (wEArr) wbsParams.push(wEArr);
+        if (wDArr) wbsParams.push(wDArr);
+
         const matrixQuery = `
             SELECT 
                 bu, customer, loa_id, loa_name, cost_revenue, categories,
                 MAX(unique_key) as unique_key, 
-                -- ASBL: Categories filter nahi hongi isliye MAX sahi value layega
                 ${showAsbl ? 'COALESCE(MAX(asbl), 0)' : "'-'"} as asbl, 
-                -- PTD: Sirf selected WBS filters ka sum hoga
-                COALESCE(SUM(CASE 
-                    WHEN (${wTArr ? 'wbs_type IN (?)' : '1=1'}) 
-                    AND (${wEArr ? 'wbs_element_single IN (?)' : '1=1'}) 
-                    AND (${wDArr ? 'wbs_description IN (?)' : '1=1'}) 
-                    THEN ptd ELSE 0 END), 0) as ptd, 
-                COALESCE(MAX(total_oc_fixed), 0) as open_commitment, 
+                COALESCE(SUM(CASE WHEN ${wbsCondSql} THEN ptd ELSE 0 END), 0) as ptd, 
+                COALESCE(SUM(CASE WHEN ${wbsCondSql} THEN open_commitment_KEUR ELSE 0 END), 0) as open_commitment, 
                 COALESCE(MAX(non_committed_editable), 0) as non_committed,
                 COALESCE(MAX(asbl_loa), 0) as asbl_loa
             FROM final_dashboard_table
             ${whereClause}
             GROUP BY bu, customer, loa_id, loa_name, cost_revenue, categories
             HAVING 1=1 
-            ${showAll === 'false' ? 'AND (ABS(COALESCE(asbl, 0)) > 0.01 OR ABS(ptd) > 0.01 OR ABS(open_commitment) > 0.01)' : ''}
+            ${showAll === 'false' ? 'AND (ABS(COALESCE(MAX(asbl), 0)) > 0.01 OR ABS(SUM(ptd)) > 0.01 OR ABS(SUM(open_commitment_KEUR)) > 0.01 OR ABS(MAX(non_committed_editable)) > 0.01)' : ''}
             ORDER BY loa_name ASC, cost_revenue ASC
         `;
 
-        // Parameters order: [SUM CASE params..., WHERE clause params...]
-        let queryParams = [];
-        if (wTArr) queryParams.push(wTArr);
-        if (wEArr) queryParams.push(wEArr);
-        if (wDArr) queryParams.push(wDArr);
-        queryParams = [...queryParams, ...baseParams, ...filterParams];
+        let queryParams = [...wbsParams, ...wbsParams, ...baseParams, ...filterParams];
 
         const [dataRows] = await db.query(`${matrixQuery} LIMIT ?, ?`, [...queryParams, startIdx, limitIdx]);
         const [countRes] = await db.query(`SELECT COUNT(*) as total FROM (${matrixQuery}) as temp`, queryParams);
 
-        // 5. KPI Query
         const kpiQuery = `
             SELECT 
                 SUM(CASE WHEN cost_revenue = 'Revenue' THEN cat_asbl ELSE 0 END) as asbl_rev,
@@ -228,13 +352,14 @@ exports.getWbsSummary = async (req, res) => {
                 SUM(CASE WHEN cost_revenue = 'Cost' THEN cat_ptd ELSE 0 END) as ptd_cost
             FROM (
                 SELECT cost_revenue, MAX(asbl) as cat_asbl, 
-                       SUM(CASE WHEN (${wTArr ? 'wbs_type IN (?)' : '1=1'}) AND (${wEArr ? 'wbs_element_single IN (?)' : '1=1'}) AND (${wDArr ? 'wbs_description IN (?)' : '1=1'}) THEN ptd ELSE 0 END) as cat_ptd
+                       SUM(CASE WHEN ${wbsCondSql} THEN ptd ELSE 0 END) as cat_ptd
                 FROM final_dashboard_table
                 ${whereClause}
                 GROUP BY loa_id, categories, cost_revenue
             ) as t
         `;
-        const [kpiRes] = await db.query(kpiQuery, queryParams);
+        let kpiParams = [...wbsParams, ...baseParams, ...filterParams];
+        const [kpiRes] = await db.query(kpiQuery, kpiParams);
         const k = kpiRes[0] || {};
 
         res.status(200).json({
@@ -264,48 +389,48 @@ exports.getWbsSummaryCollapse = async (req, res) => {
         const startIdx = parseInt(start) || 0;
         const limitIdx = parseInt(length) || 10;
  
-        let wbsType = req.query.wbs_type;
-        if (Array.isArray(wbsType)) wbsType = wbsType[0];
+        const wTArr = getValArray(req.query.wbs_type);
+        const wEArr = getValArray(req.query.wbs);
+        const wDArr = getValArray(req.query.wbs_description);
  
-        const showAsbl = wbsType && wbsType !== "All" && wbsType !== "" && wbsType.toLowerCase() !== "warranty/other";
+        const showAsbl = wTArr && !wTArr.some(t => t.toLowerCase().includes("warranty"));
  
         let conditions = ["categories NOT IN ('Not to considered')", "cost_revenue <> 'NTC'"];
-        let params = [];
-        applyRLS(type, allowedCustomers, conditions, params);
+        let baseParams = [];
+        applyRLS(type, allowedCustomers, conditions, baseParams);
+        
+        // 🔥 YAHAN CATEGORY TYPE FILTER APPLY KIYA
+        applyCategoryTypeFilter(req.query.category_type, conditions);
  
-        const allowedFilters = ['bu', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period', 'wbs_type', 'wbs_description'];
-        allowedFilters.forEach(key => {
-            let value = req.query[key];
-            if (Array.isArray(value)) value = value[0];
-            if (value && value !== '') {
-                const valArray = value.split(',').map(v => v.trim()).filter(v => v && v !== 'All');
-                if (valArray.length > 0) {
-                    const placeholders = valArray.map(() => '?').join(',');
-                    conditions.push(`\`${key}\` IN (${placeholders})`);
-                    params.push(...valArray);
-                }
+        let filterParams = [];
+        const dbFilters = ['bu', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period'];
+        dbFilters.forEach(key => {
+            const vals = getValArray(req.query[key]);
+            if (vals) {
+                conditions.push(`\`${key}\` IN (?)`);
+                filterParams.push(vals);
             }
         });
-        let wbsValue = req.query.wbs;
-        if (Array.isArray(wbsValue)) wbsValue = wbsValue[0];
-        if (wbsValue && wbsValue !== '') {
-            const wbsArray = wbsValue.split(',').map(v => v.trim()).filter(v => v && v !== 'All');
-            if (wbsArray.length > 0) {
-                const placeholders = wbsArray.map(() => '?').join(',');
-                conditions.push(`wbs_element_single IN (${placeholders})`);
-                params.push(...wbsArray);
-            }
-        }
- 
+
         const whereClause = conditions.join(' AND ');
+
+        const wT_sql = wTArr ? 'wbs_type IN (?)' : '1=1';
+        const wE_sql = wEArr ? 'wbs_element_single IN (?)' : '1=1';
+        const wD_sql = wDArr ? 'wbs_description IN (?)' : '1=1';
+        const wbsCondSql = `(${wT_sql}) AND (${wE_sql}) AND (${wD_sql})`;
+
+        let wbsParams = [];
+        if (wTArr) wbsParams.push(wTArr);
+        if (wEArr) wbsParams.push(wEArr);
+        if (wDArr) wbsParams.push(wDArr);
  
         const sql = `
             SELECT
                 bu, customer, loa_name, loa_id, cost_revenue,
                 ${showAsbl ? 'ROUND(MAX(asbl), 2)' : "'-'"} AS asbl, 
                 ROUND(MAX(asbl_loa), 2) AS asbl_loa,
-                ROUND(SUM(ptd), 2) AS ptd,
-                ROUND(MAX(total_oc_fixed), 2) AS open_commitment,
+                ROUND(SUM(CASE WHEN ${wbsCondSql} THEN ptd ELSE 0 END), 2) AS ptd,
+                ROUND(SUM(CASE WHEN ${wbsCondSql} THEN open_commitment_KEUR ELSE 0 END), 2) AS open_commitment,
                 ROUND(MAX(non_committed_editable), 2) AS non_committed
             FROM final_dashboard_table
             WHERE ${whereClause}
@@ -313,8 +438,10 @@ exports.getWbsSummaryCollapse = async (req, res) => {
             ORDER BY loa_name ASC
         `;
  
-        const [dataRows] = await db.query(`${sql} LIMIT ?, ?`, [...params, startIdx, limitIdx]);
-        const [countRes] = await db.query(`SELECT COUNT(*) as total FROM (${sql}) temp`, params);
+        let queryParams = [...wbsParams, ...wbsParams, ...baseParams, ...filterParams];
+
+        const [dataRows] = await db.query(`${sql} LIMIT ?, ?`, [...queryParams, startIdx, limitIdx]);
+        const [countRes] = await db.query(`SELECT COUNT(*) as total FROM (${sql}) temp`, queryParams);
  
         res.status(200).json({ draw: parseInt(draw) || 0, recordsTotal: countRes[0].total, recordsFiltered: countRes[0].total, data: dataRows });
     } catch (error) {
@@ -324,134 +451,145 @@ exports.getWbsSummaryCollapse = async (req, res) => {
 };
 
 
+// ===========================================
+// Helper: Dynamic Drilldown Filters Builder
+// ===========================================
+const buildDrilldownConditions = (filters, tableName) => {
+    let conds = [];
+    let params = [];
+
+    if (!filters) return { sql: '', params: [] };
+
+    // Function to parse frontend filter strings into arrays safely
+    const getArray = (val) => {
+        if (!val) return [];
+        if (Array.isArray(val)) return val;
+        return val.split(',').map(v => v.trim()).filter(v => v && v !== 'All');
+    };
+
+    // 1. WBS Type Filter
+    const wbsTypes = getArray(filters.wbs_type);
+    if (wbsTypes.length > 0) {
+        conds.push(`wbs_type IN (${wbsTypes.map(() => '?').join(',')})`);
+        params.push(...wbsTypes);
+    }
+
+    // 2. WBS Element (sap_wbs) Filter
+    const wbsElements = getArray(filters.wbs);
+    if (wbsElements.length > 0) {
+        conds.push(`sap_wbs IN (${wbsElements.map(() => '?').join(',')})`);
+        params.push(...wbsElements);
+    }
+
+    // 3. WBS Description Filter (Only for PTD as OC table might not have it)
+    if (tableName === 't_cj74_transformed') {
+        const wbsDescs = getArray(filters.wbs_description);
+        if (wbsDescs.length > 0) {
+            conds.push(`wbs_description IN (${wbsDescs.map(() => '?').join(',')})`);
+            params.push(...wbsDescs);
+        }
+    }
+
+    // 4. Period Filter
+    const periods = getArray(filters.period);
+    if (periods.length > 0) {
+        if (tableName === 't_cj74_transformed') {
+            conds.push(`period IN (${periods.map(() => '?').join(',')})`);
+            params.push(...periods);
+        } else {
+            // OC table ke liye hum year aur per ko jod kar period banate hain match karne ke liye
+            conds.push(`CONCAT(year, '-P', LPAD(CAST(per AS UNSIGNED), 3, '0')) IN (${periods.map(() => '?').join(',')})`);
+            params.push(...periods);
+        }
+    }
+
+    return { 
+        sql: conds.length > 0 ? ' AND ' + conds.join(' AND ') : '', 
+        params 
+    };
+};
+
+// ===========================================
+// Get Drilldown Data (For UI Table)
+// ===========================================
+// ===========================================
+// Get Drilldown Data (For UI Table)
+// ===========================================
 exports.getDrillDownData = async (req, res) => {
     try {
-        const { field, row, filters, start = 0, length = 100 } = req.body;
-
+        // 👇 1. Jaise hi API hit hogi, Terminal mein yeh print hoga
+        console.log("\n========================================");
+        console.log("🔥 DRILLDOWN API HIT 🔥");
+        
+        const { field, row, filters } = req.body;
         const loaId = row?.loa_id;
         const category = row?.categories;
 
+        // 👇 2. Frontend se kya data aaya, wo print hoga
+        console.log(`📌 Field: ${field}`);
+        console.log(`📌 LOA ID: ${loaId} | Category: ${category}`);
+        console.log(`📌 Filters Applied:`, filters);
+
         if (!loaId || !category) {
+            console.log("❌ ERROR: LOA ID or Category is missing!");
             return res.status(400).json({ error: "Missing LOA ID or Category" });
         }
 
-        const wbsType = filters?.wbs_type || "All";
-        const wbs = filters?.wbs || "All";
+        const tableName = field === 'ptd' ? 't_cj74_transformed' : 't_cji5_transformed';
+        
+        let sql = `SELECT * FROM ${tableName} WHERE loa_id = ? AND categories = ?`;
+        let params = [loaId, category];
 
-        let sql = "";
-        let params = [];
+        const dynamicFilters = buildDrilldownConditions(filters, tableName);
+        sql += dynamicFilters.sql;
+        params.push(...dynamicFilters.params);
 
-        // ===========================
-        // PTD Drilldown
-        // ===========================
-        if (field === "ptd") {
+        sql += ` ORDER BY year DESC, per DESC LIMIT 5000`; // Limit lagai hai taaki browser crash na ho
 
-        sql = `
-            SELECT
-                sap_wbs,
-                year,
-                per,
-                period,
-                ptd_val,
-                wbs_type,
-                wbs_description
-            FROM v_cj74_transformed
-            WHERE loa_id = ?
-            AND categories = ?
-            ${wT !== "All" ? "AND wbs_type = ?" : ""}
-            ${wE !== "All" ? "AND sap_wbs = ?" : ""}
-            ORDER BY year DESC,
-                    CAST(per AS UNSIGNED) DESC
-        `;
-
-        params = [loaId, category];
-
-        if (wT !== "All")
-            params.push(wT);
-
-        if (wE !== "All")
-            params.push(wE);
-    }
-
-        // ===========================
-        // OPEN COMMITMENT Drilldown
-        // ===========================
-        else {
-
-        sql = `
-            SELECT
-                sap_wbs,
-                year,
-                per,
-                oc_val,
-                wbs_type
-            FROM v_cji5_transformed
-            WHERE loa_id = ?
-            AND categories = ?
-            ${wT !== "All" ? "AND wbs_type = ?" : ""}
-            ${wE !== "All" ? "AND sap_wbs = ?" : ""}
-            ORDER BY year DESC,
-                    CAST(per AS UNSIGNED) DESC
-        `;
-
-        params = [loaId, category];
-
-        if (wT !== "All")
-            params.push(wT);
-
-        if (wE !== "All")
-            params.push(wE);
-    }
-
+        // 👇 3. Final SQL query jo database ko jayegi, wo print hogi
+        console.log("⚙️ Executing SQL Query...");
+        
         const [rows] = await db.query(sql, params);
 
-        res.status(200).json({
-            success: true,
-            count: rows.length,
-            data: rows
-        });
+        // 👇 4. SUCCESS! Kitni rows mili, wo terminal mein print hoga
+        console.log(`✅ SUCCESS: Found ${rows.length} rows from Database!`);
+        console.log("========================================\n");
 
+        res.status(200).json(rows); 
     } catch (error) {
-        console.error("Drilldown Error:", error);
-
-        res.status(500).json({
-            success: false,
-            error: error.message
-        });
+        console.error("❌ DRILLDOWN FATAL ERROR:", error);
+        res.status(500).json({ error: error.message });
     }
 };
 
+// ===========================================
+// Export Drilldown Data to Excel
+// ===========================================
 exports.exportDrillDown = async (req, res) => {
     try {
-        const { field, loa_id, categories, wbs_type, wbs } = req.query;
+        const { field, loa_id, categories, filters } = req.query;
 
         if (!loa_id || !categories) return res.status(400).send("Missing required parameters");
 
-        const wT = wbs_type || 'All';
-        const wE = wbs || 'All';
+        // Decode URL JSON filter object
+        let parsedFilters = {};
+        try { parsedFilters = JSON.parse(filters || '{}'); } catch(e) {}
 
-        let sql = '';
-        const params = [loa_id, categories, wT, wT, wT, wE, wE, wE];
+        const tableName = field === 'ptd' ? 't_cj74_transformed' : 't_cji5_transformed';
         
-        const fileName = field === 'ptd' ? `PTD_${loa_id}_${categories}.xlsx` : `OC_${loa_id}_${categories}.xlsx`;
+        let sql = `SELECT * FROM ${tableName} WHERE loa_id = ? AND categories = ?`;
+        let params = [loa_id, categories];
 
-        if (field === 'ptd') {
-            sql = `
-                SELECT * FROM v_cj74_transformed 
-                WHERE loa_id = ? AND categories = ?
-                AND (? = 'All' OR ? = '' OR wbs_type = ?)
-                AND (? = 'All' OR ? = '' OR sap_wbs = ?)
-            `;
-        } else {
-            sql = `
-                SELECT * FROM v_cji5_transformed 
-                WHERE loa_id = ? AND categories = ?
-                AND (? = 'All' OR ? = '' OR wbs_type = ?)
-                AND (? = 'All' OR ? = '' OR sap_wbs = ?)
-            `;
-        }
+        const dynamicFilters = buildDrilldownConditions(parsedFilters, tableName);
+        sql += dynamicFilters.sql;
+        params.push(...dynamicFilters.params);
+
+        // sql += ` ORDER BY year DESC, CAST(per AS UNSIGNED) DESC`;
+        sql += ` ORDER BY year DESC, per DESC`;
 
         const [rows] = await db.query(sql, params);
+
+        const fileName = field === 'ptd' ? `PTD_${loa_id}_${categories}.xlsx` : `OC_${loa_id}_${categories}.xlsx`;
 
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', `attachment; filename="${fileName.replace(/\s+/g, '_')}"`);
@@ -460,18 +598,12 @@ exports.exportDrillDown = async (req, res) => {
         const worksheet = workbook.addWorksheet('Details');
 
         if (rows.length > 0) {
-            // Optimize: Headers generation
-            const columns = Object.keys(rows[0]).map(key => ({ 
+            worksheet.columns = Object.keys(rows[0]).map(key => ({ 
                 header: key.replace(/_/g, ' ').toUpperCase(), 
                 key: key,
                 width: 20
             }));
-            worksheet.columns = columns;
-
-            // Stream rows for speed
-            rows.forEach(row => {
-                worksheet.addRow(row).commit();
-            });
+            rows.forEach(row => worksheet.addRow(row).commit());
         }
 
         await workbook.commit();
@@ -689,157 +821,83 @@ exports.exportToExcel = async (req, res) => {
     try {
         const { showAll, collapseView, type, allowedCustomers, ...filters } = req.query;
 
-        console.log("showAll:", showAll);
-        console.log("collapseView:", collapseView);
-        console.log("filters:", filters);
-
-        // 1. Filters Setup (Same as UI)
         let conditions = [
             "categories NOT IN ('Not to considered')",
             "cost_revenue <> 'NTC'"
         ];
-
         let params = [];
 
         applyRLS(type, allowedCustomers, conditions, params);
         
-        // Agar 'Show All' nahi hai, toh zero rows filter lagayein
+        // 🔥 YAHAN CATEGORY TYPE FILTER APPLY KIYA
+        applyCategoryTypeFilter(req.query.category_type, conditions);
+        
         if (showAll === 'false') {
-    conditions.push(`
-        (
-            ABS(asbl) > 0.01
-            OR ABS(ptd) > 0.01
-            OR ABS(total_oc_fixed) > 0.01
-            OR ABS(non_committed_editable) > 0.01
-        )
-    `);
-}
+            conditions.push(`
+                (
+                    asbl < -0.01 OR asbl > 0.01
+                    OR ptd < -0.01 OR ptd > 0.01
+                    OR total_oc_fixed < -0.01 OR total_oc_fixed > 0.01
+                    OR non_committed_editable < -0.01 OR non_committed_editable > 0.01
+                )
+            `);
+        }
 
         const allowedFilters = ['bu', 'wbs', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period'];
         allowedFilters.forEach(key => {
             if (filters[key] && filters[key] !== 'All') {
-                conditions.push(`${key} = ?`);
-                params.push(filters[key]);
+                const valArray = filters[key].split(',').map(v => v.trim()).filter(Boolean);
+                if (valArray.length > 0) {
+                    const placeholders = valArray.map(() => '?').join(',');
+                    conditions.push(`${key} IN (${placeholders})`);
+                    params.push(...valArray);
+                }
             }
         });
 
         const whereClause = " WHERE " + conditions.join(" AND ");
 
-        // 2. 🔥 MATRIX EXPORT QUERY (Exactly like UI)
         let exportQuery = '';
 
-
-// COLLAPSE VIEW EXPORT
-if (collapseView === 'true') {
-
-    exportQuery = `
-        SELECT
-            bu,
-            customer,
-            loa_name,
-            loa_id,
-            cost_revenue,
-
-            ROUND(MAX(asbl), 2) AS asbl,
-
-            ROUND(MAX(asbl_loa), 2) AS asbl_loa,
-
-            ROUND(SUM(ptd), 2) AS ptd,
-
-            ROUND(MAX(total_oc_fixed), 2) AS open_commitment,
-
-            ROUND(MAX(non_committed_editable), 2) AS non_committed,
-
-            ROUND(
-                SUM(ptd)
-                + MAX(total_oc_fixed)
-                + MAX(non_committed_editable),
-            2) AS eac,
-
-            ROUND(
-                MAX(asbl)
-                -
-                (
-                    SUM(ptd)
-                    + MAX(total_oc_fixed)
-                    + MAX(non_committed_editable)
-                ),
-            2) AS eac_vs_asbl
-
-        FROM final_dashboard_table
-
-        ${whereClause}
-
-        GROUP BY
-            bu,
-            customer,
-            loa_name,
-            loa_id,
-            cost_revenue
-
-        ORDER BY loa_name ASC
-    `;
-
-} else {
-
-    // 🔥 EXPAND VIEW EXPORT (Current View)
-
-        exportQuery = `
-            SELECT
-                bu,
-                customer,
-                loa_name,
-                loa_id,
-                cost_revenue,
-                categories,
-
-                MAX(asbl) as asbl,
-                MAX(asbl_loa) as asbl_loa,
-                SUM(ptd) as ptd,
-                MAX(total_oc_fixed) as open_commitment,
-                MAX(non_committed_editable) as non_committed,
-
-                (
-                    SUM(ptd)
-                    + MAX(total_oc_fixed)
-                    + MAX(non_committed_editable)
-                ) as eac,
-
-                (
-                    MAX(asbl)
-                    -
-                    (
-                        SUM(ptd)
-                        + MAX(total_oc_fixed)
-                        + MAX(non_committed_editable)
-                    )
-                ) as eac_vs_asbl
-
-            FROM final_dashboard_table
-
-            ${whereClause}
-
-            GROUP BY
-                bu,
-                customer,
-                loa_name,
-                loa_id,
-                cost_revenue,
-                categories
-
-            HAVING
-                ABS(MAX(asbl)) > 0.01
-                OR ABS(SUM(ptd)) > 0.01
-                OR ABS(MAX(total_oc_fixed)) > 0.01
-                OR ABS(MAX(non_committed_editable)) > 0.01
-
-            ORDER BY
-                loa_name ASC,
-                categories ASC
+        if (collapseView === 'true') {
+            exportQuery = `
+                SELECT
+                    bu, customer, loa_name, loa_id, cost_revenue,
+                    ROUND(MAX(asbl), 2) AS asbl,
+                    ROUND(MAX(asbl_loa), 2) AS asbl_loa,
+                    ROUND(SUM(ptd), 2) AS ptd,
+                    ROUND(MAX(total_oc_fixed), 2) AS open_commitment,
+                    ROUND(MAX(non_committed_editable), 2) AS non_committed,
+                    ROUND(SUM(ptd) + MAX(total_oc_fixed) + MAX(non_committed_editable), 2) AS eac,
+                    ROUND(MAX(asbl) - (SUM(ptd) + MAX(total_oc_fixed) + MAX(non_committed_editable)), 2) AS eac_vs_asbl
+                FROM final_dashboard_table
+                ${whereClause}
+                GROUP BY bu, customer, loa_name, loa_id, cost_revenue
+                ORDER BY loa_name ASC
             `;
-    }
+        } else {
+            exportQuery = `
+                SELECT
+                    bu, customer, loa_name, loa_id, cost_revenue, categories,
+                    MAX(asbl) as asbl,
+                    MAX(asbl_loa) as asbl_loa,
+                    SUM(ptd) as ptd,
+                    MAX(total_oc_fixed) as open_commitment,
+                    MAX(non_committed_editable) as non_committed,
+                    (SUM(ptd) + MAX(total_oc_fixed) + MAX(non_committed_editable)) as eac,
+                    (MAX(asbl) - (SUM(ptd) + MAX(total_oc_fixed) + MAX(non_committed_editable))) as eac_vs_asbl
+                FROM final_dashboard_table
+                ${whereClause}
+                GROUP BY bu, customer, loa_name, loa_id, cost_revenue, categories
+                HAVING
+                    MAX(asbl) < -0.01 OR MAX(asbl) > 0.01
+                    OR SUM(ptd) < -0.01 OR SUM(ptd) > 0.01
+                    OR MAX(total_oc_fixed) < -0.01 OR MAX(total_oc_fixed) > 0.01
+                    OR MAX(non_committed_editable) < -0.01 OR MAX(non_committed_editable) > 0.01
+                ORDER BY loa_name ASC, categories ASC
+            `;
+        }
 
-        // 3. Excel Setup
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', `attachment; filename=Summary_Export_${new Date().getTime()}.xlsx`);
         
@@ -847,55 +905,35 @@ if (collapseView === 'true') {
         const worksheet = workbook.addWorksheet('Matrix Data');
         
         if (collapseView === 'true') {
-
-        worksheet.columns = [
-            { header: 'BU', key: 'bu', width: 10 },
-            { header: 'Customer', key: 'customer', width: 25 },
-            { header: 'LOA Name', key: 'loa_name', width: 35 },
-            { header: 'LOA ID', key: 'loa_id', width: 15 },
-            { header: 'Cost/Revenue', key: 'cost_revenue', width: 15 },
-            { header: 'ASBL', key: 'asbl', width: 15 },
-            { header: 'ASBL LOA', key: 'asbl_loa', width: 15 },
-            { header: 'PTD', key: 'ptd', width: 15 },
-            { header: 'Open Commitment', key: 'open_commitment', width: 15 },
-            { header: 'Non Committed', key: 'non_committed', width: 15 },
-            { header: 'EAC', key: 'eac', width: 15 },
-            { header: 'EAC vs ASBL', key: 'eac_vs_asbl', width: 15 }
-        ];
-
-    } else {
-
-        worksheet.columns = [
-            { header: 'BU', key: 'bu', width: 10 },
-            { header: 'Customer', key: 'customer', width: 25 },
-            { header: 'LOA Name', key: 'loa_name', width: 35 },
-            { header: 'LOA ID', key: 'loa_id', width: 15 },
-            { header: 'Cost/Revenue', key: 'cost_revenue', width: 15 },
-            { header: 'Category', key: 'categories', width: 25 },
-            { header: 'ASBL', key: 'asbl', width: 15 },
-            { header: 'ASBL LOA', key: 'asbl_loa', width: 15 },
-            { header: 'PTD', key: 'ptd', width: 15 },
-            { header: 'Open Commitment', key: 'open_commitment', width: 15 },
-            { header: 'Non Committed', key: 'non_committed', width: 15 },
-            { header: 'EAC', key: 'eac', width: 15 },
-            { header: 'EAC vs ASBL', key: 'eac_vs_asbl', width: 15 }
-        ];
-    }
+            worksheet.columns = [
+                { header: 'BU', key: 'bu', width: 10 }, { header: 'Customer', key: 'customer', width: 25 },
+                { header: 'LOA Name', key: 'loa_name', width: 35 }, { header: 'LOA ID', key: 'loa_id', width: 15 },
+                { header: 'Cost/Revenue', key: 'cost_revenue', width: 15 }, { header: 'ASBL', key: 'asbl', width: 15 },
+                { header: 'ASBL LOA', key: 'asbl_loa', width: 15 }, { header: 'PTD', key: 'ptd', width: 15 },
+                { header: 'Open Commitment', key: 'open_commitment', width: 15 }, { header: 'Non Committed', key: 'non_committed', width: 15 },
+                { header: 'EAC', key: 'eac', width: 15 }, { header: 'EAC vs ASBL', key: 'eac_vs_asbl', width: 15 }
+            ];
+        } else {
+            worksheet.columns = [
+                { header: 'BU', key: 'bu', width: 10 }, { header: 'Customer', key: 'customer', width: 25 },
+                { header: 'LOA Name', key: 'loa_name', width: 35 }, { header: 'LOA ID', key: 'loa_id', width: 15 },
+                { header: 'Cost/Revenue', key: 'cost_revenue', width: 15 }, { header: 'Category', key: 'categories', width: 25 },
+                { header: 'ASBL', key: 'asbl', width: 15 }, { header: 'ASBL LOA', key: 'asbl_loa', width: 15 },
+                { header: 'PTD', key: 'ptd', width: 15 }, { header: 'Open Commitment', key: 'open_commitment', width: 15 },
+                { header: 'Non Committed', key: 'non_committed', width: 15 }, { header: 'EAC', key: 'eac', width: 15 },
+                { header: 'EAC vs ASBL', key: 'eac_vs_asbl', width: 15 }
+            ];
+        }
 
         const [rows] = await db.query(exportQuery, params);
 
-            rows.forEach(row => {
-
-                row.asbl = Number(row.asbl || 0);
-                row.asbl_loa = Number(row.asbl_loa || 0);
-                row.ptd = Number(row.ptd || 0);
-                row.open_commitment = Number(row.open_commitment || 0);
-                row.non_committed = Number(row.non_committed || 0);
-                row.eac = Number(row.eac || 0);
-                row.eac_vs_asbl = Number(row.eac_vs_asbl || 0);
-
-                worksheet.addRow(row).commit();
-            });
+        rows.forEach(row => {
+            row.asbl = Number(row.asbl || 0); row.asbl_loa = Number(row.asbl_loa || 0);
+            row.ptd = Number(row.ptd || 0); row.open_commitment = Number(row.open_commitment || 0);
+            row.non_committed = Number(row.non_committed || 0); row.eac = Number(row.eac || 0);
+            row.eac_vs_asbl = Number(row.eac_vs_asbl || 0);
+            worksheet.addRow(row).commit();
+        });
         
         await workbook.commit();
     } catch (error) {
@@ -1071,12 +1109,23 @@ exports.getDashboardFilters = async (req, res) => {
         const { type, allowedCustomers } = req.query;
 
         const buildConditions = (excludeKey) => {
-            // 🔥 Added 'wbs_type' to destructuring here
-            const { years, periods, customers, active_inactive, loa_names, bu, wbs_type } = req.query;
+            const { years, periods, customers, active_inactive, loa_names, bu, wbs_type, category_type } = req.query;
             let conditions = ["customer IS NOT NULL", "loa_name IS NOT NULL"];
             let params = [];
 
             applyRLS(type, allowedCustomers, conditions, params);
+
+            // 🔥 CATEGORY TYPE Logic for Dropdowns
+            if (!category_type) {
+                conditions.push(`categories <> 'Local Materials'`);
+            } else {
+                let catArr = Array.isArray(category_type) ? category_type : category_type.split(',').map(v => v.trim());
+                const hasAll = catArr.includes('All');
+                const hasLM = catArr.includes('Local Materials');
+                if (hasAll && !hasLM) conditions.push(`categories <> 'Local Materials'`);
+                else if (!hasAll && hasLM) conditions.push(`categories = 'Local Materials'`);
+                else if (!hasAll && !hasLM) conditions.push(`categories <> 'Local Materials'`);
+            }
 
             // SYNC BU
             if (bu && excludeKey !== 'bus') {
@@ -1086,7 +1135,7 @@ exports.getDashboardFilters = async (req, res) => {
                     params.push(...buArray);
                 }
             }
-            // 🔥 SYNC WBS TYPE
+            // SYNC WBS TYPE
             if (wbs_type && wbs_type !== 'All' && excludeKey !== 'wbs_type') {
                 conditions.push(`wbs_type = ?`);
                 params.push(wbs_type);
@@ -1126,31 +1175,27 @@ exports.getDashboardFilters = async (req, res) => {
             return { whereSql: conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '', params };
         };
 
-        // 1. Fetch BU List
         const buQ = buildConditions('bus');
         const [buRows] = await db.query(`SELECT DISTINCT bu FROM final_dashboard_table ${buQ.whereSql} ORDER BY bu ASC`, buQ.params);
 
-        // 🔥 2. Fetch WBS Type List (Missing in your code)
         const wbsQ = buildConditions('wbs_type');
         const [wbsRows] = await db.query(`SELECT DISTINCT wbs_type FROM final_dashboard_table ${wbsQ.whereSql} AND wbs_type IS NOT NULL ORDER BY wbs_type ASC`, wbsQ.params);
 
-        // 3. Fetch Customer List
         const custQ = buildConditions('customers');
         const [customerRows] = await db.query(`SELECT DISTINCT customer FROM final_dashboard_table ${custQ.whereSql} ORDER BY customer ASC`, custQ.params);
 
-        // 4. Fetch Period List
         const perQ = buildConditions('periods');
         const [periodRows] = await db.query(`SELECT DISTINCT period FROM final_dashboard_table ${perQ.whereSql} AND period IS NOT NULL ORDER BY period DESC`, perQ.params);
 
-        // 5. Fetch LOA List
         const loaQ = buildConditions('loa_names');
         const [loaRows] = await db.query(`SELECT DISTINCT loa_name FROM final_dashboard_table ${loaQ.whereSql} ORDER BY loa_name ASC`, loaQ.params);
 
         const yearsList = [...new Set(periodRows.map(r => r.period?.split('-')[0]))].filter(Boolean).sort((a,b)=>b-a);
 
         res.status(200).json({
+            category_types: ['All', 'Local Materials'], // 🔥 DYNAMIC FILTER BHEJ RAHE HAIN UI KE LIYE
             bus: buRows.map(r => r.bu),
-            wbs_types: wbsRows.map(r => r.wbs_type), // Ab 'wbsRows' defined hai
+            wbs_types: wbsRows.map(r => r.wbs_type), 
             years: yearsList,
             periods: periodRows.map(r => r.period),
             customers: customerRows.map(r => r.customer),

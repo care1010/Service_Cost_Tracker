@@ -1,0 +1,323 @@
+// --------------------- v_cj74_transformed ---------------------------
+CREATE ALGORITHM = UNDEFINED
+DEFINER = `root`@`localhost`
+SQL SECURITY DEFINER
+VIEW `service_cost`.`v_cj74_transformed` AS
+
+SELECT
+    c.object_1 AS sap_wbs,
+    c.year AS year,
+    c.per AS per,
+    c.cost_element AS cost_element,
+    c.cost_element_name AS cost_element_name,
+
+    (CAST(c.val_in_rc AS DECIMAL(15,2)) / 1000) AS ptd_val,
+
+    CONCAT(
+        c.year,
+        '-P',
+        LPAD(CAST(c.per AS UNSIGNED), 3, '0')
+    ) AS period,
+
+    w.loa_id AS loa_id,
+    w.wbs AS wbs_string,
+    w.wbs_type AS wbs_type,
+    w.wbs_description AS wbs_description,
+
+    TRIM(REPLACE(cm.categories, '  ', ' ')) AS categories,
+    cm.cost_revenue AS cost_revenue
+
+FROM `service_cost`.`cj74_new` AS c
+
+LEFT JOIN
+(
+    SELECT
+        TRIM(wbs_element) AS wbs_element,
+        MAX(loa_id) AS loa_id,
+        MAX(wbs) AS wbs,
+        MAX(wbs_type) AS wbs_type,
+        MAX(wbs_description) AS wbs_description
+    FROM `service_cost`.`wbs_loa_id_mapping1`
+    GROUP BY
+        TRIM(wbs_element)
+) AS w
+    ON TRIM(c.object_1) = w.wbs_element
+
+LEFT JOIN
+(
+    SELECT
+        cost_element,
+        MAX(categories) AS categories,
+        MAX(cost_revenue) AS cost_revenue
+    FROM `service_cost`.`cost_mapping`
+    GROUP BY
+        cost_element
+) AS cm
+    ON c.cost_element = cm.cost_element;
+
+
+
+// ------------- v_cji5_transformed ---------------
+CREATE ALGORITHM = UNDEFINED
+DEFINER = `root`@`localhost`
+SQL SECURITY DEFINER
+VIEW `service_cost`.`v_cji5_transformed` AS
+
+SELECT
+    c.wbs_element AS sap_wbs,
+    c.year AS year,
+    c.per AS per,
+
+    (CAST(c.val_in_rep_cur AS DECIMAL(15,2)) / 1000) AS oc_val,
+
+    w.loa_id AS loa_id,
+    w.wbs_type AS wbs_type,
+
+    TRIM(REPLACE(cm.categories, '  ', ' ')) AS categories
+
+FROM `service_cost`.`cji5_new` AS c
+
+LEFT JOIN
+(
+    SELECT
+        TRIM(wbs_element) AS wbs_element,
+        MAX(loa_id) AS loa_id,
+        MAX(wbs_type) AS wbs_type
+    FROM `service_cost`.`wbs_loa_id_mapping1`
+    GROUP BY
+        TRIM(wbs_element)
+) AS w
+    ON TRIM(c.wbs_element) = w.wbs_element
+
+LEFT JOIN
+(
+    SELECT
+        cost_element,
+        MAX(categories) AS categories
+    FROM `service_cost`.`cost_mapping`
+    GROUP BY
+        cost_element
+) AS cm
+    ON c.cost_element = cm.cost_element;
+
+
+
+
+
+
+// -------------------- join_summary ------------
+CREATE ALGORITHM = UNDEFINED
+DEFINER = `root`@`localhost`
+SQL SECURITY DEFINER
+VIEW `service_cost`.`join_summary` AS
+
+SELECT
+    s.id AS id,
+    s.bu AS bu,
+    s.customer AS customer,
+    s.loa_id AS loa_id,
+    s.loa_name AS loa_name,
+    s.cost_revenue AS cost_revenue,
+
+    TRIM(REPLACE(TRIM(s.categories), '  ', ' ')) AS categories,
+
+    s.wbs AS wbs,
+    s.asbl AS asbl,
+    s.asbl_loa AS asbl_loa,
+    s.ptd AS ptd,
+    s.open_commitment_KEUR AS open_commitment_KEUR,
+    s.non_committed AS non_committed,
+    s.eac AS eac,
+    s.eac_vs_asbl AS eac_vs_asbl,
+    s.active_inactive AS active_inactive,
+
+    CAST(
+        CASE
+            WHEN TRIM(s.wbs) IS NOT NULL
+                 AND TRIM(s.wbs) <> ''
+                 AND TRIM(s.categories) IS NOT NULL
+                 AND TRIM(s.categories) <> ''
+            THEN CONCAT(
+                     TRIM(s.wbs),
+                     '-',
+                     TRIM(REPLACE(TRIM(s.categories), '  ', ' '))
+                 )
+
+            WHEN TRIM(s.wbs) IS NOT NULL
+                 AND TRIM(s.wbs) <> ''
+            THEN TRIM(s.wbs)
+
+            WHEN TRIM(s.categories) IS NOT NULL
+                 AND TRIM(s.categories) <> ''
+            THEN TRIM(REPLACE(TRIM(s.categories), '  ', ' '))
+
+            ELSE NULL
+        END
+        AS CHAR(2000) CHARACTER SET utf8mb4
+    ) AS merged,
+
+    (
+        SELECT
+            MAX(w.wbs_type)
+        FROM `service_cost`.`wbs_loa_id_mapping1` AS w
+        WHERE TRIM(w.loa_id) = TRIM(s.loa_id)
+    ) AS wbs_type,
+
+    (
+        SELECT
+            MAX(w.wbs_description)
+        FROM `service_cost`.`wbs_loa_id_mapping1` AS w
+        WHERE TRIM(w.loa_id) = TRIM(s.loa_id)
+    ) AS wbs_description
+
+FROM `service_cost`.`summary` AS s;
+
+
+
+
+
+// ----------- final_dashboard -----------
+
+
+CREATE ALGORITHM = UNDEFINED
+DEFINER = `root`@`localhost`
+SQL SECURITY DEFINER
+VIEW `service_cost`.`final_dashboard` AS
+
+SELECT
+    s.id AS id,
+    s.bu AS bu,
+    s.customer AS customer,
+    s.loa_id AS loa_id,
+    s.loa_name AS loa_name,
+    s.cost_revenue AS cost_revenue,
+    s.categories AS categories,
+    s.wbs AS wbs,
+    s.asbl AS asbl,
+    s.asbl_loa AS asbl_loa,
+    s.non_committed AS non_committed,
+    s.active_inactive AS active_inactive,
+
+    cj.period AS period,
+    IFNULL(cj.ptd, 0) AS ptd,
+    cj.sap_wbs AS wbs_element_single,
+    cj.wbs_type AS wbs_type,
+    cj.wbs_description AS wbs_description,
+
+    CASE
+        WHEN ROW_NUMBER() OVER (
+                PARTITION BY cj.sap_wbs, s.categories
+                ORDER BY cj.period DESC
+             ) = 1
+        THEN IFNULL(ci.total_oc, 0)
+        ELSE 0
+    END AS open_commitment_KEUR,
+
+    (
+        IFNULL(cj.ptd, 0)
+        +
+        CASE
+            WHEN ROW_NUMBER() OVER (
+                    PARTITION BY cj.sap_wbs, s.categories
+                    ORDER BY cj.period DESC
+                 ) = 1
+            THEN IFNULL(ci.total_oc, 0)
+            ELSE 0
+        END
+        +
+        IFNULL(s.non_committed, 0)
+    ) AS eac,
+
+    (
+        IFNULL(s.asbl, 0)
+        -
+        (
+            IFNULL(cj.ptd, 0)
+            +
+            CASE
+                WHEN ROW_NUMBER() OVER (
+                        PARTITION BY cj.sap_wbs, s.categories
+                        ORDER BY cj.period DESC
+                     ) = 1
+                THEN IFNULL(ci.total_oc, 0)
+                ELSE 0
+            END
+            +
+            IFNULL(s.non_committed, 0)
+        )
+    ) AS eac_vs_asbl,
+
+    s.merged AS unique_key
+
+FROM `service_cost`.`join_summary` AS s
+
+LEFT JOIN
+(
+    SELECT
+        loa_id,
+        categories,
+        period,
+        sap_wbs,
+        wbs_type,
+        wbs_description,
+        SUM(ptd_val) AS ptd
+    FROM `service_cost`.`v_cj74_transformed`
+    GROUP BY
+        loa_id,
+        categories,
+        period,
+        sap_wbs,
+        wbs_type,
+        wbs_description
+) AS cj
+    ON TRIM(s.loa_id) = TRIM(cj.loa_id)
+   AND TRIM(s.categories) = TRIM(cj.categories)
+
+LEFT JOIN
+(
+    SELECT
+        loa_id,
+        categories,
+        sap_wbs,
+        SUM(oc_val) AS total_oc
+    FROM `service_cost`.`v_cji5_transformed`
+    GROUP BY
+        loa_id,
+        categories,
+        sap_wbs
+) AS ci
+    ON TRIM(s.loa_id) = TRIM(ci.loa_id)
+   AND TRIM(s.categories) = TRIM(ci.categories)
+   AND cj.sap_wbs = ci.sap_wbs;
+
+line
+
+
+-- ----------------- final_dashboard -----------------
+CREATE TABLE `final_dashboard_table` (
+  `id` int NOT NULL DEFAULT '0',
+  `bu` varchar(50) DEFAULT NULL,
+  `customer` varchar(200) DEFAULT NULL,
+  `loa_id` varchar(100) DEFAULT NULL,
+  `loa_name` varchar(255) DEFAULT NULL,
+  `cost_revenue` varchar(50) DEFAULT NULL,
+  `categories` varchar(255) DEFAULT NULL,
+  `wbs` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci,
+  `wbs_type` varchar(100) DEFAULT NULL,
+  `wbs_description` text,
+  `asbl` decimal(15,2) DEFAULT NULL,
+  `asbl_loa` decimal(15,2) DEFAULT NULL,
+  `non_committed` decimal(15,2) DEFAULT NULL,
+  `active_inactive` varchar(20) DEFAULT NULL,
+  `period` varchar(23) DEFAULT NULL,
+  `ptd` decimal(41,6) NOT NULL DEFAULT '0.000000',
+  `open_commitment_KEUR` decimal(41,6) NOT NULL DEFAULT '0.000000',
+  `eac` decimal(43,6) DEFAULT '0.000000',
+  `eac_vs_asbl` decimal(44,6) DEFAULT '0.000000',
+  `unique_key` text CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci,
+  `total_oc_fixed` decimal(60,2) DEFAULT '0.00',
+  `non_committed_editable` decimal(15,2) DEFAULT '0.00',
+  `updated_by` varchar(255) DEFAULT NULL,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `wbs_element_single` varchar(255) DEFAULT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

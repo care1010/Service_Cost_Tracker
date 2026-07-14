@@ -9,6 +9,7 @@ import './FilterBar.css';
    colSpan = how many columns in 12-col grid
 ───────────────────────────────────────── */
 const FILTER_CONFIGS = [
+  { label: 'Category Type',   name: 'category_type',   colSpan: 1 },
   { label: 'BU',              name: 'bu',              colSpan: 1 },
   { label: 'Customer',        name: 'customer',        colSpan: 2 },
   { label: 'LOA ID',          name: 'loa_id',          colSpan: 1 },
