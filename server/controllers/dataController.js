@@ -152,77 +152,74 @@ exports.getFilterOptions = async (req, res) => {
     }
 };
 
-// ==============================
-// 3. MAIN SUMMARY TABLE
-// ==============================
 exports.getWbsSummary = async (req, res) => {
     try {
-        const { draw, start, length, search, showAll, type, allowedCustomers } = req.query;
+        const { draw, start, length, showAll, type, allowedCustomers } = req.query;
         const startIdx = parseInt(start) || 0;
         const limitIdx = parseInt(length) || 10;
- 
-        let wbsType = req.query.wbs_type;
-        if (Array.isArray(wbsType)) wbsType = wbsType[0];
-        const showAsbl = wbsType && wbsType !== "All" && wbsType !== "" && wbsType.toLowerCase() !== "warranty/other";
- 
-        let baseConditions = ["categories NOT IN ('Not to considered')", "cost_revenue <> 'NTC'"];
+
+        // 1. Normalize Special Filters (Inhe WHERE clause mein nahi dalenge)
+        const wTArr = getValArray(req.query.wbs_type);
+        const wEArr = getValArray(req.query.wbs);
+        const wDArr = getValArray(req.query.wbs_description);
+
+        const showAsbl = wTArr && !wTArr.some(t => t.toLowerCase().includes("warranty"));
+
+        // 2. Base Conditions (RLS & NTC)
+        let conditions = ["categories NOT IN ('Not to considered')", "cost_revenue <> 'NTC'"];
         let baseParams = [];
-        applyRLS(type, allowedCustomers, baseConditions, baseParams);
- 
-        let filterConditions = [];
+        applyRLS(type, allowedCustomers, conditions, baseParams);
+
+        // 3. Main Filter Loop (Sirf wahi filters jo poore LOA par apply hote hain)
         let filterParams = [];
-        // General Filters
-        const allowedFilters = ['bu', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period', 'wbs_type', 'wbs_description'];
-        allowedFilters.forEach(key => {
-            let value = req.query[key];
-            if (Array.isArray(value)) value = value[0];
-            if (value && value !== '') {
-                // 👇 FIX: Remove 'All' from the array to prevent SQL crashes
-                const valArray = value.split(',').map(v => v.trim()).filter(v => v && v !== 'All');
-                if (valArray.length > 0) {
-                    const placeholders = valArray.map(() => '?').join(',');
-                    filterConditions.push(`\`${key}\` IN (${placeholders})`);
-                    filterParams.push(...valArray);
-                }
+        // 🔥 'wbs_type' aur 'wbs_description' ko yahan se nikaal diya hai taaki categories na chupen
+        const dbFilters = ['bu', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period'];
+        
+        dbFilters.forEach(key => {
+            const vals = getValArray(req.query[key]);
+            if (vals) {
+                conditions.push(`\`${key}\` IN (?)`);
+                filterParams.push(vals);
             }
         });
-        // WBS Specific Filter
-        let wbsValue = req.query.wbs;
-        if (Array.isArray(wbsValue)) wbsValue = wbsValue[0];
-        if (wbsValue && wbsValue !== '') {
-            const wbsArray = wbsValue.split(',').map(v => v.trim()).filter(v => v && v !== 'All');
-            if (wbsArray.length > 0) {
-                const placeholders = wbsArray.map(() => '?').join(',');
-                filterConditions.push(`wbs_element_single IN (${placeholders})`);
-                filterParams.push(...wbsArray);
-            }
-        }
 
-        const combinedWhere = [...baseConditions, ...filterConditions].join(' AND ');
-        const allParams = [...baseParams, ...filterParams];
+        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-        // 👇 FIX: Removed complex SUM(CASE WHEN...). Just clean SQL now!
+        // 4. Matrix Query (Conditional Aggregation)
         const matrixQuery = `
             SELECT 
                 bu, customer, loa_id, loa_name, cost_revenue, categories,
                 MAX(unique_key) as unique_key, 
-                ${showAsbl ? 'COALESCE(MAX(asbl), 0)' : "'-'"} as asbl,
-                COALESCE(SUM(ptd), 0) as ptd,
+                -- ASBL: Categories filter nahi hongi isliye MAX sahi value layega
+                ${showAsbl ? 'COALESCE(MAX(asbl), 0)' : "'-'"} as asbl, 
+                -- PTD: Sirf selected WBS filters ka sum hoga
+                COALESCE(SUM(CASE 
+                    WHEN (${wTArr ? 'wbs_type IN (?)' : '1=1'}) 
+                    AND (${wEArr ? 'wbs_element_single IN (?)' : '1=1'}) 
+                    AND (${wDArr ? 'wbs_description IN (?)' : '1=1'}) 
+                    THEN ptd ELSE 0 END), 0) as ptd, 
                 COALESCE(MAX(total_oc_fixed), 0) as open_commitment, 
                 COALESCE(MAX(non_committed_editable), 0) as non_committed,
                 COALESCE(MAX(asbl_loa), 0) as asbl_loa
             FROM final_dashboard_table
-            WHERE ${combinedWhere}
+            ${whereClause}
             GROUP BY bu, customer, loa_id, loa_name, cost_revenue, categories
             HAVING 1=1 
-            ${showAll === 'false' ? 'AND (ABS(MAX(asbl)) > 0.01 OR ABS(SUM(ptd)) > 0.01 OR ABS(MAX(total_oc_fixed)) > 0.01 OR ABS(MAX(non_committed_editable)) > 0.01)' : ''}
+            ${showAll === 'false' ? 'AND (ABS(COALESCE(asbl, 0)) > 0.01 OR ABS(ptd) > 0.01 OR ABS(open_commitment) > 0.01)' : ''}
             ORDER BY loa_name ASC, cost_revenue ASC
         `;
- 
-        const [dataRows] = await db.query(`${matrixQuery} LIMIT ?, ?`, [...allParams, startIdx, limitIdx]);
-        const [countRes] = await db.query(`SELECT COUNT(*) as total FROM (${matrixQuery}) as temp`, allParams);
- 
-        // KPI Calculations
+
+        // Parameters order: [SUM CASE params..., WHERE clause params...]
+        let queryParams = [];
+        if (wTArr) queryParams.push(wTArr);
+        if (wEArr) queryParams.push(wEArr);
+        if (wDArr) queryParams.push(wDArr);
+        queryParams = [...queryParams, ...baseParams, ...filterParams];
+
+        const [dataRows] = await db.query(`${matrixQuery} LIMIT ?, ?`, [...queryParams, startIdx, limitIdx]);
+        const [countRes] = await db.query(`SELECT COUNT(*) as total FROM (${matrixQuery}) as temp`, queryParams);
+
+        // 5. KPI Query
         const kpiQuery = `
             SELECT 
                 SUM(CASE WHEN cost_revenue = 'Revenue' THEN cat_asbl ELSE 0 END) as asbl_rev,
@@ -230,23 +227,28 @@ exports.getWbsSummary = async (req, res) => {
                 SUM(CASE WHEN cost_revenue = 'Revenue' THEN cat_ptd ELSE 0 END) as ptd_rev,
                 SUM(CASE WHEN cost_revenue = 'Cost' THEN cat_ptd ELSE 0 END) as ptd_cost
             FROM (
-                SELECT cost_revenue, MAX(asbl) as cat_asbl, SUM(ptd) as cat_ptd
+                SELECT cost_revenue, MAX(asbl) as cat_asbl, 
+                       SUM(CASE WHEN (${wTArr ? 'wbs_type IN (?)' : '1=1'}) AND (${wEArr ? 'wbs_element_single IN (?)' : '1=1'}) AND (${wDArr ? 'wbs_description IN (?)' : '1=1'}) THEN ptd ELSE 0 END) as cat_ptd
                 FROM final_dashboard_table
-                WHERE ${combinedWhere}
+                ${whereClause}
                 GROUP BY loa_id, categories, cost_revenue
             ) as t
         `;
-        const [kpiRes] = await db.query(kpiQuery, allParams);
+        const [kpiRes] = await db.query(kpiQuery, queryParams);
         const k = kpiRes[0] || {};
- 
-        const kpis = {
-            asbl_rev: showAsbl ? Number(k.asbl_rev || 0).toFixed(2) : "-",
-            asbl_cost: showAsbl ? Number(k.asbl_cost || 0).toFixed(2) : "-",
-            ptd_rev: Number(k.ptd_rev || 0).toFixed(2),
-            ptd_cost: Number(k.ptd_cost || 0).toFixed(2)
-        };
- 
-        res.status(200).json({ draw: parseInt(draw) || 0, recordsTotal: countRes[0].total, recordsFiltered: countRes[0].total, data: dataRows, kpis });
+
+        res.status(200).json({
+            draw: parseInt(draw) || 0,
+            recordsTotal: countRes[0].total,
+            recordsFiltered: countRes[0].total,
+            data: dataRows,
+            kpis: {
+                asbl_rev: showAsbl ? Number(k.asbl_rev || 0).toFixed(2) : "-",
+                asbl_cost: showAsbl ? Number(k.asbl_cost || 0).toFixed(2) : "-",
+                ptd_rev: Number(k.ptd_rev || 0).toFixed(2),
+                ptd_cost: Number(k.ptd_cost || 0).toFixed(2)
+            }
+        });
     } catch (error) {
         console.error("WbsSummary Error:", error);
         res.status(500).json({ error: error.message });
@@ -903,7 +905,6 @@ if (collapseView === 'true') {
 };
 
 //Review Changes page k liye function export excel or claer data
-// 1. Draft saaf karne ka function
 exports.clearDraftChanges = async (req, res) => {
     try {
         // Dono tables mein editable value ko original ke barabar kar dein
