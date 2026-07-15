@@ -7,3 +7,5 @@ build/
 data_upload/
 
 server/uploads/
+
+uploads/
