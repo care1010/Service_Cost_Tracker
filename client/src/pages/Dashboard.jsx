@@ -828,7 +828,7 @@ const displayLoaData = showAllLoa
                         {/* 🔥 5. Dynamic WBS TYPE Filter (Highlight with Glow effect if set to 'All') */}
                         <div className={`w-[160px] p-0.5 rounded-2xl transition-all duration-300 ${
                             selectedWbsType === 'All' 
-                                ? 'ring-2 ring-orange-500/50 border-orange-300 animate-pulse bg-orange-50/20' 
+                                ? 'ring-2 ring-white-500/50 border-white-300 animate-pulse bg-white-50/20' 
                                 : ''
                         }`}>
                             <p className="text-[11px] font-black uppercase text-slate-500 mb-2">WBS Type</p>
@@ -1266,8 +1266,8 @@ const displayLoaData = showAllLoa
                         <BarChart 
                             data={sortedBuData} 
                             margin={{ top: 40, right: 30, left: 20, bottom: 20 }}
-                            barGap={10}          /* 🔥 Bars ke beech ka gap */
-                            barCategoryGap="20%" /* 🔥 Categories ke beech ka gap (Kam karne se bar wide hogi) */
+                            barGap={10}          /* Bars ke beech ka gap */
+                            barCategoryGap="20%" /* Categories ke beech ka gap (Kam karne se bar wide hogi) */
                         >
                             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                             <XAxis 

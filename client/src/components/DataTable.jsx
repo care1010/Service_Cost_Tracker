@@ -238,7 +238,7 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
                     if (type === 'display' && drillFields.includes(col.field)) {
                         return `
                             <span
-                                class="drill-link text-blue-600 font-bold cursor-pointer hover:underline"
+                                class="drill-link text-grey-600 font-bold cursor-pointer hover:underline"
                                 data-field="${col.field}"
                                 data-uniquekey="${row.unique_key}"
                                 data-loaid="${row.loa_id}" 

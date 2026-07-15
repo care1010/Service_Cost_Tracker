@@ -23,12 +23,12 @@ table.dataTable thead th {
     color: #1e293b;
     font-weight: 700;
     text-transform: uppercase;
-    font-size: 12px;
+    font-size: 13px;
     border-bottom: 2px solid #e2e8f0 !important;
 }
 
 table.dataTable td {
-    font-size: 16px;
+    font-size: 17px;
     color: #050607 !important;
     padding: 12px !important;
 }
@@ -145,9 +145,9 @@ tr.group-level-1 td {
 /* Icons */
 .toggle-icon {
     display: inline-block;
-    width: 15px;
+    width: 13px;
     font-size: 10px;
-    margin-right: 5px;
+    margin-right: 3px;
 }
 
 .text-right {
