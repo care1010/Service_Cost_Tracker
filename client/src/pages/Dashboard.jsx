@@ -6,6 +6,85 @@ import * as XLSX from "xlsx";
 import { saveAs } from 'file-saver';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LabelList, LineChart, Line, ComposedChart } from 'recharts';
 
+import '../components/FilterBar.css'; // 🔥 YEH IMPORT ADD KARNA MAT BHOOLNA
+import { MdFilterAlt } from 'react-icons/md';
+import { HiCheck } from 'react-icons/hi';
+
+// ==========================================
+// CUSTOM MULTI-SELECT FOR DASHBOARD
+// ==========================================
+const DashMultiSelect = ({ label, options = [], selected = [], onChange }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [search, setSearch] = useState('');
+    const containerRef = useRef(null);
+    const searchRef = useRef(null);
+
+    useEffect(() => {
+        const handleOutside = (e) => {
+            if (containerRef.current && !containerRef.current.contains(e.target)) {
+                setIsOpen(false); setSearch('');
+            }
+        };
+        document.addEventListener('mousedown', handleOutside);
+        return () => document.removeEventListener('mousedown', handleOutside);
+    }, []);
+
+    useEffect(() => { if (isOpen && searchRef.current) searchRef.current.focus(); }, [isOpen]);
+
+    const toggleOption = (val) => {
+        if (selected.includes(val)) onChange(selected.filter((v) => v !== val));
+        else onChange([...selected, val]);
+    };
+
+    const filteredOptions = options.filter((opt) => opt.toString().toLowerCase().includes(search.toLowerCase()));
+    const hasSelection = selected.length > 0;
+    const visiblePills = selected.slice(0, 2);
+    const overflowCount = selected.length - 2;
+
+    return (
+        <div ref={containerRef} className={`ms-container ${hasSelection ? 'ms-container--active' : ''}`}>
+            <label className="ms-label">{label} {hasSelection && <span className="ms-count-badge">{selected.length}</span>}</label>
+            <div role="button" tabIndex={0} className={`ms-trigger ${isOpen ? 'ms-trigger--open' : ''}`} onClick={() => setIsOpen(!isOpen)}>
+                <span className="ms-trigger-left">
+                    {hasSelection ? (
+                        <span className="ms-pills-row">
+                            {visiblePills.map((val) => (
+                                <span key={val} className="ms-pill">{val}
+                                    <button type="button" className="ms-pill-x" onClick={(e) => { e.stopPropagation(); toggleOption(val); }}>×</button>
+                                </span>
+                            ))}
+                            {overflowCount > 0 && <span className="ms-pill-more">+{overflowCount}</span>}
+                        </span>
+                    ) : <span className="ms-placeholder">All</span>}
+                </span>
+                <HiChevronDown className={`ms-arrow ${isOpen ? 'ms-arrow--up' : ''}`} />
+            </div>
+            {isOpen && (
+                <div className="ms-dropdown">
+                    <div className="ms-search-wrap">
+                        <input ref={searchRef} type="text" className="ms-search" placeholder="Search..." value={search} onChange={(e) => setSearch(e.target.value)} />
+                    </div>
+                    <div className="flex justify-between px-3 py-1 border-b border-white/10">
+                        <button className="text-[10px] font-bold text-blue-300 hover:text-white" onClick={() => onChange(options)}>Select All</button>
+                        <button className="text-[10px] font-bold text-red-400 hover:text-red-300" onClick={() => onChange([])}>Clear</button>
+                    </div>
+                    <ul className="ms-options-list">
+                        {filteredOptions.length === 0 ? <li className="ms-no-results">No results found</li> : filteredOptions.map((opt) => {
+                            const isSelected = selected.includes(opt);
+                            return (
+                                <li key={opt} className={`ms-option ${isSelected ? 'ms-option--selected' : ''}`} onClick={() => toggleOption(opt)}>
+                                    <span className={`ms-checkbox ${isSelected ? 'ms-checkbox--checked' : ''}`}>{isSelected && <HiCheck className="ms-check-icon" />}</span>
+                                    <span className="ms-option-text">{opt}</span>
+                                </li>
+                            );
+                        })}
+                    </ul>
+                </div>
+            )}
+        </div>
+    );
+};
+
 const Dashboard = ({ user }) => {
 
     const [activeFilter, setActiveFilter] = useState('');
@@ -577,429 +656,98 @@ const displayLoaData = showAllLoa
     : loaData.slice(0, 10);
 
     return (
-
         <div className="p-6 bg-slate-100 min-h-screen space-y-6">
 
-            {/* HEADER */}
-            <div className="bg-white rounded-[2rem] shadow-lg p-6 border border-slate-200">
-                <div className="flex flex-col lg:flex-row lg:justify-between gap-8">
-                    <div>
-                        <h1 className="text-3xl font-black text-slate-800">
-                            Charts Analytics
-                        </h1>
-                        <p className="text-slate-400 text-sm mt-1">
-                            Business Unit & Project Analysis
-                        </p>
+            {/* 🔥 1. HEADER SECTION (Upar alag se) */}
+            <div className="mb-2 px-2">
+                <h1 className="text-3xl font-black text-slate-800">
+                    Charts Analytics
+                </h1>
+                <p className="text-slate-500 text-sm mt-1 font-medium">
+                    Business Unit & Project Analysis
+                </p>
+            </div>
+
+            {/* 🔥 2. FULL WIDTH FILTERS BAR */}
+            <div className="fb-wrapper w-full shadow-sm">
+                <div className="fb-grid">
+                    
+                    {/* BU Filter */}
+                    <div className="fb-cell" style={{ flex: '1 1 100px', minWidth: 0 }}>
+                        <DashMultiSelect label="BU" options={filterOptions.bus || []} selected={selectedBus} onChange={setSelectedBus} />
                     </div>
 
-                    {/* FILTERS BAR */}
-                    <div className="flex flex-col md:flex-row gap-5">
+                    {/* Customer Filter */}
+                    <div className="fb-cell" style={{ flex: '1 1 180px', minWidth: 0 }}>
+                        <DashMultiSelect label="Customer" options={filterOptions.customers || []} selected={selectedCustomers} onChange={setSelectedCustomers} />
+                    </div>
 
-                        {/* 🔥 NEW BU FILTER */}
-                        <div ref={buRef} className="relative w-[180px]">
-                            <p className="text-[11px] font-black uppercase text-slate-500 mb-2">Select BU</p>
-                            <button onClick={() => setShowBuDropdown(!showBuDropdown)} className="w-full bg-white border border-slate-300 rounded-2xl px-4 py-3 shadow-sm text-left">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-sm font-medium text-slate-700 truncate">
-                                        {selectedBus.length > 0 ? `${selectedBus.length} Selected` : 'Choose BU'}
-                                    </span>
-                                    <HiChevronDown />
-                                </div>
-                            </button>
-                            {showBuDropdown && (
-                                <div className="absolute top-full left-0 mt-2 w-full bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-3 max-h-[260px] overflow-y-auto">
-                                    <div className="flex justify-between mb-3">
-                                        <button className="text-[10px] font-bold text-blue-600" onClick={() => setSelectedBus(filterOptions.bus)}>Select All</button>
-                                        <button className="text-[10px] font-bold text-red-500" onClick={() => setSelectedBus([])}>Clear</button>
-                                    </div>
-                                    <div className="space-y-2">
-                                        {filterOptions.bus.map((bu) => (
-                                            <label key={bu} className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-100 cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedBus.includes(bu)}
-                                                    onChange={(e) => {
-                                                        if (e.target.checked) setSelectedBus([...selectedBus, bu]);
-                                                        else setSelectedBus(selectedBus.filter(x => x !== bu));
-                                                    }}
-                                                />
-                                                <span className="text-sm font-medium text-slate-700">{bu}</span>
-                                            </label>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
+                    {/* LOA Name Filter */}
+                    <div className="fb-cell" style={{ flex: '1 1 200px', minWidth: 0 }}>
+                        <DashMultiSelect label="LOA Name" options={filterOptions.loa_names || []} selected={selectedLoas} onChange={setSelectedLoas} />
+                    </div>
 
-                        {/* 🔥 NEW CATEGORY TYPE FILTER */}
-                        <div ref={categoryTypeRef} className="relative w-[180px]">
-                            <p className="text-[11px] font-black uppercase text-slate-500 mb-2">Category Type</p>
-                            <button onClick={() => setShowCategoryTypeDropdown(!showCategoryTypeDropdown)} className="w-full bg-white border border-slate-300 rounded-2xl px-4 py-3 shadow-sm text-left">
-                                <div className="flex items-center justify-between">
-                                    <span className="text-sm font-medium text-slate-700 truncate">
-                                        {selectedCategoryTypes.length > 0 ? `${selectedCategoryTypes.length} Selected` : 'Choose Category'}
-                                    </span>
-                                    <HiChevronDown />
-                                </div>
-                            </button>
-                            {showCategoryTypeDropdown && (
-                                <div className="absolute top-full left-0 mt-2 w-full bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-3 max-h-[260px] overflow-y-auto">
-                                    <div className="flex justify-between mb-3">
-                                        <button className="text-[10px] font-bold text-blue-600" onClick={() => setSelectedCategoryTypes(['All', 'Local Materials'])}>Select All</button>
-                                        <button className="text-[10px] font-bold text-red-500" onClick={() => setSelectedCategoryTypes([])}>Clear</button>
-                                    </div>
-                                    <div className="space-y-2">
-                                        {['All', 'Local Materials'].map((cat) => (
-                                            <label key={cat} className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-100 cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedCategoryTypes.includes(cat)}
-                                                    onChange={(e) => {
-                                                        if (e.target.checked) setSelectedCategoryTypes([...selectedCategoryTypes, cat]);
-                                                        else setSelectedCategoryTypes(selectedCategoryTypes.filter(x => x !== cat));
-                                                    }}
-                                                />
-                                                <span className="text-sm font-medium text-slate-700">{cat}</span>
-                                            </label>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
+                    {/* Year Filter */}
+                    <div className="fb-cell" style={{ flex: '1 1 90px', minWidth: 0 }}>
+                        <DashMultiSelect label="Year" options={filterOptions.years || []} selected={selectedYears} onChange={handleYearChange} />
+                    </div>
 
-                        {/* 1. Customer Filter */}
-                        <div ref={customerRef} className="relative w-[240px]">
-                            <p className="text-[11px] font-black uppercase text-slate-500 mb-2">
-                                Select Customers
-                            </p>
-                            <button
-                                onClick={() =>
-                                    setShowCustomerDropdown(
-                                        !showCustomerDropdown
-                                    )
-                                }
-                                className="w-full bg-white border border-slate-300 rounded-2xl px-4 py-3 shadow-sm text-left"
-                            >
-                                <div className="flex items-center justify-between">
-                                    <span className="text-sm font-medium text-slate-700">
-                                        {selectedCustomers.length > 0
-                                            ? `${selectedCustomers.length} Selected`
-                                            : 'Choose Customers'}
-                                    </span>
-                                    <span>▼</span>
-                                </div>
-                            </button>
-                            {showCustomerDropdown && (
-                                <div className="absolute top-full left-0 mt-2 w-full bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-3 max-h-[260px] overflow-y-auto">
-                                    <div className="flex justify-between mb-3">
-                                        <button
-                                            className="text-[10px] font-bold text-blue-600"
-                                            onClick={() => {
-                                                setSelectedCustomers(
-                                                    filterOptions.customers
-                                                );
-                                            }}
-                                        >
-                                            Select All
-                                        </button>
-                                        <button
-                                            className="text-[10px] font-bold text-red-500"
-                                            onClick={() => {
-                                                setSelectedCustomers([]);
-                                            }}
-                                        >
-                                            Clear
-                                        </button>
-                                    </div>
+                    {/* Period Filter */}
+                    <div className="fb-cell" style={{ flex: '1 1 100px', minWidth: 0 }}>
+                        <DashMultiSelect label="Period" options={filterOptions.periods || []} selected={selectedPeriods} onChange={handlePeriodChange} />
+                    </div>
 
-                                    <div className="space-y-2">
-                                        {filterOptions.customers.map((customer) => (
-                                            <label
-                                                key={customer}
-                                                className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-100 cursor-pointer"
-                                            >
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedCustomers.includes(customer)}
-                                                    onChange={(e) => {
-                                                        if (e.target.checked) {
-                                                            setSelectedCustomers([
-                                                                ...selectedCustomers,
-                                                                customer
-                                                            ]);
-                                                        } else {
-                                                            setSelectedCustomers(
-                                                                selectedCustomers.filter(
-                                                                    (x) => x !== customer
-                                                                )
-                                                            );
-                                                        }
-                                                    }}
-                                                />
-                                                <span className="text-sm font-medium text-slate-700">
-                                                    {customer}
-                                                </span>
-                                            </label>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                        {/* -----Customer filter button END here---- */}
-
-                        {/* 🔥 4. NEW DUPLICATE LOA FILTER AT THE TOP FILTER BAR (Lists ALL synced database-filters LOAs) */}
-                        <div ref={topLoaRef} className="relative w-[220px]">
-                            <p className="text-[11px] font-black uppercase text-slate-500 mb-2">
-                                Select LOA Name
-                            </p>
-                            <button
-                                onClick={() => setShowTopLoaDropdown(!showTopLoaDropdown)}
-                                className="w-full bg-white border border-slate-300 rounded-2xl px-4 py-3 shadow-sm text-left"
-                            >
-                                <div className="flex items-center justify-between">
-                                    <span className="text-sm font-medium text-slate-700 truncate">
-                                        {selectedLoas.length > 0
-                                            ? `${selectedLoas.length} Selected`
-                                            : 'Choose LOAs'}
-                                    </span>
-                                    <span>▼</span>
-                                </div>
-                            </button>
-
-                            {showTopLoaDropdown && (
-                                <div className="absolute top-full left-0 mt-2 w-[320px] bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-3 max-h-[360px] overflow-y-auto">
-                                    
-                                    {/* SEARCH BOX FOR TOP LOA SELECTOR */}
-                                    <input
-                                        type="text"
-                                        placeholder="Search LOA..."
-                                        value={topLoaSearch}
-                                        onChange={(e) => setTopLoaSearch(e.target.value)}
-                                        className="w-full border border-slate-300 rounded-xl px-3 py-2 text-sm mb-3 outline-none focus:border-blue-500"
-                                    />
-
-                                    <div className="flex justify-between mb-3">
-                                        <button
-                                            className="text-[10px] font-bold text-blue-600"
-                                            onClick={() => {
-                                                setSelectedLoas(filterOptions.loa_names || []);
-                                            }}
-                                        >
-                                            Select All
-                                        </button>
-                                        <button
-                                            className="text-[10px] font-bold text-red-500"
-                                            onClick={() => {
-                                                setSelectedLoas([]);
-                                            }}
-                                        >
-                                            Clear
-                                        </button>
-                                    </div>
-
-                                    <div className="space-y-2 max-h-[220px] overflow-y-auto">
-                                        {filteredTopLoaOptions.map((loa) => (
-                                            <label
-                                                key={loa}
-                                                className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-100 cursor-pointer"
-                                            >
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedLoas.includes(loa)}
-                                                    onChange={(e) => {
-                                                        if (e.target.checked) {
-                                                            setSelectedLoas([...selectedLoas, loa]);
-                                                        } else {
-                                                            setSelectedLoas(selectedLoas.filter((x) => x !== loa));
-                                                        }
-                                                    }}
-                                                />
-                                                <span className="text-sm font-medium text-slate-700 truncate">
-                                                    {loa}
-                                                </span>
-                                            </label>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                        {/* Loa Name filter END*/}
-
-                        {/* 🔥 5. Dynamic WBS TYPE Filter (Highlight with Glow effect if set to 'All') */}
-                        <div className={`w-[160px] p-0.5 rounded-2xl transition-all duration-300 ${
-                            selectedWbsType === 'All' 
-                                ? 'ring-2 ring-white-500/50 border-white-300 animate-pulse bg-white-50/20' 
-                                : ''
-                        }`}>
-                            <p className="text-[11px] font-black uppercase text-slate-500 mb-2">WBS Type</p>
+                    {/* WBS Type Filter (Single Select) */}
+                    <div className="fb-cell" style={{ flex: '1 1 120px', minWidth: 0 }}>
+                        <label className="ms-label">WBS Type</label>
+                        <div className={`w-full h-[34px] rounded-lg border flex items-center px-2 cursor-pointer transition-colors ${selectedWbsType === 'All' ? 'bg-orange-50 border-orange-400 ring-2 ring-orange-200 animate-pulse' : 'bg-[#004593] border-blue-600'}`}>
                             <select
                                 value={selectedWbsType}
                                 onChange={(e) => setSelectedWbsType(e.target.value)}
-                                className="w-full bg-white border border-slate-300 rounded-2xl px-4 py-3 shadow-sm text-sm font-medium text-slate-700 outline-none"
+                                className={`w-full bg-transparent outline-none cursor-pointer text-[11px] font-bold appearance-none ${selectedWbsType === 'All' ? 'text-orange' : 'text-white'}`}
                             >
-                                <option value="All">All</option>
+                                <option value="All" className="bg-white text-black">All</option>
                                 {filterOptions.wbs_types && filterOptions.wbs_types.map((type) => (
-                                    <option key={type} value={type}>{type}</option>
+                                    <option key={type} value={type} className="bg-[#004593] text-white">{type}</option>
                                 ))}
                             </select>
+                            <HiChevronDown className={`flex-shrink-0 ${selectedWbsType === 'All' ? 'text-orange-600' : 'text-white'}`} />
                         </div>
+                    </div>
 
-                        {/* 2. YEAR FILTER */}
-                        <div ref={yearRef} className="relative w-[180px]">
-                            <p className="text-[11px] font-black uppercase text-slate-500 mb-2">
-                                Select Year
-                            </p>
-                            <button onClick={() => setShowYearDropdown(!showYearDropdown)}
-                                className="w-full bg-white border border-slate-300 rounded-2xl px-4 py-3 shadow-sm text-left"
-                            >
-                                <div className="flex items-center justify-between">
-                                    <span className="text-sm font-medium text-slate-700">
-                                        {selectedYears.length > 0
-                                            ? `${selectedYears.length} Selected`
-                                            : 'Choose Years'}
-                                    </span>
-                                    <span>▼</span>
-                                </div>
-                            </button>
-
-                            {showYearDropdown && (
-                                <div className="absolute top-full left-0 mt-2 w-full bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-3 max-h-[260px] overflow-y-auto">
-                                    <div className="flex justify-between mb-3">
-                                        <button className="text-[10px] font-bold text-blue-600"
-                                            onClick={() => { setSelectedYears(filterOptions.years);
-                                                setSelectedPeriods(
-                                                    filterOptions.periods);}}>
-                                            Select All
-                                        </button>
-                                        <button
-                                            className="text-[10px] font-bold text-red-500"
-                                            onClick={() => {
-                                                setSelectedYears([]);
-                                                setSelectedPeriods([]);}}>
-                                            Clear
-                                        </button>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        {filterOptions.years.map((year) => (
-                                            <label
-                                                key={year}
-                                                className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-100 cursor-pointer"
-                                            >
-                                                <input type="checkbox" checked={selectedYears.includes(year)} onChange={(e) =>
-                                                        handleYearChange(
-                                                            year,
-                                                            e.target.checked)}/>
-                                                <span className="text-sm font-medium text-slate-700">
-                                                    {year}
-                                                </span>
-                                            </label>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                        {/*-------- YEAR FILTER button END HERE--------- */}
-
-                        {/* 3. PERIOD FILTER */}
-                        <div ref={periodRef} className="relative w-[180px]">
-                            <p className="text-[11px] font-black uppercase text-slate-500 mb-2">
-                                Select Periods
-                            </p>
-                            <button
-                                onClick={() =>
-                                    setShowPeriodDropdown(
-                                        !showPeriodDropdown
-                                    )
-                                }
-                                className="w-full bg-white border border-slate-300 rounded-2xl px-4 py-3 shadow-sm text-left"
-                            >
-                                <div className="flex items-center justify-between">
-                                    <span className="text-sm font-medium text-slate-700">
-                                        {selectedPeriods.length > 0
-                                            ? `${selectedPeriods.length} Selected`
-                                            : 'Choose Periods'}
-                                    </span>
-                                    <span>▼</span>
-                                </div>
-                            </button>
-
-                            {showPeriodDropdown && (
-                                <div className="absolute top-full left-0 mt-2 w-full bg-white border border-slate-200 rounded-2xl shadow-xl z-50 p-3 max-h-[260px] overflow-y-auto">
-                                    <button
-                                            className="text-[10px] font-bold text-blue-600"
-                                            onClick={() => {
-                                                setSelectedYears(
-                                                    filterOptions.years
-                                                );
-                                                setSelectedPeriods(
-                                                    filterOptions.periods
-                                                );
-                                            }}
-                                        >
-                                            Select All
-                                        </button>
-                                        <button
-                                            className="text-[10px] font-bold text-red-500 ml-7"
-                                            onClick={() => {
-                                                setSelectedYears([]);
-                                                setSelectedPeriods([]);
-                                            }}
-                                        >
-                                            Clear
-                                        </button>
-
-                                        <div className="space-y-2">
-                                            {filterOptions.periods.map((period) => (
-                                                <label
-                                                    key={period}
-                                                    className="flex items-center gap-3 p-2 rounded-xl hover:bg-slate-100 cursor-pointer"
-                                                >
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={selectedPeriods.includes(period)}
-                                                        onChange={(e) =>
-                                                            handlePeriodChange(
-                                                                period,
-                                                                e.target.checked
-                                                            )
-                                                        }
-                                                    />
-                                                    <span className="text-sm font-medium text-slate-700">
-                                                        {period}
-                                                    </span>
-                                                </label>
-                                            ))}
-                                        </div>
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="w-[160px]">
-                            <p className="text-[11px] font-black uppercase text-slate-500 mb-2">
-                                Active/Inactive
-                            </p>
-
+                    {/* Active/Inactive Filter (Single Select) */}
+                    <div className="fb-cell" style={{ flex: '1 1 100px', minWidth: 0 }}>
+                        <label className="ms-label">Status</label>
+                        <div className="w-full h-[34px] rounded-lg border bg-[#004593] border-blue-600 flex items-center px-2 cursor-pointer">
                             <select
                                 value={selectedStatus}
                                 onChange={(e) => setSelectedStatus(e.target.value)}
-                                className="w-full bg-white border border-slate-300 rounded-2xl px-4 py-3 shadow-sm text-sm font-medium text-slate-700"
+                                className="w-full bg-transparent text-white outline-none cursor-pointer text-[11px] font-bold appearance-none"
                             >
-                                <option value="Active">Active</option>
-                                <option value="Inactive">Inactive</option>
-                                <option value="">All</option>
-                                {/* <span>▼</span> */}
+                                <option value="Active" className="bg-[#004593] text-white">Active</option>
+                                <option value="Inactive" className="bg-[#004593] text-white">Inactive</option>
+                                <option value="" className="bg-[#004593] text-white">All</option>
                             </select>
+                            <HiChevronDown className="text-white flex-shrink-0" />
                         </div>
-                        <button
-                            onClick={resetAllFilters}
-                            className="h-[52px] mt-6 px-5 rounded-2xl bg-red-500 text-white text-sm font-bold shadow-md hover:bg-red-600 transition-all
-                            "
-                        >Reset Filters
+                    </div>
+
+                    {/* Category Type Filter */}
+                    <div className="fb-cell" style={{ flex: '1 1 140px', minWidth: 0 }}>
+                        <DashMultiSelect label="Category Type" options={['All', 'Local Materials']} selected={selectedCategoryTypes} onChange={setSelectedCategoryTypes} />
+                    </div>
+
+                    {/* Reset Button */}
+                    <div className="flex items-end pb-[2px]" style={{ flex: '0 0 auto' }}>
+                        <button onClick={resetAllFilters} className="fb-reset-btn px-4 h-[34px]" title="Reset All Filters">
+                            <HiOutlineRefresh className="fb-reset-icon" />
+                            Reset
                         </button>
                     </div>
+
                 </div>
             </div>
+
 
             {/* 🔥 NEW SOFT WARNING ALERT BANNER ON DASHBOARD PAGE IF WBS TYPE IS NOT SELECTED */}
             {selectedWbsType === 'All' && (

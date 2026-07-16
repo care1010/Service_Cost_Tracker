@@ -1,12 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { HiOutlineRefresh, HiOutlineFilter, HiChevronDown } from 'react-icons/hi';
+import { HiOutlineFilter, HiChevronDown } from 'react-icons/hi';
 import { MdFilterAlt } from 'react-icons/md';
-import { HiCheck } from 'react-icons/hi';
+import { HiCheck, HiOutlineRefresh } from 'react-icons/hi';
 import './FilterBar.css';
 
 /* ─────────────────────────────────────────
    Filter field config
-   colSpan = how many columns in 12-col grid
+   (Tumhari custom widths ke sath)
 ───────────────────────────────────────── */
 const FILTER_CONFIGS = [
   { label: 'BU',              name: 'bu',              width: '120px' },
@@ -35,15 +35,9 @@ const sortPeriods = (periods = []) =>
 
 /* ═══════════════════════════════════════════════
    CUSTOM MULTI-SELECT DROPDOWN COMPONENT
-   Replaces Select2 completely
 ═══════════════════════════════════════════════ */
 const MultiSelect = ({ name, label, options, selected: selectedProp, onChange }) => {
 
-  /*
-   * SAFETY NET: Parent mein purana string-based filters state ho sakta hai.
-   * Normalize karo - string/null/undefined sab ko array mein convert karo.
-   * 'Active' → ['Active'],  'All' → [],  undefined → [],  [] → []
-   */
   const selected = Array.isArray(selectedProp)
     ? selectedProp
     : selectedProp && selectedProp !== 'All'
@@ -55,7 +49,6 @@ const MultiSelect = ({ name, label, options, selected: selectedProp, onChange })
   const containerRef              = useRef(null);
   const searchRef                 = useRef(null);
 
-  /* Close on outside click */
   useEffect(() => {
     const handleOutside = (e) => {
       if (containerRef.current && !containerRef.current.contains(e.target)) {
@@ -67,14 +60,12 @@ const MultiSelect = ({ name, label, options, selected: selectedProp, onChange })
     return () => document.removeEventListener('mousedown', handleOutside);
   }, []);
 
-  /* Focus search box when dropdown opens */
   useEffect(() => {
     if (isOpen && searchRef.current) {
       searchRef.current.focus();
     }
   }, [isOpen]);
 
-  /* Close on Escape key */
   const handleKeyDown = (e) => {
     if (e.key === 'Escape') {
       setIsOpen(false);
@@ -82,7 +73,6 @@ const MultiSelect = ({ name, label, options, selected: selectedProp, onChange })
     }
   };
 
-  /* Toggle a single option */
   const toggleOption = (val) => {
     if (selected.includes(val)) {
       onChange(name, selected.filter((v) => v !== val));
@@ -91,24 +81,16 @@ const MultiSelect = ({ name, label, options, selected: selectedProp, onChange })
     }
   };
 
-  /* Filter options by search text */
   const filteredOptions = options.filter((opt) =>
     opt.toString().toLowerCase().includes(search.toLowerCase())
   );
 
   const hasSelection = selected.length > 0;
-
-  /* Pills to show inside the box - max 2 visible, rest as +N */
   const visiblePills  = selected.slice(0, 2);
   const overflowCount = selected.length - 2;
 
   return (
-    <div
-      ref={containerRef}
-      className={`ms-container ${hasSelection ? 'ms-container--active' : ''}`}
-      onKeyDown={handleKeyDown}
-    >
-      {/* ── Label ── */}
+    <div ref={containerRef} className={`ms-container ${hasSelection ? 'ms-container--active' : ''}`} onKeyDown={handleKeyDown}>
       <label className="ms-label" id={`label-${name}`}>
         {label}
         {hasSelection && (
@@ -116,61 +98,40 @@ const MultiSelect = ({ name, label, options, selected: selectedProp, onChange })
         )}
       </label>
 
-      {/* ── Trigger Box ── */}
-      {/* div instead of button - because pill ✕ buttons are inside, nested buttons invalid HTML */}
       <div
         role="button"
         tabIndex={0}
         className={`ms-trigger ${isOpen ? 'ms-trigger--open' : ''}`}
         onClick={() => setIsOpen((prev) => !prev)}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setIsOpen((prev) => !prev); }}}
-        aria-haspopup="listbox"
-        aria-expanded={isOpen}
-        aria-labelledby={`label-${name}`}
-        aria-label={`${label}: ${hasSelection ? selected.join(', ') : 'All'}`}
       >
-        {/* Left side: pills or placeholder */}
         <span className="ms-trigger-left">
           {hasSelection ? (
             <span className="ms-pills-row">
               {visiblePills.map((val) => (
                 <span key={val} className="ms-pill">
                   {val}
-                  {/* ✕ remove pill */}
                   <button
                     type="button"
                     className="ms-pill-x"
                     onClick={(e) => {
-                      e.stopPropagation(); // don't open/close dropdown
+                      e.stopPropagation(); 
                       toggleOption(val);
                     }}
-                    aria-label={`Remove ${val}`}
-                  >
-                    ×
-                  </button>
+                  >×</button>
                 </span>
               ))}
-              {overflowCount > 0 && (
-                <span className="ms-pill-more">+{overflowCount}</span>
-              )}
+              {overflowCount > 0 && <span className="ms-pill-more">+{overflowCount}</span>}
             </span>
           ) : (
             <span className="ms-placeholder">All</span>
           )}
         </span>
-
-        {/* Right: chevron arrow */}
-        <HiChevronDown
-          className={`ms-arrow ${isOpen ? 'ms-arrow--up' : ''}`}
-          aria-hidden="true"
-        />
+        <HiChevronDown className={`ms-arrow ${isOpen ? 'ms-arrow--up' : ''}`} aria-hidden="true" />
       </div>
 
-      {/* ── Dropdown panel ── */}
       {isOpen && (
-        <div className="ms-dropdown" role="listbox" aria-multiselectable="true" aria-label={label}>
-
-          {/* Search input */}
+        <div className="ms-dropdown" role="listbox">
           <div className="ms-search-wrap">
             <input
               ref={searchRef}
@@ -179,11 +140,9 @@ const MultiSelect = ({ name, label, options, selected: selectedProp, onChange })
               placeholder="Search..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              aria-label={`Search ${label} options`}
             />
           </div>
 
-          {/* Options list */}
           <ul className="ms-options-list">
             {filteredOptions.length === 0 ? (
               <li className="ms-no-results">No results found</li>
@@ -197,29 +156,22 @@ const MultiSelect = ({ name, label, options, selected: selectedProp, onChange })
                     aria-selected={isSelected}
                     className={`ms-option ${isSelected ? 'ms-option--selected' : ''}`}
                     onClick={() => toggleOption(opt)}
-                    onKeyDown={(e) => e.key === 'Enter' && toggleOption(opt)}
-                    tabIndex={0}
                   >
-                    {/* Checkbox indicator */}
-                    <span className={`ms-checkbox ${isSelected ? 'ms-checkbox--checked' : ''}`} aria-hidden="true">
+                    <span className={`ms-checkbox ${isSelected ? 'ms-checkbox--checked' : ''}`}>
                       {isSelected && <HiCheck className="ms-check-icon" />}
                     </span>
-                    <span className="ms-option-text">{opt}</span>
+                    {/* 🔥 Yahan lambe text ka wrapping hoga */}
+                    <span className="ms-option-text">{opt}</span> 
                   </li>
                 );
               })
             )}
           </ul>
 
-          {/* Footer: count + clear this filter */}
           {hasSelection && (
             <div className="ms-footer">
               <span className="ms-footer-count">{selected.length} selected</span>
-              <button
-                type="button"
-                className="ms-footer-clear"
-                onClick={() => onChange(name, [])}
-              >
+              <button type="button" className="ms-footer-clear" onClick={() => onChange(name, [])}>
                 Clear
               </button>
             </div>
@@ -231,19 +183,20 @@ const MultiSelect = ({ name, label, options, selected: selectedProp, onChange })
 };
 
 /* ═══════════════════════════════════════════════
-   ACTIVE FILTERS BAR - chips summary below grid
+   ACTIVE FILTERS BAR
 ═══════════════════════════════════════════════ */
 const ActiveFiltersBar = ({ filters, filterConfigs, onRemove, onClearAll }) => {
   const activeEntries = filterConfigs.filter(
     (cfg) => Array.isArray(filters[cfg.name]) && filters[cfg.name].length > 0
   );
 
+  // Agar koi active filter nahi hai, toh yeh bar aur Reset button hide ho jayega
   if (activeEntries.length === 0) return null;
 
   return (
-    <div className="afb-bar" role="region" aria-label="Active filters summary">
+    <div className="afb-bar">
       <span className="afb-label">
-        <MdFilterAlt className="afb-label-icon" aria-hidden="true" />
+        <MdFilterAlt className="afb-label-icon" />
         Active Filters:
       </span>
 
@@ -253,35 +206,20 @@ const ActiveFiltersBar = ({ filters, filterConfigs, onRemove, onClearAll }) => {
         const extra       = vals.length > 2 ? ` +${vals.length - 2}` : '';
 
         return (
-          <span
-            key={cfg.name}
-            className="afb-chip"
-            role="group"
-            aria-label={`${cfg.label}: ${vals.join(', ')}`}
-          >
+          <span key={cfg.name} className="afb-chip">
             <span className="afb-chip-key">{cfg.label}</span>
             <span className="afb-chip-val" title={vals.join(', ')}>
               {displayVals}{extra}
             </span>
-            <button
-              type="button"
-              className="afb-chip-x"
-              onClick={() => onRemove(cfg.name)}
-              aria-label={`Remove ${cfg.label} filter`}
-            >
-              ×
-            </button>
+            <button type="button" className="afb-chip-x" onClick={() => onRemove(cfg.name)}>×</button>
           </span>
         );
       })}
 
-      <button
-        type="button"
-        className="afb-clear-all"
-        onClick={onClearAll}
-        aria-label="Clear all filters"
-      >
-        Clear All
+      {/* 🔥 BUTTON RENAMED to "Reset Filters" AND STYLED BETTER */}
+      <button type="button" className="afb-clear-all" onClick={onClearAll}>
+        <HiOutlineRefresh className="afb-clear-icon" />
+        Reset Filters
       </button>
     </div>
   );
@@ -292,29 +230,22 @@ const ActiveFiltersBar = ({ filters, filterConfigs, onRemove, onClearAll }) => {
 ═══════════════════════════════════════════════ */
 const FilterBar = ({ filters, options, onFilterChange, onReset }) => {
 
-  /* Build options list per field */
   const getOptions = (name) => {
     if (name === 'period') return sortPeriods(options.period);
     return options[name] || [];
   };
 
-  /* Remove single filter from Active Bar */
-  const handleRemoveFilter = (name) => {
-    onFilterChange(name, []);
-  };
+  const handleRemoveFilter = (name) => onFilterChange(name, []);
 
   return (
-    <div className="fb-wrapper" role="search" aria-label="Filter options">
-
-      
-
-      {/* Grid of dropdowns */}
+    <div className="fb-wrapper">
       <div className="fb-grid">
         {FILTER_CONFIGS.map((cfg) => (
           <div
             key={cfg.name}
             className="fb-cell"
-            style={{ '--col-span': cfg.colSpan }}
+            // 🔥 NAYA STYLE: flex: "1 1 {width}" aur minWidth: 0 zaroori hai squish karne ke liye
+            style={{ flex: `1 1 ${cfg.width}`, minWidth: 0 }}
           >
             <MultiSelect
               name={cfg.name}
@@ -325,22 +256,8 @@ const FilterBar = ({ filters, options, onFilterChange, onReset }) => {
             />
           </div>
         ))}
-
-        {/* Reset button cell */}
-        <div className="fb-reset-cell">
-          <button
-            type="button"
-            onClick={onReset}
-            className="fb-reset-btn"
-            aria-label="Reset all filters"
-          >
-            <HiOutlineRefresh className="fb-reset-icon" aria-hidden="true" />
-            Reset
-          </button>
-        </div>
       </div>
 
-      {/* Active filters summary bar */}
       <ActiveFiltersBar
         filters={filters}
         filterConfigs={FILTER_CONFIGS}

@@ -46,41 +46,45 @@
 }
 
 /* ────────────────────────────────────────
-   GRID
+   GRID (Forced Single Row, NO Scroll)
 ──────────────────────────────────────── */
 .fb-grid {
-  display: grid;
-  grid-template-columns: repeat(12, 1fr);
-  gap: 10px; /* Thoda gap badhaya taaki borders aapas mein na chipke */
-  align-items: end;
+  display: flex;
+  flex-wrap: nowrap !important;
+  gap: 6px; 
+  align-items: flex-end;
+  width: 100%;
+  position: relative;
+  z-index: 20; 
 }
 
-/* Har ek filter ka distinct box */
 .fb-cell {
-  grid-column: span var(--col-span, 1);
-  min-width: 0;
-  
-  /* 👇 NAYI STYLING: Border aur Background */
-  background: #f8fafc; /* Halka sa slate/blue background */
-  border: 1px solid #cbd5e1; /* Clear border */
-  border-radius: 12px; /* Smooth rounded corners */
-  padding: 6px 10px 10px 10px; /* Andar thodi space (padding) */
-  box-shadow: inset 0 1px 3px rgba(0,0,0,0.02); /* Halka sa andar ki taraf depth */
-  transition: border-color 0.2s, box-shadow 0.2s;
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px; /* Thoda tight kiya */
+  padding: 4px 6px 8px 6px; /* Padding kam ki jagah bachane ke liye */
+  box-shadow: inset 0 1px 3px rgba(0,0,0,0.02);
+  transition: border-color 0.2s;
+  min-width: 0; /* 🔥 CRITICAL: Iske bina flexbox items chote nahi hote */
 }
 
-/* Hover karne par thoda aur highlight hoga */
 .fb-cell:hover {
   border-color: #94a3b8;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.03);
 }
 
-.fb-reset-cell {
-  grid-column: span 1;
-  display: flex;
-  align-items: flex-end;
-  /* Reset button ko baaki filters ki height ke hisaab se align karne ke liye margin */
-  padding-bottom: 10px; 
+/* Label truncation (agar box chota ho jaye toh text ... ban jayega) */
+.ms-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+/* Trigger box text truncation */
+.ms-placeholder, .ms-trigger-left {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* ────────────────────────────────────────
@@ -421,9 +425,11 @@
 
 .ms-option-text {
   flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* 🔥 Text Wrapping Enable kar diya */
+  white-space: normal; 
+  word-wrap: break-word;
+  line-height: 1.4;
+  margin-left: 2px;
 }
 
 /* Dropdown footer */
@@ -470,6 +476,10 @@
   border: 0.5px solid #bfdbfe;
   border-radius: 12px;
   animation: slideDown 0.18s ease;
+  
+  /* 🔥 FIX: Grid se chhota z-index rakha hai */
+  position: relative;
+  z-index: 1; 
 }
 
 @keyframes slideDown {
@@ -546,24 +556,32 @@
 }
 
 /* Clear All */
+/* 🔥 Naya styled Reset Button */
 .afb-clear-all {
-  background: transparent;
-  border: none;
-  color: #ef4444;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #dc2626;
   font-size: 11px;
   font-weight: 700;
   cursor: pointer;
   margin-left: auto;
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  padding: 2px 4px;
-  border-radius: 4px;
-  transition: background 0.12s;
+  padding: 4px 10px;
+  border-radius: 6px;
+  transition: all 0.2s;
   white-space: nowrap;
 }
 
 .afb-clear-all:hover {
-  background: #fee2e2;
+  background: #f87171;
+  color: white;
+  border-color: #ef4444;
+}
+
+.afb-clear-icon {
+  font-size: 14px;
 }
 
 /* ────────────────────────────────────────

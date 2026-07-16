@@ -43,9 +43,6 @@ const applyRLS = (
 // ==============================
 // COMMON Dashboard Filters FUNCTION
 // ==============================
-// ==============================
-// COMMON Dashboard Filters FUNCTION
-// ==============================
 const applyDashboardFilters = (query, conditions, params) => {
     const { bu, years, periods, customers, loa_names, active_inactive, category_type } = query;
 
@@ -189,9 +186,18 @@ exports.getFilterOptions = async (req, res) => {
 };
 
 
-// ==========================================
-// 3. MAIN SUMMARY TABLE (Expand View)
-// ==========================================
+// --- 1. Helper function for SM % Calculation (Correct Formula) ---
+const calculateSM = (rev, cost) => {
+    // Formula: (Revenue - Cost) / Revenue * 100
+    const r = parseFloat(rev) || 0;
+    const c = parseFloat(cost) || 0;
+    
+    if (r === 0) return "0.00"; // Avoid division by zero
+    
+    const margin = ((r - c) / r) * 100;
+    return margin.toFixed(2);
+};
+
 exports.getWbsSummary = async (req, res) => {
     try {
         const { draw, start, length, showAll, type, allowedCustomers } = req.query;
@@ -225,14 +231,25 @@ exports.getWbsSummary = async (req, res) => {
 
         const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
+        // --- MATRIX QUERY ---
         const matrixQuery = `
             SELECT 
                 bu, customer, loa_id, loa_name, cost_revenue, categories, MAX(unique_key) as unique_key, 
-                ${wTArr ? `ROUND(SUM(type_asbl), 2)` : "'-'"} as asbl, 
-                ROUND(SUM(total_ptd), 2) as ptd, 
-                ROUND(SUM(total_oc), 2) as open_commitment, 
-                MAX(total_nc) as non_committed,
-                MAX(cat_asbl_loa) as asbl_loa
+                
+                -- ASBL Logic
+                ${wTArr ? `ROUND(SUM(COALESCE(type_asbl, 0)), 2)` : "'-'"} as asbl, 
+
+                ROUND(SUM(COALESCE(total_ptd, 0)), 2) as ptd, 
+                ROUND(SUM(COALESCE(total_oc, 0)), 2) as open_commitment, 
+                MAX(COALESCE(total_nc, 0)) as non_committed,
+                MAX(COALESCE(cat_asbl_loa, 0)) as asbl_loa,
+
+                -- EAC Calculation
+                ROUND(SUM(COALESCE(total_ptd, 0)) + SUM(COALESCE(total_oc, 0)) + MAX(COALESCE(total_nc, 0)), 2) as eac,
+
+                -- 🔥 FIXED: EAC vs ASBL Calculation (Using COALESCE to prevent NULL)
+                ${wTArr ? `ROUND(SUM(COALESCE(type_asbl, 0)) - (SUM(COALESCE(total_ptd, 0)) + SUM(COALESCE(total_oc, 0)) + MAX(COALESCE(total_nc, 0))), 2)` : "'-'"} as eac_vs_asbl
+
             FROM (
                 SELECT 
                     bu, customer, loa_id, loa_name, cost_revenue, categories, unique_key,
@@ -240,7 +257,7 @@ exports.getWbsSummary = async (req, res) => {
                     MAX(asbl) as type_asbl,
                     SUM(ptd) as total_ptd,
                     SUM(open_commitment_KEUR) as total_oc,
-                    MAX(non_committed) as total_nc,
+                    MAX(non_committed_editable) as total_nc,
                     MAX(asbl_loa) as cat_asbl_loa
                 FROM final_dashboard_table
                 ${whereClause}
@@ -248,34 +265,39 @@ exports.getWbsSummary = async (req, res) => {
             ) as t
             GROUP BY bu, customer, loa_id, loa_name, cost_revenue, categories
             HAVING 1=1 
-            ${showAll === 'false' ? 'AND (ABS(COALESCE(asbl, 0)) > 0.01 OR ABS(ptd) > 0.01 OR ABS(open_commitment) > 0.01)' : ''}
+            ${showAll === 'false' ? 'AND ( (asbl REGEXP "^[0-9.-]+$" AND ABS(asbl) > 0.01) OR ABS(ptd) > 0.01 OR ABS(open_commitment) > 0.01)' : ''}
             ORDER BY loa_name ASC, cost_revenue ASC
         `;
 
         const [dataRows] = await db.query(`${matrixQuery} LIMIT ?, ?`, [...filterParams, ...baseParams, startIdx, limitIdx]);
         const [countRes] = await db.query(`SELECT COUNT(*) as total FROM (${matrixQuery}) as temp`, [...filterParams, ...baseParams]);
 
-        // KPI Query
+        // --- KPI QUERY ---
         const kpiQuery = `
             SELECT 
                 SUM(CASE WHEN cost_revenue = 'Revenue' THEN cat_asbl ELSE 0 END) as asbl_rev,
                 SUM(CASE WHEN cost_revenue = 'Cost' THEN cat_asbl ELSE 0 END) as asbl_cost,
                 SUM(CASE WHEN cost_revenue = 'Revenue' THEN cat_ptd ELSE 0 END) as ptd_rev,
-                SUM(CASE WHEN cost_revenue = 'Cost' THEN cat_ptd ELSE 0 END) as ptd_cost
+                SUM(CASE WHEN cost_revenue = 'Cost' THEN cat_ptd ELSE 0 END) as ptd_cost,
+                SUM(CASE WHEN cost_revenue = 'Revenue' THEN (cat_ptd + cat_oc + cat_nc) ELSE 0 END) as eac_rev,
+                SUM(CASE WHEN cost_revenue = 'Cost' THEN (cat_ptd + cat_oc + cat_nc) ELSE 0 END) as eac_cost
             FROM (
                 SELECT cost_revenue, 
-                       ${wTArr ? 'SUM(type_asbl)' : '0'} as cat_asbl, 
-                       SUM(total_ptd) as cat_ptd
-                FROM (
-                    SELECT cost_revenue, wbs_type, MAX(asbl) as type_asbl, SUM(ptd) as total_ptd
-                    FROM final_dashboard_table
-                    ${whereClause}
-                    GROUP BY loa_id, categories, cost_revenue, wbs_type
-                ) as inner_t
-                GROUP BY cost_revenue
-            ) as final_t
+                       ${wTArr ? `(SELECT COALESCE(SUM(s3.asbl),0) FROM summary s3 WHERE s3.loa_id = f.loa_id AND s3.categories = f.categories AND s3.wbs_type IN (?))` : "0"} as cat_asbl,
+                       SUM(ptd) as cat_ptd,
+                       MAX(total_oc_fixed) as cat_oc,
+                       MAX(non_committed_editable) as cat_nc
+                FROM final_dashboard_table f
+                ${whereClause}
+                GROUP BY loa_id, categories, cost_revenue
+            ) as t
         `;
-        const [kpiRes] = await db.query(kpiQuery, [...filterParams, ...baseParams]);
+        
+        let kpiParams = [];
+        if (wTArr) kpiParams.push(wTArr);
+        kpiParams = [...kpiParams, ...filterParams, ...baseParams];
+
+        const [kpiRes] = await db.query(kpiQuery, kpiParams);
         const k = kpiRes[0] || {};
 
         res.status(200).json({
@@ -286,8 +308,12 @@ exports.getWbsSummary = async (req, res) => {
             kpis: {
                 asbl_rev: wTArr ? Number(k.asbl_rev || 0).toFixed(2) : "-",
                 asbl_cost: wTArr ? Number(k.asbl_cost || 0).toFixed(2) : "-",
+                // 🔥 ASBL SM %: Ab "NA" nahi aayega agar data hai
+                asbl_sm: (wTArr && Number(k.asbl_rev) !== 0) ? calculateSM(k.asbl_rev, k.asbl_cost) : "0.00",
                 ptd_rev: Number(k.ptd_rev || 0).toFixed(2),
-                ptd_cost: Number(k.ptd_cost || 0).toFixed(2)
+                ptd_cost: Number(k.ptd_cost || 0).toFixed(2),
+                ptd_sm: calculateSM(k.ptd_rev, k.ptd_cost),
+                eac_sm: calculateSM(k.eac_rev, k.eac_cost)
             }
         });
     } catch (error) {
@@ -419,9 +445,7 @@ const buildDrilldownConditions = (filters, tableName) => {
     };
 };
 
-// ===========================================
-// Get Drilldown Data (For UI Table)
-// ===========================================
+
 // ===========================================
 // Get Drilldown Data (For UI Table)
 // ===========================================
@@ -726,87 +750,101 @@ exports.getPendingUsers = async (req, res) => {
     }
 };
 
-// 3. Excel Export function for Summmary View
 exports.exportToExcel = async (req, res) => {
     try {
-        const { showAll, collapseView, type, allowedCustomers, ...filters } = req.query;
+        const { showAll, collapseView, type, allowedCustomers } = req.query;
 
-        let conditions = [
-            "categories NOT IN ('Not to considered')",
-            "cost_revenue <> 'NTC'"
-        ];
-        let params = [];
+        // 1. Normalize Filters (Using helper to handle Multi-select)
+        const wTArr = getValArray(req.query.wbs_type);
+        const wEArr = getValArray(req.query.wbs);
+        const wDArr = getValArray(req.query.wbs_description);
 
-        applyRLS(type, allowedCustomers, conditions, params);
-        
-        // 🔥 YAHAN CATEGORY TYPE FILTER APPLY KIYA
+        // 2. Base Conditions
+        let conditions = ["categories NOT IN ('Not to considered')", "cost_revenue <> 'NTC'"];
+        let baseParams = [];
+        applyRLS(type, allowedCustomers, conditions, baseParams);
         applyCategoryTypeFilter(req.query.category_type, conditions);
-        
-        if (showAll === 'false') {
-            conditions.push(`
-                (
-                    asbl < -0.01 OR asbl > 0.01
-                    OR ptd < -0.01 OR ptd > 0.01
-                    OR total_oc_fixed < -0.01 OR total_oc_fixed > 0.01
-                    OR non_committed_editable < -0.01 OR non_committed_editable > 0.01
-                )
-            `);
-        }
 
-        const allowedFilters = ['bu', 'wbs', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period'];
-        allowedFilters.forEach(key => {
-            if (filters[key] && filters[key] !== 'All') {
-                const valArray = filters[key].split(',').map(v => v.trim()).filter(Boolean);
-                if (valArray.length > 0) {
-                    const placeholders = valArray.map(() => '?').join(',');
-                    conditions.push(`${key} IN (${placeholders})`);
-                    params.push(...valArray);
-                }
+        // 3. Whitelist Filters (WHERE clause build-up)
+        let filterParams = [];
+        const dbFilters = ['bu', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period', 'wbs_type', 'wbs_description'];
+        
+        dbFilters.forEach(key => {
+            const vals = getValArray(req.query[key]);
+            if (vals) {
+                conditions.push(`\`${key}\` IN (?)`);
+                filterParams.push(vals);
             }
         });
 
-        const whereClause = " WHERE " + conditions.join(" AND ");
+        // WBS Single Element Filter
+        if (wEArr) {
+            conditions.push(`wbs_element_single IN (?)`);
+            filterParams.push(wEArr);
+        }
 
+        const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+        // 4. Build Export Query (Detailed or Collapse)
         let exportQuery = '';
-
         if (collapseView === 'true') {
             exportQuery = `
-                SELECT
+                SELECT 
                     bu, customer, loa_name, loa_id, cost_revenue,
-                    ROUND(MAX(asbl), 2) AS asbl,
+                    ${wTArr ? 'ROUND(SUM(type_asbl), 2)' : 'NULL'} AS asbl, 
                     ROUND(MAX(asbl_loa), 2) AS asbl_loa,
-                    ROUND(SUM(ptd), 2) AS ptd,
-                    ROUND(MAX(total_oc_fixed), 2) AS open_commitment,
-                    ROUND(MAX(non_committed_editable), 2) AS non_committed,
-                    ROUND(SUM(ptd) + MAX(total_oc_fixed) + MAX(non_committed_editable), 2) AS eac,
-                    ROUND(MAX(asbl) - (SUM(ptd) + MAX(total_oc_fixed) + MAX(non_committed_editable)), 2) AS eac_vs_asbl
-                FROM final_dashboard_table
-                ${whereClause}
+                    ROUND(SUM(total_ptd), 2) AS ptd,
+                    ROUND(SUM(total_oc), 2) AS open_commitment,
+                    MAX(total_nc) AS non_committed,
+                    ROUND(SUM(total_ptd) + SUM(total_oc) + MAX(total_nc), 2) AS eac,
+                    ${wTArr ? 'ROUND(SUM(type_asbl) - (SUM(total_ptd) + SUM(total_oc) + MAX(total_nc)), 2)' : 'NULL'} AS eac_vs_asbl
+                FROM (
+                    SELECT 
+                        bu, customer, loa_name, loa_id, cost_revenue, categories, wbs_type,
+                        MAX(asbl) as type_asbl,
+                        SUM(ptd) as total_ptd,
+                        SUM(open_commitment_KEUR) as total_oc,
+                        MAX(non_committed_editable) as total_nc,
+                        MAX(asbl_loa) as asbl_loa
+                    FROM final_dashboard_table
+                    ${whereClause}
+                    GROUP BY bu, customer, loa_name, loa_id, cost_revenue, categories, wbs_type
+                ) as t
                 GROUP BY bu, customer, loa_name, loa_id, cost_revenue
                 ORDER BY loa_name ASC
             `;
         } else {
             exportQuery = `
-                SELECT
+                SELECT 
                     bu, customer, loa_name, loa_id, cost_revenue, categories,
-                    MAX(asbl) as asbl,
-                    MAX(asbl_loa) as asbl_loa,
-                    SUM(ptd) as ptd,
-                    MAX(total_oc_fixed) as open_commitment,
-                    MAX(non_committed_editable) as non_committed,
-                    (SUM(ptd) + MAX(total_oc_fixed) + MAX(non_committed_editable)) as eac,
-                    (MAX(asbl) - (SUM(ptd) + MAX(total_oc_fixed) + MAX(non_committed_editable))) as eac_vs_asbl
-                FROM final_dashboard_table
-                ${whereClause}
+                    ${wTArr ? 'ROUND(SUM(type_asbl), 2)' : 'NULL'} AS asbl, 
+                    MAX(asbl_loa) AS asbl_loa,
+                    ROUND(SUM(total_ptd), 2) AS ptd,
+                    ROUND(SUM(total_oc), 2) AS open_commitment,
+                    MAX(total_nc) AS non_committed,
+                    ROUND(SUM(total_ptd) + SUM(total_oc) + MAX(total_nc), 2) AS eac,
+                    ${wTArr ? 'ROUND(SUM(type_asbl) - (SUM(total_ptd) + SUM(total_oc) + MAX(total_nc)), 2)' : 'NULL'} AS eac_vs_asbl
+                FROM (
+                    SELECT 
+                        bu, customer, loa_name, loa_id, cost_revenue, categories, wbs_type,
+                        MAX(asbl) as type_asbl,
+                        SUM(ptd) as total_ptd,
+                        SUM(open_commitment_KEUR) as total_oc,
+                        MAX(non_committed_editable) as total_nc,
+                        MAX(asbl_loa) as asbl_loa
+                    FROM final_dashboard_table
+                    ${whereClause}
+                    GROUP BY bu, customer, loa_name, loa_id, cost_revenue, categories, wbs_type
+                ) as t
                 GROUP BY bu, customer, loa_name, loa_id, cost_revenue, categories
-                HAVING
-                    MAX(asbl) < -0.01 OR MAX(asbl) > 0.01
-                    OR SUM(ptd) < -0.01 OR SUM(ptd) > 0.01
-                    OR MAX(total_oc_fixed) < -0.01 OR MAX(total_oc_fixed) > 0.01
-                    OR MAX(non_committed_editable) < -0.01 OR MAX(non_committed_editable) > 0.01
+                HAVING 1=1
+                ${showAll === 'false' ? 'AND (ABS(COALESCE(asbl, 0)) > 0.01 OR ABS(ptd) > 0.01 OR ABS(open_commitment) > 0.01)' : ''}
                 ORDER BY loa_name ASC, categories ASC
             `;
         }
+
+        // 5. Excel Generation
+        const [rows] = await db.query(exportQuery, [...filterParams, ...baseParams]);
 
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', `attachment; filename=Summary_Export_${new Date().getTime()}.xlsx`);
@@ -814,38 +852,42 @@ exports.exportToExcel = async (req, res) => {
         const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({ stream: res });
         const worksheet = workbook.addWorksheet('Matrix Data');
         
-        if (collapseView === 'true') {
-            worksheet.columns = [
-                { header: 'BU', key: 'bu', width: 10 }, { header: 'Customer', key: 'customer', width: 25 },
-                { header: 'LOA Name', key: 'loa_name', width: 35 }, { header: 'LOA ID', key: 'loa_id', width: 15 },
-                { header: 'Cost/Revenue', key: 'cost_revenue', width: 15 }, { header: 'ASBL', key: 'asbl', width: 15 },
-                { header: 'ASBL LOA', key: 'asbl_loa', width: 15 }, { header: 'PTD', key: 'ptd', width: 15 },
-                { header: 'Open Commitment', key: 'open_commitment', width: 15 }, { header: 'Non Committed', key: 'non_committed', width: 15 },
-                { header: 'EAC', key: 'eac', width: 15 }, { header: 'EAC vs ASBL', key: 'eac_vs_asbl', width: 15 }
-            ];
-        } else {
-            worksheet.columns = [
-                { header: 'BU', key: 'bu', width: 10 }, { header: 'Customer', key: 'customer', width: 25 },
-                { header: 'LOA Name', key: 'loa_name', width: 35 }, { header: 'LOA ID', key: 'loa_id', width: 15 },
-                { header: 'Cost/Revenue', key: 'cost_revenue', width: 15 }, { header: 'Category', key: 'categories', width: 25 },
-                { header: 'ASBL', key: 'asbl', width: 15 }, { header: 'ASBL LOA', key: 'asbl_loa', width: 15 },
-                { header: 'PTD', key: 'ptd', width: 15 }, { header: 'Open Commitment', key: 'open_commitment', width: 15 },
-                { header: 'Non Committed', key: 'non_committed', width: 15 }, { header: 'EAC', key: 'eac', width: 15 },
-                { header: 'EAC vs ASBL', key: 'eac_vs_asbl', width: 15 }
-            ];
-        }
+        // Define Columns
+        const cols = [
+            { header: 'BU', key: 'bu', width: 12 },
+            { header: 'Customer', key: 'customer', width: 25 },
+            { header: 'LOA Name', key: 'loa_name', width: 40 },
+            { header: 'LOA ID', key: 'loa_id', width: 15 },
+            { header: 'Cost/Revenue', key: 'cost_revenue', width: 15 }
+        ];
+        if (collapseView !== 'true') cols.push({ header: 'Category', key: 'categories', width: 25 });
+        cols.push(
+            { header: 'ASBL', key: 'asbl', width: 15 },
+            { header: 'ASBL LOA', key: 'asbl_loa', width: 15 },
+            { header: 'PTD', key: 'ptd', width: 15 },
+            { header: 'Open Commitment', key: 'open_commitment', width: 15 },
+            { header: 'Non Committed', key: 'non_committed', width: 15 },
+            { header: 'EAC', key: 'eac', width: 15 },
+            { header: 'EAC vs ASBL', key: 'eac_vs_asbl', width: 15 }
+        );
+        worksheet.columns = cols;
 
-        const [rows] = await db.query(exportQuery, params);
-
+        // Add Data Rows
         rows.forEach(row => {
-            row.asbl = Number(row.asbl || 0); row.asbl_loa = Number(row.asbl_loa || 0);
-            row.ptd = Number(row.ptd || 0); row.open_commitment = Number(row.open_commitment || 0);
-            row.non_committed = Number(row.non_committed || 0); row.eac = Number(row.eac || 0);
-            row.eac_vs_asbl = Number(row.eac_vs_asbl || 0);
-            worksheet.addRow(row).commit();
+            const cleanRow = { ...row };
+            // Format numbers, handle NULL/Dash logic
+            ['asbl', 'asbl_loa', 'ptd', 'open_commitment', 'non_committed', 'eac', 'eac_vs_asbl'].forEach(k => {
+                if (cleanRow[k] === null || cleanRow[k] === undefined) {
+                    cleanRow[k] = (k === 'asbl' || k === 'eac_vs_asbl') ? '-' : 0;
+                } else {
+                    cleanRow[k] = Number(cleanRow[k]);
+                }
+            });
+            worksheet.addRow(cleanRow).commit();
         });
         
         await workbook.commit();
+
     } catch (error) {
         console.error("Export Error:", error);
         res.status(500).send("Export failed: " + error.message);
@@ -1118,36 +1160,34 @@ exports.getDashboardFilters = async (req, res) => {
     }
 };
 
-// Analytics ke liye updated logic (Is logic ko dhyan se dekhiye, ye ASBL ko double count nahi karega)
-const getDashboardDataSQL = (groupByCol, showAsbl) => {
+const getDashboardAnalyticsSQL = (groupByCol, showAsbl) => {
     return `
-        SELECT
+        SELECT 
             ${groupByCol},
-            ${showAsbl ? 'ROUND(SUM(cat_asbl), 2)' : "0.00"} AS asbl,
-            ROUND(SUM(cat_ptd), 2) AS ptd,
-            ROUND(SUM(cat_oc), 2) AS open_commitment,
-            ROUND(SUM(cat_nc), 2) AS non_committed,
-            ROUND(SUM(cat_ptd + cat_oc + cat_nc), 2) AS eac,
-            ROUND(${showAsbl ? 'SUM(cat_asbl)' : '0.00'} - SUM(cat_ptd + cat_oc + cat_nc), 2) AS eac_vs_asbl
+            ${showAsbl ? 'ROUND(SUM(type_asbl), 2)' : "'0.00'"} as asbl,
+            ROUND(SUM(type_ptd), 2) as ptd,
+            ROUND(SUM(type_ptd + type_oc + type_nc), 2) as eac,
+            ROUND(SUM(type_oc), 2) as open_commitment,
+            ROUND(SUM(type_nc), 2) as non_committed,
+            ROUND(${showAsbl ? 'SUM(type_asbl)' : '0.00'} - SUM(type_ptd + type_oc + type_nc), 2) as eac_vs_asbl
         FROM (
-            SELECT
-                ${groupByCol}, loa_id, categories,
-                MAX(asbl) as cat_asbl,
-                -- 🔥 Placeholder (?) use kiya hai params ke liye
-                SUM(CASE 
-                    WHEN (? = 'All' OR ? = '' OR wbs_type = ?) 
-                    THEN ptd ELSE 0 END) as cat_ptd,
-                MAX(total_oc_fixed) as cat_oc,
-                MAX(non_committed_editable) as cat_nc
+            SELECT 
+                ${groupByCol}, loa_id, categories, wbs_type,
+                MAX(asbl) as type_asbl,
+                SUM(ptd) as type_ptd,
+                MAX(total_oc_fixed) as type_oc,
+                MAX(non_committed_editable) as type_nc
             FROM final_dashboard_table
             {{WHERE_CLAUSE}}
-            GROUP BY ${groupByCol}, loa_id, categories
-        ) inner_table
+            GROUP BY ${groupByCol}, loa_id, categories, wbs_type
+        ) as t
+        WHERE (? = 'All' OR ? = '' OR wbs_type = ?)
         GROUP BY ${groupByCol}
         ORDER BY ${groupByCol} ASC
     `;
 };
 
+// 1. Business Unit Analytics
 exports.getBuAnalytics = async (req, res) => {
     try {
         const { type, allowedCustomers } = req.query;
@@ -1156,34 +1196,19 @@ exports.getBuAnalytics = async (req, res) => {
 
         let conditions = ["categories NOT IN ('Not to considered')", "cost_revenue = 'Cost'"];
         let baseParams = [];
-        
         applyRLS(type, allowedCustomers, conditions, baseParams);
-        applyDashboardFilters(req.query, conditions, baseParams); // 🔥 BU filter yahan append hoga
+        applyDashboardFilters(req.query, conditions, baseParams);
         
         const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-        
-        const sql = `
-            SELECT bu, 
-                   ${showAsbl ? 'ROUND(SUM(cat_asbl), 2)' : "'0.00'"} as asbl,
-                   ROUND(SUM(cat_ptd), 2) as ptd,
-                   ROUND(SUM(cat_ptd + cat_oc + cat_nc), 2) as eac
-            FROM (
-                SELECT bu, loa_id, categories,
-                       MAX(asbl) as cat_asbl,
-                       SUM(CASE WHEN (? = 'All' OR ? = '' OR wbs_type = ?) THEN ptd ELSE 0 END) as cat_ptd,
-                       MAX(total_oc_fixed) as cat_oc,
-                       MAX(non_committed_editable) as cat_nc
-                FROM final_dashboard_table
-                ${whereSql}
-                GROUP BY bu, loa_id, categories
-            ) t GROUP BY bu`;
+        const sql = getDashboardAnalyticsSQL('bu', showAsbl).replace('{{WHERE_CLAUSE}}', whereSql);
 
-        const [rows] = await db.query(sql, [wT, wT, wT, ...baseParams]);
+        // Params: Order is baseParams (for inner) then wT (for outer WHERE)
+        const [rows] = await db.query(sql, [...baseParams, wT, wT, wT]);
         res.status(200).json(rows);
     } catch (error) { res.status(500).json({ error: error.message }); }
 };
 
-// --- LOA View Analytics ---
+// 2. LOA Name Analytics
 exports.getLoaAnalytics = async (req, res) => {
     try {
         const { type, allowedCustomers, showAll } = req.query;
@@ -1197,24 +1222,12 @@ exports.getLoaAnalytics = async (req, res) => {
         applyDashboardFilters(req.query, conditions, baseParams);
         
         const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+        const rawSql = getDashboardAnalyticsSQL('loa_name', showAsbl).replace('{{WHERE_CLAUSE}}', whereSql);
         
-        const sql = `
-            SELECT loa_name, 
-                   ${showAsbl ? 'ROUND(SUM(cat_asbl), 2)' : "'0.00'"} as asbl,
-                   ROUND(SUM(cat_ptd), 2) as ptd,
-                   ROUND(SUM(cat_ptd + cat_oc + cat_nc), 2) as eac
-            FROM (
-                SELECT loa_name, loa_id, categories,
-                       MAX(asbl) as cat_asbl,
-                       SUM(CASE WHEN (? = 'All' OR ? = '' OR wbs_type = ?) THEN ptd ELSE 0 END) as cat_ptd,
-                       MAX(total_oc_fixed) as cat_oc,
-                       MAX(non_committed_editable) as cat_nc
-                FROM final_dashboard_table
-                ${whereSql}
-                GROUP BY loa_name, loa_id, categories
-            ) t GROUP BY loa_name ORDER BY asbl DESC ${limitSql}`;
+        // Wrapping to apply final sorting and limit
+        const sql = `SELECT * FROM (${rawSql}) final_t ORDER BY asbl DESC ${limitSql}`;
 
-        const [rows] = await db.query(sql, [wT, wT, wT, ...baseParams]);
+        const [rows] = await db.query(sql, [...baseParams, wT, wT, wT]);
         res.status(200).json(rows);
     } catch (error) { res.status(500).json({ error: error.message }); }
 };
@@ -1309,34 +1322,13 @@ exports.getFinalDashboardTable = async (req, res) => {
         applyDashboardFilters(req.query, conditions, baseParams);
         
         const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+        const sql = getDashboardAnalyticsSQL('bu', showAsbl).replace('{{WHERE_CLAUSE}}', whereSql);
 
-        const sql = `
-            SELECT bu, 
-                   ${showAsbl ? 'ROUND(SUM(cat_asbl), 2)' : "'0.00'"} as asbl,
-                   ROUND(SUM(cat_asbl_loa), 2) as asbl_loa,
-                   ROUND(SUM(cat_ptd), 2) as ptd,
-                   ROUND(SUM(cat_oc), 2) as open_commitment,
-                   ROUND(SUM(cat_nc), 2) as non_committed,
-                   ROUND(SUM(cat_ptd + cat_oc + cat_nc), 2) as eac,
-                   ROUND(${showAsbl ? 'SUM(cat_asbl)' : '0.00'} - SUM(cat_ptd + cat_oc + cat_nc), 2) as eac_vs_asbl
-            FROM (
-                SELECT bu, loa_id, categories,
-                       MAX(asbl) as cat_asbl,
-                       MAX(asbl_loa) as cat_asbl_loa,
-                       SUM(CASE WHEN (? = 'All' OR ? = '' OR wbs_type = ?) THEN ptd ELSE 0 END) as cat_ptd,
-                       MAX(total_oc_fixed) as cat_oc,
-                       MAX(non_committed_editable) as cat_nc
-                FROM final_dashboard_table
-                ${whereSql}
-                GROUP BY bu, loa_id, categories
-            ) t GROUP BY bu ORDER BY bu ASC`;
-
-        const [rows] = await db.query(sql, [wT, wT, wT, ...baseParams]);
+        const [rows] = await db.query(sql, [...baseParams, wT, wT, wT]);
         res.json(rows);
     } catch (error) { res.status(500).json({ error: error.message }); }
 };
 
-// --- 6. NEGATIVE LOA TABLE ---
 exports.getNegativeLOATable = async (req, res) => {
     try {
         const { type, allowedCustomers } = req.query;
@@ -1352,25 +1344,25 @@ exports.getNegativeLOATable = async (req, res) => {
 
         const sql = `
             SELECT bu, customer, loa_id, loa_name,
-                   ${showAsbl ? 'ROUND(SUM(cat_asbl), 2)' : "'0.00'"} as asbl,
-                   ROUND(SUM(cat_asbl_loa), 2) as asbl_loa,
-                   ROUND(SUM(cat_ptd), 2) as ptd,
-                   ROUND(SUM(cat_oc), 2) as open_commitment,
-                   ROUND(SUM(cat_nc), 2) as non_committed,
-                   ROUND(SUM(cat_ptd + cat_oc + cat_nc), 2) as eac,
-                   ROUND(${showAsbl ? 'SUM(cat_asbl)' : '0.00'} - SUM(cat_ptd + cat_oc + cat_nc), 2) as eac_vs_asbl
+                   ${showAsbl ? 'ROUND(SUM(type_asbl), 2)' : "'0.00'"} as asbl,
+                   ROUND(SUM(type_asbl_loa), 2) as asbl_loa,
+                   ROUND(SUM(type_ptd), 2) as ptd,
+                   ROUND(SUM(type_oc), 2) as open_commitment,
+                   ROUND(SUM(type_nc), 2) as non_committed,
+                   ROUND(SUM(type_ptd + type_oc + type_nc), 2) as eac,
+                   ROUND(${showAsbl ? 'SUM(type_asbl)' : '0.00'} - SUM(type_ptd + type_oc + type_nc), 2) as eac_vs_asbl
             FROM (
-                SELECT bu, customer, loa_id, loa_name, categories,
-                       MAX(asbl) as cat_asbl, MAX(asbl_loa) as cat_asbl_loa,
-                       SUM(CASE WHEN (? = 'All' OR ? = '' OR wbs_type = ?) THEN ptd ELSE 0 END) as cat_ptd,
-                       MAX(total_oc_fixed) as cat_oc, MAX(non_committed_editable) as cat_nc
+                SELECT bu, customer, loa_id, loa_name, categories, wbs_type,
+                       MAX(asbl) as type_asbl, MAX(asbl_loa) as type_asbl_loa,
+                       SUM(ptd) as type_ptd, MAX(total_oc_fixed) as type_oc, MAX(non_committed_editable) as type_nc
                 FROM final_dashboard_table ${whereSql}
-                GROUP BY bu, customer, loa_id, loa_name, categories
+                GROUP BY bu, customer, loa_id, loa_name, categories, wbs_type
             ) t 
+            WHERE (? = 'All' OR ? = '' OR wbs_type = ?)
             GROUP BY bu, customer, loa_id, loa_name
             HAVING eac_vs_asbl < 0 ORDER BY eac_vs_asbl ASC`;
 
-        const [rows] = await db.query(sql, [wT, wT, wT, ...baseParams]);
+        const [rows] = await db.query(sql, [...baseParams, wT, wT, wT]);
         res.json(rows);
     } catch (error) { res.status(500).json({ error: error.message }); }
 };
@@ -1404,7 +1396,6 @@ const generateTableQuery = (groupByCols, orderBySql, showValues, whereSql) => `
     ${orderBySql}
 `;
 
-// --- 5. COST VIEW (LOA DETAILED) ---
 exports.getCostViewTable = async (req, res) => {
     try {
         const { type, allowedCustomers } = req.query;
@@ -1419,31 +1410,28 @@ exports.getCostViewTable = async (req, res) => {
         const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
         const sql = `
             SELECT bu, customer, loa_id, loa_name,
-                   ${showAsbl ? 'ROUND(SUM(cat_asbl), 2)' : "'0.00'"} as asbl,
-                   ROUND(SUM(cat_asbl_loa), 2) as asbl_loa,
-                   ROUND(SUM(cat_ptd), 2) as ptd,
-                   ROUND(SUM(cat_oc), 2) as open_commitment,
-                   ROUND(SUM(cat_nc), 2) as non_committed,
-                   ROUND(SUM(cat_ptd + cat_oc + cat_nc), 2) as eac,
-                   ROUND(${showAsbl ? 'SUM(cat_asbl)' : '0.00'} - SUM(cat_ptd + cat_oc + cat_nc), 2) as eac_vs_asbl
+                   ${showAsbl ? 'ROUND(SUM(type_asbl), 2)' : "'0.00'"} as asbl,
+                   ROUND(SUM(type_asbl_loa), 2) as asbl_loa,
+                   ROUND(SUM(type_ptd), 2) as ptd,
+                   ROUND(SUM(type_oc), 2) as open_commitment,
+                   ROUND(SUM(type_nc), 2) as non_committed,
+                   ROUND(SUM(type_ptd + type_oc + type_nc), 2) as eac,
+                   ROUND(${showAsbl ? 'SUM(type_asbl)' : '0.00'} - SUM(type_ptd + type_oc + type_nc), 2) as eac_vs_asbl
             FROM (
-                SELECT bu, customer, loa_id, loa_name, categories,
-                       MAX(asbl) as cat_asbl,
-                       MAX(asbl_loa) as cat_asbl_loa,
-                       SUM(CASE WHEN (? = 'All' OR ? = '' OR wbs_type = ?) THEN ptd ELSE 0 END) as cat_ptd,
-                       MAX(total_oc_fixed) as cat_oc,
-                       MAX(non_committed_editable) as cat_nc
-                FROM final_dashboard_table
-                ${whereSql}
-                GROUP BY bu, customer, loa_id, loa_name, categories
-            ) t GROUP BY bu, customer, loa_id, loa_name ORDER BY asbl DESC`;
+                SELECT bu, customer, loa_id, loa_name, categories, wbs_type,
+                       MAX(asbl) as type_asbl, MAX(asbl_loa) as type_asbl_loa,
+                       SUM(ptd) as type_ptd, MAX(total_oc_fixed) as type_oc, MAX(non_committed_editable) as type_nc
+                FROM final_dashboard_table ${whereSql}
+                GROUP BY bu, customer, loa_id, loa_name, categories, wbs_type
+            ) t 
+            WHERE (? = 'All' OR ? = '' OR wbs_type = ?)
+            GROUP BY bu, customer, loa_id, loa_name ORDER BY asbl DESC`;
 
-        const [rows] = await db.query(sql, [wT, wT, wT, ...baseParams]);
+        const [rows] = await db.query(sql, [...baseParams, wT, wT, wT]);
         res.json(rows);
     } catch (error) { res.status(500).json({ error: error.message }); }
 };
 
-// --- 4. CUSTOMER ONLY VIEW ---
 exports.getCustomerViewTable = async (req, res) => {
     try {
         const { type, allowedCustomers } = req.query;
@@ -1458,28 +1446,28 @@ exports.getCustomerViewTable = async (req, res) => {
         const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
         const sql = `
             SELECT customer,
-                   ${showAsbl ? 'ROUND(SUM(cat_asbl), 2)' : "'0.00'"} as asbl,
-                   ROUND(SUM(cat_asbl_loa), 2) as asbl_loa,
-                   ROUND(SUM(cat_ptd), 2) as ptd,
-                   ROUND(SUM(cat_oc), 2) as open_commitment,
-                   ROUND(SUM(cat_nc), 2) as non_committed,
-                   ROUND(SUM(cat_ptd + cat_oc + cat_nc), 2) as eac,
-                   ROUND(${showAsbl ? 'SUM(cat_asbl)' : '0.00'} - SUM(cat_ptd + cat_oc + cat_nc), 2) as eac_vs_asbl
+                   ${showAsbl ? 'ROUND(SUM(type_asbl), 2)' : "'0.00'"} as asbl,
+                   ROUND(SUM(type_asbl_loa), 2) as asbl_loa,
+                   ROUND(SUM(type_ptd), 2) as ptd,
+                   ROUND(SUM(type_oc), 2) as open_commitment,
+                   ROUND(SUM(type_nc), 2) as non_committed,
+                   ROUND(SUM(type_ptd + type_oc + type_nc), 2) as eac,
+                   ROUND(${showAsbl ? 'SUM(type_asbl)' : '0.00'} - SUM(type_ptd + type_oc + type_nc), 2) as eac_vs_asbl
             FROM (
-                SELECT customer, loa_id, categories,
-                       MAX(asbl) as cat_asbl, MAX(asbl_loa) as cat_asbl_loa,
-                       SUM(CASE WHEN (? = 'All' OR ? = '' OR wbs_type = ?) THEN ptd ELSE 0 END) as cat_ptd,
-                       MAX(total_oc_fixed) as cat_oc, MAX(non_committed_editable) as cat_nc
+                SELECT customer, loa_id, categories, wbs_type,
+                       MAX(asbl) as type_asbl, MAX(asbl_loa) as type_asbl_loa,
+                       SUM(ptd) as type_ptd, MAX(total_oc_fixed) as type_oc, MAX(non_committed_editable) as type_nc
                 FROM final_dashboard_table ${whereSql}
-                GROUP BY customer, loa_id, categories
-            ) t GROUP BY customer ORDER BY asbl DESC`;
+                GROUP BY customer, loa_id, categories, wbs_type
+            ) t 
+            WHERE (? = 'All' OR ? = '' OR wbs_type = ?)
+            GROUP BY customer ORDER BY asbl DESC`;
 
-        const [rows] = await db.query(sql, [wT, wT, wT, ...baseParams]);
+        const [rows] = await db.query(sql, [...baseParams, wT, wT, wT]);
         res.json(rows);
     } catch (error) { res.status(500).json({ error: error.message }); }
 };
 
-// --- 1. BU + CUSTOMER VIEW ---
 exports.getBuCustomerViewTable = async (req, res) => {
     try {
         const { type, allowedCustomers } = req.query;
@@ -1494,28 +1482,28 @@ exports.getBuCustomerViewTable = async (req, res) => {
         const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
         const sql = `
             SELECT bu, customer,
-                   ${showAsbl ? 'ROUND(SUM(cat_asbl), 2)' : "'0.00'"} as asbl,
-                   ROUND(SUM(cat_asbl_loa), 2) as asbl_loa,
-                   ROUND(SUM(cat_ptd), 2) as ptd,
-                   ROUND(SUM(cat_oc), 2) as open_commitment,
-                   ROUND(SUM(cat_nc), 2) as non_committed,
-                   ROUND(SUM(cat_ptd + cat_oc + cat_nc), 2) as eac,
-                   ROUND(${showAsbl ? 'SUM(cat_asbl)' : '0.00'} - SUM(cat_ptd + cat_oc + cat_nc), 2) as eac_vs_asbl
+                   ${showAsbl ? 'ROUND(SUM(type_asbl), 2)' : "'0.00'"} as asbl,
+                   ROUND(SUM(type_asbl_loa), 2) as asbl_loa,
+                   ROUND(SUM(type_ptd), 2) as ptd,
+                   ROUND(SUM(type_oc), 2) as open_commitment,
+                   ROUND(SUM(type_nc), 2) as non_committed,
+                   ROUND(SUM(type_ptd + type_oc + type_nc), 2) as eac,
+                   ROUND(${showAsbl ? 'SUM(type_asbl)' : '0.00'} - SUM(type_ptd + type_oc + type_nc), 2) as eac_vs_asbl
             FROM (
-                SELECT bu, customer, loa_id, categories,
-                       MAX(asbl) as cat_asbl, MAX(asbl_loa) as cat_asbl_loa,
-                       SUM(CASE WHEN (? = 'All' OR ? = '' OR wbs_type = ?) THEN ptd ELSE 0 END) as cat_ptd,
-                       MAX(total_oc_fixed) as cat_oc, MAX(non_committed_editable) as cat_nc
+                SELECT bu, customer, loa_id, categories, wbs_type,
+                       MAX(asbl) as type_asbl, MAX(asbl_loa) as type_asbl_loa,
+                       SUM(ptd) as type_ptd, MAX(total_oc_fixed) as type_oc, MAX(non_committed_editable) as type_nc
                 FROM final_dashboard_table ${whereSql}
-                GROUP BY bu, customer, loa_id, categories
-            ) t GROUP BY bu, customer ORDER BY bu ASC`;
+                GROUP BY bu, customer, loa_id, categories, wbs_type
+            ) t 
+            WHERE (? = 'All' OR ? = '' OR wbs_type = ?)
+            GROUP BY bu, customer ORDER BY bu ASC, asbl DESC`;
 
-        const [rows] = await db.query(sql, [wT, wT, wT, ...baseParams]);
+        const [rows] = await db.query(sql, [...baseParams, wT, wT, wT]);
         res.json(rows);
     } catch (error) { res.status(500).json({ error: error.message }); }
 };
 
-// --- 2. CUSTOMER + BU VIEW ---
 exports.getCustomerBuViewTable = async (req, res) => {
     try {
         const { type, allowedCustomers } = req.query;
@@ -1530,28 +1518,28 @@ exports.getCustomerBuViewTable = async (req, res) => {
         const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
         const sql = `
             SELECT customer, bu,
-                   ${showAsbl ? 'ROUND(SUM(cat_asbl), 2)' : "'0.00'"} as asbl,
-                   ROUND(SUM(cat_asbl_loa), 2) as asbl_loa,
-                   ROUND(SUM(cat_ptd), 2) as ptd,
-                   ROUND(SUM(cat_oc), 2) as open_commitment,
-                   ROUND(SUM(cat_nc), 2) as non_committed,
-                   ROUND(SUM(cat_ptd + cat_oc + cat_nc), 2) as eac,
-                   ROUND(${showAsbl ? 'SUM(cat_asbl)' : '0.00'} - SUM(cat_ptd + cat_oc + cat_nc), 2) as eac_vs_asbl
+                   ${showAsbl ? 'ROUND(SUM(type_asbl), 2)' : "'0.00'"} as asbl,
+                   ROUND(SUM(type_asbl_loa), 2) as asbl_loa,
+                   ROUND(SUM(type_ptd), 2) as ptd,
+                   ROUND(SUM(type_oc), 2) as open_commitment,
+                   ROUND(SUM(type_nc), 2) as non_committed,
+                   ROUND(SUM(type_ptd + type_oc + type_nc), 2) as eac,
+                   ROUND(${showAsbl ? 'SUM(type_asbl)' : '0.00'} - SUM(type_ptd + type_oc + type_nc), 2) as eac_vs_asbl
             FROM (
-                SELECT customer, bu, loa_id, categories,
-                       MAX(asbl) as cat_asbl, MAX(asbl_loa) as cat_asbl_loa,
-                       SUM(CASE WHEN (? = 'All' OR ? = '' OR wbs_type = ?) THEN ptd ELSE 0 END) as cat_ptd,
-                       MAX(total_oc_fixed) as cat_oc, MAX(non_committed_editable) as cat_nc
+                SELECT customer, bu, loa_id, categories, wbs_type,
+                       MAX(asbl) as type_asbl, MAX(asbl_loa) as type_asbl_loa,
+                       SUM(ptd) as type_ptd, MAX(total_oc_fixed) as type_oc, MAX(non_committed_editable) as type_nc
                 FROM final_dashboard_table ${whereSql}
-                GROUP BY customer, bu, loa_id, categories
-            ) t GROUP BY customer, bu ORDER BY customer ASC`;
+                GROUP BY customer, bu, loa_id, categories, wbs_type
+            ) t 
+            WHERE (? = 'All' OR ? = '' OR wbs_type = ?)
+            GROUP BY customer, bu ORDER BY customer ASC, asbl DESC`;
 
-        const [rows] = await db.query(sql, [wT, wT, wT, ...baseParams]);
+        const [rows] = await db.query(sql, [...baseParams, wT, wT, wT]);
         res.json(rows);
     } catch (error) { res.status(500).json({ error: error.message }); }
 };
 
-// --- 3. CUSTOMER + BU + LOA VIEW ---
 exports.getCustomerBuLoaViewTable = async (req, res) => {
     try {
         const { type, allowedCustomers } = req.query;
@@ -1566,23 +1554,24 @@ exports.getCustomerBuLoaViewTable = async (req, res) => {
         const whereSql = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
         const sql = `
             SELECT customer, bu, loa_id, loa_name,
-                   ${showAsbl ? 'ROUND(SUM(cat_asbl), 2)' : "'0.00'"} as asbl,
-                   ROUND(SUM(cat_asbl_loa), 2) as asbl_loa,
-                   ROUND(SUM(cat_ptd), 2) as ptd,
-                   ROUND(SUM(cat_oc), 2) as open_commitment,
-                   ROUND(SUM(cat_nc), 2) as non_committed,
-                   ROUND(SUM(cat_ptd + cat_oc + cat_nc), 2) as eac,
-                   ROUND(${showAsbl ? 'SUM(cat_asbl)' : '0.00'} - SUM(cat_ptd + cat_oc + cat_nc), 2) as eac_vs_asbl
+                   ${showAsbl ? 'ROUND(SUM(type_asbl), 2)' : "'0.00'"} as asbl,
+                   ROUND(SUM(type_asbl_loa), 2) as asbl_loa,
+                   ROUND(SUM(type_ptd), 2) as ptd,
+                   ROUND(SUM(type_oc), 2) as open_commitment,
+                   ROUND(SUM(type_nc), 2) as non_committed,
+                   ROUND(SUM(type_ptd + type_oc + type_nc), 2) as eac,
+                   ROUND(${showAsbl ? 'SUM(type_asbl)' : '0.00'} - SUM(type_ptd + type_oc + type_nc), 2) as eac_vs_asbl
             FROM (
-                SELECT customer, bu, loa_id, loa_name, categories,
-                       MAX(asbl) as cat_asbl, MAX(asbl_loa) as cat_asbl_loa,
-                       SUM(CASE WHEN (? = 'All' OR ? = '' OR wbs_type = ?) THEN ptd ELSE 0 END) as cat_ptd,
-                       MAX(total_oc_fixed) as cat_oc, MAX(non_committed_editable) as cat_nc
+                SELECT customer, bu, loa_id, loa_name, categories, wbs_type,
+                       MAX(asbl) as type_asbl, MAX(asbl_loa) as type_asbl_loa,
+                       SUM(ptd) as type_ptd, MAX(total_oc_fixed) as type_oc, MAX(non_committed_editable) as type_nc
                 FROM final_dashboard_table ${whereSql}
-                GROUP BY customer, bu, loa_id, loa_name, categories
-            ) t GROUP BY customer, bu, loa_id, loa_name ORDER BY customer ASC`;
+                GROUP BY customer, bu, loa_id, loa_name, categories, wbs_type
+            ) t 
+            WHERE (? = 'All' OR ? = '' OR wbs_type = ?)
+            GROUP BY customer, bu, loa_id, loa_name ORDER BY customer ASC`;
 
-        const [rows] = await db.query(sql, [wT, wT, wT, ...baseParams]);
+        const [rows] = await db.query(sql, [...baseParams, wT, wT, wT]);
         res.json(rows);
     } catch (error) { res.status(500).json({ error: error.message }); }
 };
