@@ -9,16 +9,16 @@ import './FilterBar.css';
    colSpan = how many columns in 12-col grid
 ───────────────────────────────────────── */
 const FILTER_CONFIGS = [
-  { label: 'Category Type',   name: 'category_type',   colSpan: 1 },
-  { label: 'BU',              name: 'bu',              colSpan: 1 },
-  { label: 'Customer',        name: 'customer',        colSpan: 2 },
-  { label: 'LOA ID',          name: 'loa_id',          colSpan: 1 },
-  { label: 'LOA Name',        name: 'loa_name',        colSpan: 2 },
-  { label: 'WBS Type',        name: 'wbs_type',        colSpan: 1 },
-  { label: 'WBS',             name: 'wbs',             colSpan: 2 },
-  { label: 'WBS Description', name: 'wbs_description', colSpan: 2 },
-  { label: 'Active/Inactive', name: 'active_inactive', colSpan: 1 },
-  { label: 'Period',          name: 'period',          colSpan: 1 },
+  { label: 'BU',              name: 'bu',              width: '120px' },
+  { label: 'Customer',        name: 'customer',        width: '250px' },
+  { label: 'LOA ID',          name: 'loa_id',          width: '130px' },
+  { label: 'LOA Name',        name: 'loa_name',        width: '300px' },
+  { label: 'WBS Type',        name: 'wbs_type',        width: '140px' },
+  { label: 'WBS',             name: 'wbs',             width: '300px' },
+  { label: 'WBS Description', name: 'wbs_description', width: '300px' },
+  { label: 'Period',          name: 'period',          width: '110px' },
+  { label: 'Active/Inactive', name: 'active_inactive', width: '150px' },
+  { label: 'Category Type',   name: 'category_type',   width: '170px' }
 ];
 
 /* ─────────────────────────────────────────
@@ -306,11 +306,7 @@ const FilterBar = ({ filters, options, onFilterChange, onReset }) => {
   return (
     <div className="fb-wrapper" role="search" aria-label="Filter options">
 
-      {/* Header row */}
-      <div className="fb-header">
-        <HiOutlineFilter className="fb-header-icon" aria-hidden="true" />
-        <span className="fb-header-title">Filters</span>
-      </div>
+      
 
       {/* Grid of dropdowns */}
       <div className="fb-grid">

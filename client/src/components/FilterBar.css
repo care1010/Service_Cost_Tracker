@@ -34,6 +34,17 @@
   letter-spacing: 0.08em;
 }
 
+.select2-container {
+    width: auto !important;
+    min-width: 100%;
+}
+
+.select2-dropdown {
+    width: max-content !important;
+    min-width: 100% !important;
+    max-width: 600px;
+}
+
 /* ────────────────────────────────────────
    GRID
 ──────────────────────────────────────── */
