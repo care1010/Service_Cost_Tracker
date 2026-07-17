@@ -1045,7 +1045,23 @@ const displayLoaData = showAllLoa
                                 }}
                             />
                             
-                            <Legend verticalAlign="top" align="right" height={50} iconType="circle" />
+                            <Legend 
+                                verticalAlign="top" 
+                                align="right" 
+                                height={50} 
+                                iconType="circle" 
+                                formatter={(value) => (
+                                    <span style={{ 
+                                        color: '#475569', 
+                                        fontWeight: '800', 
+                                        textTransform: 'uppercase', 
+                                        fontSize: '12px',
+                                        marginRight: '10px' 
+                                    }}>
+                                        {value}
+                                    </span>
+                                )}
+                            />
 
                             {/* 🔥 Increased barSize to 70 for wider bars */}
                             <Bar dataKey="asbl" name="asbl" fill="#2563eb" radius={[8, 8, 0, 0]} barSize={120}>
