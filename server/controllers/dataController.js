@@ -101,33 +101,6 @@ const applyDashboardFilters = (query, conditions, params) => {
 };
 
 
-// ==============================
-// CUSTOM CATEGORY TYPE FILTER
-// ==============================
-const applyCategoryTypeFilter = (catType, conditions) => {
-    if (!catType) {
-        conditions.push(`categories <> 'Local Materials'`); // Default hidden
-        return;
-    }
-    
-    let catArr = Array.isArray(catType) ? catType : catType.split(',').map(v => v.trim());
-    const hasAll = catArr.includes('All');
-    const hasLM = catArr.includes('Local Materials');
-
-    if (hasAll && !hasLM) {
-        // Sirf All selected hai -> Hide Local Materials
-        conditions.push(`categories <> 'Local Materials'`);
-    } else if (!hasAll && hasLM) {
-        // Sirf Local Materials selected hai -> Show ONLY Local Materials
-        conditions.push(`categories = 'Local Materials'`);
-    } else if (hasAll && hasLM) {
-        // Dono selected hain -> Sab kuch dikhao (No restriction)
-    } else {
-        // Agar galti se dono uncheck ho jayein toh default hide kardo
-        conditions.push(`categories <> 'Local Materials'`);
-    }
-};
-
 // --- 1. Helper function (Normalize) ---
 const getValArray = (val) => {
     if (val === undefined || val === null || val === '' || val === 'null' || (Array.isArray(val) && val.length === 0)) {
@@ -136,6 +109,21 @@ const getValArray = (val) => {
     let arr = Array.isArray(val) ? val : val.toString().split(',').map(v => v.trim()).filter(Boolean);
     arr = arr.filter(v => v.toLowerCase() !== 'all'); 
     return arr.length > 0 ? arr : null;
+};
+
+// --- 2. Helper: Category Type Filter ---
+const applyCategoryTypeFilter = (catType, conditions) => {
+    if (!catType) {
+        conditions.push(`categories <> 'Local Materials'`); 
+        return;
+    }
+    let catArr = Array.isArray(catType) ? catType : catType.split(',').map(v => v.trim());
+    const hasLM = catArr.includes('Local Materials');
+    if (hasLM) {
+        conditions.push(`categories = 'Local Materials'`);
+    } else {
+        conditions.push(`categories <> 'Local Materials'`);
+    }
 };
 
 // ==============================
@@ -186,14 +174,16 @@ exports.getFilterOptions = async (req, res) => {
 };
 
 
-// --- 1. Helper function for SM % Calculation (Correct Formula) ---
+// --- Updated Helper function for SM % (Treats Negative Revenue as Positive) ---
 const calculateSM = (rev, cost) => {
-    // Formula: (Revenue - Cost) / Revenue * 100
-    const r = parseFloat(rev) || 0;
+    // Math.abs se negative value (e.g. -12) positive (12) ban jayegi
+    const r = Math.abs(parseFloat(rev) || 0); 
     const c = parseFloat(cost) || 0;
     
-    if (r === 0) return "0.00"; // Avoid division by zero
+    // Agar revenue zero hai toh 0.00 dikhao taaki division error na aaye
+    if (r === 0) return "0.00"; 
     
+    // Formula: ((Revenue - Cost) / Revenue) * 100
     const margin = ((r - c) / r) * 100;
     return margin.toFixed(2);
 };
@@ -301,21 +291,31 @@ exports.getWbsSummary = async (req, res) => {
         const k = kpiRes[0] || {};
 
         res.status(200).json({
-            draw: parseInt(draw) || 0,
-            recordsTotal: countRes[0].total,
-            recordsFiltered: countRes[0].total,
-            data: dataRows,
-            kpis: {
-                asbl_rev: wTArr ? Number(k.asbl_rev || 0).toFixed(2) : "-",
-                asbl_cost: wTArr ? Number(k.asbl_cost || 0).toFixed(2) : "-",
-                // 🔥 ASBL SM %: Ab "NA" nahi aayega agar data hai
-                asbl_sm: (wTArr && Number(k.asbl_rev) !== 0) ? calculateSM(k.asbl_rev, k.asbl_cost) : "0.00",
-                ptd_rev: Number(k.ptd_rev || 0).toFixed(2),
-                ptd_cost: Number(k.ptd_cost || 0).toFixed(2),
-                ptd_sm: calculateSM(k.ptd_rev, k.ptd_cost),
-                eac_sm: calculateSM(k.eac_rev, k.eac_cost)
-            }
-        });
+    draw: parseInt(draw) || 0,
+    recordsTotal: countRes[0].total,
+    data: dataRows,
+    kpis: {
+        // ASBL Revenue aur Cost
+        asbl_rev: wTArr ? Number(k.asbl_rev || 0).toFixed(2) : "-",
+        asbl_cost: wTArr ? Number(k.asbl_cost || 0).toFixed(2) : "-",
+        
+        // 1. ASBL SM % (Using Math.abs logic)
+        asbl_sm: (wTArr && Number(k.asbl_rev) !== 0) 
+            ? calculateSM(k.asbl_rev, k.asbl_cost) 
+            : "0.00",
+            
+        // PTD Revenue aur Cost
+        ptd_rev: Number(k.ptd_rev || 0).toFixed(2),
+        ptd_cost: Number(k.ptd_cost || 0).toFixed(2),
+        
+        // 2. PTD SM % (Using Math.abs logic)
+        ptd_sm: calculateSM(k.ptd_rev, k.ptd_cost),
+        
+        // 3. EAC SM % (Using Math.abs logic)
+        // Note: k.eac_rev aur k.eac_cost pichli query mein humne calculate kiye hain
+        eac_sm: calculateSM(k.eac_rev, k.eac_cost)
+    }
+});
     } catch (error) {
         console.error("WbsSummary Error:", error);
         res.status(500).json({ error: error.message });
