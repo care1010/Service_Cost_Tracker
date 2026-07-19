@@ -74,3 +74,23 @@ exports.getProjectWbsOptions = async (req, res) => {
         res.json(wbs);
     } catch (error) { res.status(500).json({ error: error.message }); }
 };
+
+// 🔥 Add this to asblController.js
+exports.getFilteredProjects = async (req, res) => {
+    try {
+        const { wbs_type } = req.query;
+        if (!wbs_type) return res.json([]);
+
+        // Sirf wahi projects layenge jinme ye wbs_type exist karta hai summary table mein
+        const [rows] = await db.query(
+            `SELECT DISTINCT loa_id, loa_name 
+             FROM summary 
+             WHERE wbs_type = ? 
+             ORDER BY loa_name ASC`, 
+            [wbs_type]
+        );
+        res.status(200).json(rows);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};

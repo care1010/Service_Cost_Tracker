@@ -1,9 +1,40 @@
-.select2-container--default .select2-selection--single .select2-selection__clear {
-    height: 100% !important;
-    display: flex !important;
-    align-items: center !important;
-    margin-right: 35px !important;
-    margin-top: 0 !important;
-    font-size: 14px !important;
-    color: #64748b !important;
+/* .select2-container--default .select2-selection--single .select2-selection__clear { */
+    /* height: 100% !important; */
+    /* display: flex !important; */
+    /* align-items: center !important; */
+    /* margin-right: 35px !important; */
+    /* margin-top: 0 !important; */
+    /* font-size: 14px !important; */
+    /* color: #64748b !important; */
+/* } */
+
+/* Select box */
+.select2-container {
+    width: 100% !important;
+}
+
+/* Dropdown bhi parent jitna hi rahe */
+.select2-dropdown {
+    min-width: 100% !important;
+    width: auto !important;
+}
+
+/* LOA ID & LOA Name */
+#loa-id-select + .select2-container,
+#loa-name-select + .select2-container {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+/* Text bahar na nikle */
+.select2-selection__rendered,
+.select2-results__option {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.loa-dropdown{
+    width:auto !important;
+    min-width:100% !important;
 }

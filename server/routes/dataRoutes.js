@@ -119,5 +119,9 @@ router.post('/upload-project-file', upload.single('file'), projectController.upl
 
 router.get('/project-wbs-options', asblController.getProjectWbsOptions);
 
+router.get('/filtered-projects', asblController.getFilteredProjects);
+
+// Ye naya route add karein:
+router.get('/run-fix-db', projectController.fixMissingSummaryRows);
 
 module.exports = router;

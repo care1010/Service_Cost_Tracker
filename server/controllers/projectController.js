@@ -2,35 +2,31 @@ const db = require('../config/db');
 const XLSX = require('xlsx');
 const fs = require('fs');
 
+// 🔥 Updated CATEGORY_MAP with exactly 23 Categories
 const CATEGORY_MAP = [
-    { cat: "Local Materials", type: "Cost" }, { cat: "Transportation & Logistic cost", type: "Cost" },
-    { cat: "Travel+Training", type: "Cost" }, { cat: "SBU-Design+Dep.+Mig", type: "Cost" },
-    { cat: "CE Resources", type: "Cost" }, { cat: "Revenue", type: "Revenue" },
-    { cat: "I&C Services", type: "Cost" }, { cat: "DD Resources", type: "Cost" },
-    { cat: "Welcome Center Costs", type: "Cost" }, { cat: "Local TAC Support + L3 Support", type: "Cost" },
-    { cat: "Repair cost", type: "Cost" }, { cat: "Cost Reclass", type: "Cost" },
-    { cat: "Project Management", type: "Cost" }, { cat: "Software Upgrade + NSP Upgrade", type: "Cost" },
-    { cat: "3rd Party Cost", type: "Cost" }, { cat: "Not to considered", type: "NTC" },
-    { cat: "Additional HW", type: "Cost" }, { cat: "Risk and Contingencies", type: "Cost" },
-    { cat: "FMA", type: "Cost" }, { cat: "Additional Services", type: "Cost" },
-    { cat: "Others-Not found in Cost Mapping", type: "Cost" }, { cat: "Quality Audit +FMA", type: "Cost" },
-    { cat: "3rd Party Cost P20", type: "Cost" }, { cat: "MATERIAL USAGE CUST", type: "Cost" },
-    { cat: "MATERIAL COCUST SUB", type: "Cost" }, { cat: "MAT COS NSN ON-GOING", type: "Cost" },
-    { cat: "MAT.COSÂ MANUALÂ ONG", type: "Cost" }, { cat: "SERVCOS NSN ON-GOING EN", type: "Cost" },
-    { cat: "CONTRACTÂ CUST PR OG", type: "Cost" }, { cat: "RAW MAT TO SUBCONTR", type: "Cost" },
-    { cat: "MAT COST ACCR CR", type: "Cost" }, { cat: "PROJECT TRAVELÂ CUST", type: "Cost" },
-    { cat: "FG PURCH EXT CR", type: "Cost" }, { cat: "FG PURCH EXT CS", type: "Cost" },
-    { cat: "SCRFG W/O PR IN CAT", type: "Cost" }, { cat: "SCR FG W/O PROV CR", type: "Cost" },
-    { cat: "OTHER COS CUST PR OG", type: "Cost" }, { cat: "SALES FREIGHT CUST P", type: "Cost" },
-    { cat: "DUTIES CUST PR OG", type: "Cost" }, { cat: "OTHER DIR CUST PR OG", type: "Cost" },
-    { cat: "CR RISKÂ CUST PR OG", type: "Cost" }, { cat: "CONTR BOND CUST PR O", type: "Cost" },
-    { cat: "BANK FEES CUST PR OG", type: "Cost" }, { cat: "LETTER OF CRÂ CUST P", type: "Cost" },
-    { cat: "DISC INTÂ COM CUST", type: "Cost" }, { cat: "EXTEND WARRÂ CUST PR", type: "Cost" },
-    { cat: "ADD WARR PROV CUST P", type: "Cost" }, { cat: "REL EX WAR PROV C PR", type: "Cost" },
-    { cat: "IMPORT FREIGHT FOR", type: "Cost" }, { cat: "Other", type: "Cost" },
-    { cat: "I&C Services + DD Resources", type: "Cost" }, { cat: "TPM +EMS Resources", type: "Cost" },
-    { cat: "Cross ERP Cost", type: "Cost" },
-    { cat: "New Category", type: "Cost" }
+    { cat: "Local Materials", type: "Cost" }, 
+    { cat: "Transportation & Logistic cost", type: "Cost" },
+    { cat: "Travel+Training", type: "Cost" }, 
+    { cat: "SBU-Design+Dep.+Mig", type: "Cost" },
+    { cat: "CE Resources", type: "Cost" }, 
+    { cat: "Revenue", type: "Revenue" },
+    { cat: "I&C Services", type: "Cost" }, 
+    { cat: "DD Resources", type: "Cost" },
+    { cat: "Welcome Center Costs", type: "Cost" }, 
+    { cat: "Local TAC Support + L3 Support", type: "Cost" },
+    { cat: "Repair cost", type: "Cost" }, 
+    { cat: "Cost Reclass", type: "Cost" },
+    { cat: "Project Management", type: "Cost" }, 
+    { cat: "Software Upgrade + NSP Upgrade", type: "Cost" },
+    { cat: "3rd Party Cost", type: "Cost" }, 
+    { cat: "Not to considered", type: "NTC" },
+    { cat: "Additional HW", type: "Cost" }, 
+    { cat: "Risk and Contingencies", type: "Cost" },
+    { cat: "FMA", type: "Cost" }, 
+    { cat: "Additional Services", type: "Cost" },
+    { cat: "Others-Not found in Cost Mapping", type: "Cost" }, 
+    { cat: "Cross ERP Cost", type: "Cost" }, // 🔥 Added back as requested
+    { cat: "Total", type: "Cost" } 
 ];
 
 const processProjectData = async (dataGrid, created_by) => {
@@ -69,6 +65,7 @@ const processProjectData = async (dataGrid, created_by) => {
         const [exSummary] = await db.query("SELECT wbs FROM summary WHERE TRIM(loa_id) = ? LIMIT 1", [loa_id]);
 
         if (exSummary.length > 0) {
+            // Existing Project Update Logic
             const [exMappings] = await db.query("SELECT TRIM(wbs_element) as wbs_element FROM wbs_loa_id_mapping1 WHERE TRIM(loa_id) = ?", [loa_id]);
             const existingWbs = exMappings.map(m => m.wbs_element.toUpperCase());
             let newWbs = wbs_rows.filter(row => !existingWbs.includes(row.wbs_element.toUpperCase()));
@@ -80,6 +77,7 @@ const processProjectData = async (dataGrid, created_by) => {
             await db.query("INSERT INTO wbs_loa_id_mapping1 (loa_id, wbs_type, wbs_element, wbs_description, wbs, created_by) VALUES ?", [mapRows]);
             processedLoas.add(loa_id);
         } else {
+            // New Project: Insert 23 * 3 Rows
             const finalMergedWbs = merged_wbs || Array.from(new Set(wbs_rows.map(r => r.wbs_element))).join(',');
             let summaryRows = [];
             WBS_TYPES_MASTER.forEach(type => {
@@ -103,10 +101,8 @@ const processProjectData = async (dataGrid, created_by) => {
     return { message: `Processed: ${processedLoas.size} Projects` };
 };
 
-// --- HANDLERS (EXPORTS) ---
 exports.processProjectPaste = async (req, res) => {
     try {
-        if (!req.body.rawText) return res.status(400).json({ error: "No data pasted" });
         const dataGrid = req.body.rawText.trim().split(/\r?\n/).map(l => l.split('\t'));
         const result = await processProjectData(dataGrid, req.user?.email || 'System');
         res.status(200).json(result);
@@ -115,15 +111,46 @@ exports.processProjectPaste = async (req, res) => {
 
 exports.uploadProjectFile = async (req, res) => {
     try {
-        if (!req.file) return res.status(400).json({ error: "No file" });
         const wb = XLSX.readFile(req.file.path);
         const dataGrid = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "" });
         const result = await processProjectData(dataGrid, req.user?.email || 'System');
         if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         res.status(200).json(result);
-    } catch (error) { 
-        if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
-        res.status(500).json({ error: error.message }); 
-    }
+    } catch (error) { res.status(500).json({ error: error.message }); }
 };
 
+
+
+// projectController.js ke end mein:
+exports.fixMissingSummaryRows = async (req, res) => {
+    try {
+        console.log("Starting DB Audit and Fix...");
+        const WBS_TYPES = ["Project", "AMC", "Warranty/Other"];
+        
+        const [uniqueProjects] = await db.query("SELECT DISTINCT bu, customer, loa_id, loa_name, wbs FROM summary");
+        let totalNewRows = 0;
+
+        for (const proj of uniqueProjects) {
+            for (const typeStr of WBS_TYPES) {
+                for (const item of CATEGORY_MAP) {
+                    const [exists] = await db.query(
+                        "SELECT 1 FROM summary WHERE TRIM(loa_id) = ? AND TRIM(wbs_type) = ? AND categories = ?",
+                        [proj.loa_id.trim(), typeStr, item.cat]
+                    );
+
+                    if (exists.length === 0) {
+                        await db.query(
+                            `INSERT INTO summary (bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, asbl, active_inactive, wbs_type) 
+                             VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'Active', ?)`,
+                            [proj.bu, proj.customer, proj.loa_id, proj.loa_name, item.type, item.cat, proj.wbs, typeStr]
+                        );
+                        totalNewRows++;
+                    }
+                }
+            }
+        }
+        res.status(200).json({ message: "Database Standardized!", rows_added: totalNewRows });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};

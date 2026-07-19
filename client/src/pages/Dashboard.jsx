@@ -978,7 +978,7 @@ const displayLoaData = showAllLoa
                 
                 <div className="mb-6">
                     <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tight">Business Unit View</h2>
-                    <p className="text-slate-400 text-sm">Performance metrics per Business Unit</p>
+                    {/* <p className="text-slate-400 text-sm">Performance metrics per Business Unit</p> */}
                 </div>
 
                 {/* 6 KPI Boxes */}
@@ -995,11 +995,11 @@ const displayLoaData = showAllLoa
                                 
                                 <div className="grid grid-cols-2 gap-3">
                                     <div className="bg-white p-3 rounded-2xl border border-green-100 text-center">
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">PTD Comp.</p>
+                                        <p className="text-[11px] font-bold text-grey-400 uppercase mb-1">PTD Utilization%</p>
                                         <p className="text-lg font-black text-green-600">{ptdPerc}%</p>
                                     </div>
                                     <div className="bg-white p-3 rounded-2xl border border-purple-100 text-center">
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase mb-1">EAC Comp.</p>
+                                        <p className="text-[11px] font-bold text-grey-400 uppercase mb-1">EAC vs ASBL</p>
                                         <p className="text-lg font-black text-purple-600">{eacPerc}%</p>
                                     </div>
                                 </div>
