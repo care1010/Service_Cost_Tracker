@@ -2,37 +2,28 @@ const db = require('../config/db');
 const XLSX = require('xlsx');
 const fs = require('fs');
 
-// 🔥 Updated CATEGORY_MAP with exactly 24 Categories
 const CATEGORY_MAP = [
-    { cat: "Local Materials", type: "Cost" }, 
-    { cat: "Transportation & Logistic cost", type: "Cost" },
-    { cat: "Travel+Training", type: "Cost" }, 
-    { cat: "SBU-Design+Dep.+Mig", type: "Cost" },
-    { cat: "CE Resources", type: "Cost" }, 
-    { cat: "Revenue", type: "Revenue" },
-    { cat: "I&C Services", type: "Cost" }, 
-    { cat: "DD Resources", type: "Cost" },
-    { cat: "Welcome Center Costs", type: "Cost" }, 
-    { cat: "Local TAC Support + L3 Support", type: "Cost" },
-    { cat: "Repair cost", type: "Cost" }, 
-    { cat: "Cost Reclass", type: "Cost" },
-    { cat: "Project Management", type: "Cost" }, 
-    { cat: "Software Upgrade + NSP Upgrade", type: "Cost" },
-    { cat: "3rd Party Cost", type: "Cost" }, 
-    { cat: "Not to considered", type: "NTC" },
-    { cat: "Additional HW", type: "Cost" }, 
-    { cat: "Risk and Contingencies", type: "Cost" },
-    { cat: "Quality Audit + FMA", type: "Cost" }, 
-    { cat: "Additional Services", type: "Cost" },
+    { cat: "Local Materials", type: "Cost" }, { cat: "Transportation & Logistic cost", type: "Cost" },
+    { cat: "Travel+Training", type: "Cost" }, { cat: "SBU-Design+Dep.+Mig", type: "Cost" },
+    { cat: "CE Resources", type: "Cost" }, { cat: "Revenue", type: "Revenue" },
+    { cat: "I&C Services", type: "Cost" }, { cat: "DD Resources", type: "Cost" },
+    { cat: "Welcome Center Costs", type: "Cost" }, { cat: "Local TAC Support + L3 Support", type: "Cost" },
+    { cat: "Repair cost", type: "Cost" }, { cat: "Cost Reclass", type: "Cost" },
+    { cat: "Project Management", type: "Cost" }, { cat: "Software Upgrade + NSP Upgrade", type: "Cost" },
+    { cat: "3rd Party Cost", type: "Cost" }, { cat: "Not to considered", type: "NTC" },
+    { cat: "Additional HW", type: "Cost" }, { cat: "Risk and Contingencies", type: "Cost" },
+    { cat: "Quality Audit + FMA", type: "Cost" }, { cat: "Additional Services", type: "Cost" },
     { cat: "Others-Not found in Cost Mapping", type: "Cost" }, 
     { cat: "I&C Services + DD Resources", type: "Cost" }, 
     { cat: "Cross ERP Cost", type: "Cost" }, 
     { cat: "Total", type: "Cost" } 
 ];
 
+// 🔥 Private Helper Engine
 const processProjectData = async (dataGrid, created_by) => {
     if (!dataGrid || dataGrid.length < 2) throw new Error("No data found or headers missing!");
     const headers = dataGrid[0].map(h => String(h || "").trim().toUpperCase());
+    
     const idxBu = headers.findIndex(h => h.includes('BUSINESS DIVISION') || h === 'BU');
     const idxCustomer = headers.findIndex(h => h.includes('CT NAME') || h === 'CUSTOMER_');
     const idxLoaId = headers.findIndex(h => h.includes('OPPORTUNITY CODE') || h === 'LOA_ID');
@@ -41,8 +32,6 @@ const processProjectData = async (dataGrid, created_by) => {
     const idxWbsElement = headers.findIndex(h => h === 'WBS');
     const idxWbsDesc = headers.findIndex(h => h.includes('WBS DESCRIPTION'));
     const idxMerged = headers.findIndex(h => h === 'MERGED');
-
-    if (idxLoaId === -1 || idxWbsElement === -1) throw new Error("Invalid Template! LOA ID and WBS are required.");
 
     const dataLines = dataGrid.slice(1);
     const projectGroups = {};
@@ -59,33 +48,44 @@ const processProjectData = async (dataGrid, created_by) => {
     }
 
     let processedLoas = new Set();
-    const WBS_TYPES_MASTER = ["Project", "AMC", "Warranty/Other"];
 
     for (const loa_id of Object.keys(projectGroups)) {
         const { bu, customer, loa_name, merged_wbs, wbs_rows } = projectGroups[loa_id];
-        const [exSummary] = await db.query("SELECT wbs FROM summary WHERE TRIM(loa_id) = ? LIMIT 1", [loa_id]);
+        const uniqueTypesInData = [...new Set(wbs_rows.map(r => r.wbs_type))].filter(Boolean);
+        const [exSummary] = await db.query("SELECT wbs, wbs_type FROM summary WHERE TRIM(loa_id) = ?", [loa_id]);
 
         if (exSummary.length > 0) {
-            const [exMappings] = await db.query("SELECT TRIM(wbs_element) as wbs_element FROM wbs_loa_id_mapping1 WHERE TRIM(loa_id) = ?", [loa_id]);
-            const existingWbs = exMappings.map(m => m.wbs_element.toUpperCase());
-            let newWbs = wbs_rows.filter(row => !existingWbs.includes(row.wbs_element.toUpperCase()));
-            if (newWbs.length === 0) continue;
-            const updatedWbsStr = Array.from(new Set([...(exSummary[0].wbs?.split(',') || []), ...newWbs.map(r => r.wbs_element)])).join(',');
+            const existingTypesInDB = [...new Set(exSummary.map(s => s.wbs_type))];
+            const updatedWbsStr = Array.from(new Set([...(exSummary[0].wbs?.split(',') || []), ...wbs_rows.map(r => r.wbs_element)])).join(',');
             await db.query("UPDATE summary SET wbs = ? WHERE TRIM(loa_id) = ?", [updatedWbsStr, loa_id]);
             await db.query("UPDATE wbs_loa_id_mapping1 SET wbs = ? WHERE TRIM(loa_id) = ?", [updatedWbsStr, loa_id]);
-            const mapRows = newWbs.map(r => [loa_id, r.wbs_type, r.wbs_element, r.wbs_description, updatedWbsStr, created_by]);
-            await db.query("INSERT INTO wbs_loa_id_mapping1 (loa_id, wbs_type, wbs_element, wbs_description, wbs, created_by) VALUES ?", [mapRows]);
+
+            for (const type of uniqueTypesInData) {
+                if (!existingTypesInDB.includes(type)) {
+                    let newTypeRows = CATEGORY_MAP.map(item => [bu, customer, loa_id, loa_name, item.type, item.cat, updatedWbsStr, 0, 'Active', type, 0]);
+                    await db.query("INSERT INTO summary (bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, asbl, active_inactive, wbs_type, non_committed_editable) VALUES ?", [newTypeRows]);
+                }
+            }
+
+            const [exMappings] = await db.query("SELECT TRIM(wbs_element) as wbs_element FROM wbs_loa_id_mapping1 WHERE TRIM(loa_id) = ?", [loa_id]);
+            const existingWbs = exMappings.map(m => m.wbs_element.toUpperCase());
+            let newWbsToMap = wbs_rows.filter(row => !existingWbs.includes(row.wbs_element.toUpperCase()));
+            if (newWbsToMap.length > 0) {
+                const mapRows = newWbsToMap.map(r => [loa_id, r.wbs_type, r.wbs_element, r.wbs_description, updatedWbsStr, created_by]);
+                await db.query("INSERT INTO wbs_loa_id_mapping1 (loa_id, wbs_type, wbs_element, wbs_description, wbs, created_by) VALUES ?", [mapRows]);
+            }
             processedLoas.add(loa_id);
         } else {
-            // New Project: Insert 24 * 3 Rows
             const finalMergedWbs = merged_wbs || Array.from(new Set(wbs_rows.map(r => r.wbs_element))).join(',');
             let summaryRows = [];
-            WBS_TYPES_MASTER.forEach(type => {
+            uniqueTypesInData.forEach(type => {
                 CATEGORY_MAP.forEach(item => {
-                    summaryRows.push([bu, customer, loa_id, loa_name, item.type, item.cat, finalMergedWbs, 0, 'Active', type]);
+                    summaryRows.push([bu, customer, loa_id, loa_name, item.type, item.cat, finalMergedWbs, 0, 'Active', type, 0]);
                 });
             });
-            await db.query("INSERT INTO summary (bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, asbl, active_inactive, wbs_type) VALUES ?", [summaryRows]);
+            if (summaryRows.length > 0) {
+                await db.query("INSERT INTO summary (bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, asbl, active_inactive, wbs_type, non_committed_editable) VALUES ?", [summaryRows]);
+            }
             const mapRows = wbs_rows.map(r => [loa_id, r.wbs_type, r.wbs_element, r.wbs_description, finalMergedWbs, created_by]);
             await db.query("INSERT INTO wbs_loa_id_mapping1 (loa_id, wbs_type, wbs_element, wbs_description, wbs, created_by) VALUES ?", [mapRows]);
             processedLoas.add(loa_id);
@@ -95,59 +95,59 @@ const processProjectData = async (dataGrid, created_by) => {
     const loaList = Array.from(processedLoas);
     if (loaList.length > 0) {
         await db.query("DELETE FROM final_dashboard_table WHERE loa_id IN (?)", [loaList]);
-        await db.query(`INSERT INTO final_dashboard_table (bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, wbs_type, wbs_description, asbl, asbl_loa, non_committed, active_inactive, period, ptd, open_commitment_KEUR, eac, eac_vs_asbl, unique_key)
-            SELECT bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, wbs_type, wbs_description, asbl, asbl_loa, non_committed, active_inactive, period, ptd, open_commitment_KEUR, eac, eac_vs_asbl, unique_key FROM final_dashboard WHERE loa_id IN (?)`, [loaList, loaList]);
+        await db.query(`INSERT INTO final_dashboard_table (bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, wbs_type, wbs_description, wbs_element_single, asbl, asbl_loa, non_committed, active_inactive, period, ptd, open_commitment_KEUR, eac, eac_vs_asbl, non_committed_editable, unique_key)
+            SELECT bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, wbs_type, wbs_description, wbs_element_single, asbl, asbl_loa, non_committed, active_inactive, period, ptd, open_commitment_KEUR, eac, eac_vs_asbl, non_committed_editable, unique_key FROM final_dashboard WHERE loa_id IN (?)`, [loaList, loaList]);
     }
     return { message: `Processed: ${processedLoas.size} Projects` };
 };
 
+// ==========================================
+// 🔥 EXPORTED HANDLERS (Used by routes)
+// ==========================================
+
 exports.processProjectPaste = async (req, res) => {
     try {
+        if (!req.body.rawText) return res.status(400).json({ error: "No data pasted" });
         const dataGrid = req.body.rawText.trim().split(/\r?\n/).map(l => l.split('\t'));
         const result = await processProjectData(dataGrid, req.user?.email || 'System');
         res.status(200).json(result);
-    } catch (error) { res.status(500).json({ error: error.message }); }
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 };
 
 exports.uploadProjectFile = async (req, res) => {
     try {
+        if (!req.file) return res.status(400).json({ error: "No file uploaded" });
         const wb = XLSX.readFile(req.file.path);
         const dataGrid = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "" });
         const result = await processProjectData(dataGrid, req.user?.email || 'System');
         if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         res.status(200).json(result);
-    } catch (error) { res.status(500).json({ error: error.message }); }
+    } catch (error) { 
+        if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
+        res.status(500).json({ error: error.message }); 
+    }
 };
 
-// Database Fix script for existing entries
 exports.fixMissingSummaryRows = async (req, res) => {
     try {
-        console.log("Starting DB Audit and Fix for 24 Categories...");
-        const WBS_TYPES = ["Project", "AMC", "Warranty/Other"];
-        const [uniqueProjects] = await db.query("SELECT DISTINCT bu, customer, loa_id, loa_name, wbs FROM summary");
-        let totalNewRows = 0;
-
-        for (const proj of uniqueProjects) {
-            for (const typeStr of WBS_TYPES) {
-                for (const item of CATEGORY_MAP) {
-                    const [exists] = await db.query(
-                        "SELECT 1 FROM summary WHERE TRIM(loa_id) = ? AND TRIM(wbs_type) = ? AND categories = ?",
-                        [proj.loa_id.trim(), typeStr.trim(), item.cat]
-                    );
-
-                    if (exists.length === 0) {
-                        await db.query(
-                            `INSERT INTO summary (bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, asbl, active_inactive, wbs_type) 
-                             VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'Active', ?)`,
-                            [proj.bu, proj.customer, proj.loa_id, proj.loa_name, item.type, item.cat, proj.wbs, typeStr]
-                        );
-                        totalNewRows++;
+        console.log("Starting Smart Cleanup...");
+        await db.query(`DELETE FROM summary WHERE (loa_id, wbs_type) NOT IN (SELECT DISTINCT loa_id, wbs_type FROM wbs_loa_id_mapping1)`);
+        const [mappingPairs] = await db.query("SELECT DISTINCT loa_id, wbs_type FROM wbs_loa_id_mapping1");
+        let added = 0;
+        for (const pair of mappingPairs) {
+            for (const item of CATEGORY_MAP) {
+                const [exists] = await db.query("SELECT 1 FROM summary WHERE TRIM(loa_id) = ? AND TRIM(wbs_type) = ? AND categories = ?", [pair.loa_id.trim(), pair.wbs_type.trim(), item.cat]);
+                if (exists.length === 0) {
+                    const [info] = await db.query("SELECT bu, customer, loa_name, wbs FROM summary WHERE TRIM(loa_id) = ? LIMIT 1", [pair.loa_id.trim()]);
+                    if (info.length > 0) {
+                        await db.query(`INSERT INTO summary (bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, asbl, active_inactive, wbs_type, non_committed_editable) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'Active', ?, 0)`, [info[0].bu, info[0].customer, pair.loa_id, info[0].loa_name, item.type, item.cat, info[0].wbs, pair.wbs_type]);
+                        added++;
                     }
                 }
             }
         }
-        res.status(200).json({ message: "Database Standardized to 24 Categories!", rows_added: totalNewRows });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
+        res.status(200).json({ message: "DB Standardized!", rows_inserted: added });
+    } catch (error) { res.status(500).json({ error: error.message }); }
 };
