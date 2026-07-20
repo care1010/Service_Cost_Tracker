@@ -88,22 +88,29 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
     };
 
     const handleSave = async () => {
-        const updates = [];
-        $('.nc-input.is-changed').each(function () {
-            updates.push({
-                loa_name: $(this).data('loa'),
-                categories: $(this).data('cat'),
-                value: $(this).val()
-            });
-        });
+    const updates = [];
+    
+    // 🔥 changed-rows ko loop karein
+    $('.nc-input.is-changed').each(function () {
+        const val = $(this).val();
+        const loa = $(this).data('loa');
+        const cat = $(this).data('cat');
+        const wType = $(this).data('wbstype'); // 🔥 data-wbstype se value uthayi
 
-        if (updates.length === 0) {
-            return Swal.fire({
-                icon: "info",
-                title: "No Changes",
-                text: "There are no changes to save."
-            });
-        }
+        // Console mein check karein ki value aa rahi hai ya nahi
+        console.log("Collecting data to save:", { loa, cat, wType, val });
+
+        updates.push({
+            loa_name: loa,
+            categories: cat,
+            wbs_type: wType, // 🔥 Backend ko ab 'undefined' nahi jayega
+            value: val
+        });
+    });
+
+    if (updates.length === 0) {
+        return Swal.fire("Info", "No changes to save.", "info");
+    }
 
         const result = await Swal.fire({
             title: "Save Changes?",
@@ -230,6 +237,7 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
                                     value="${current}" 
                                     data-loa="${row.loa_name}" 
                                     data-cat="${row.categories}" 
+                                    data-wbstype="${row.wbs_type}"  /* 🔥 Important: added this */
                                     step="any">`;
                         }
                     }

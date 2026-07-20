@@ -223,41 +223,37 @@ exports.getWbsSummary = async (req, res) => {
 
         // --- MATRIX QUERY ---
         const matrixQuery = `
-            SELECT 
-                bu, customer, loa_id, loa_name, cost_revenue, categories, MAX(unique_key) as unique_key, 
-                
-                -- ASBL Logic
-                ${wTArr ? `ROUND(SUM(COALESCE(type_asbl, 0)), 2)` : "'-'"} as asbl, 
+    SELECT 
+        bu, customer, loa_id, loa_name, cost_revenue, categories, MAX(unique_key) as unique_key, MAX(wbs_type) as wbs_type,
+        ${wTArr ? `ROUND(SUM(type_asbl), 2)` : "'-'"} as asbl, 
+        ROUND(SUM(total_ptd), 2) as ptd, 
+        ROUND(SUM(total_oc), 2) as open_commitment, 
+        
+        -- 🔥 Dono columns bhej rahe hain: Draft aur Original
+        ROUND(SUM(total_nc_editable), 2) as non_committed, 
+        ROUND(SUM(total_nc_original), 2) as non_committed_original,
 
-                ROUND(SUM(COALESCE(total_ptd, 0)), 2) as ptd, 
-                ROUND(SUM(COALESCE(total_oc, 0)), 2) as open_commitment, 
-                MAX(COALESCE(total_nc, 0)) as non_committed,
-                MAX(COALESCE(cat_asbl_loa, 0)) as asbl_loa,
-
-                -- EAC Calculation
-                ROUND(SUM(COALESCE(total_ptd, 0)) + SUM(COALESCE(total_oc, 0)) + MAX(COALESCE(total_nc, 0)), 2) as eac,
-
-                -- 🔥 FIXED: EAC vs ASBL Calculation (Using COALESCE to prevent NULL)
-                ${wTArr ? `ROUND(SUM(COALESCE(type_asbl, 0)) - (SUM(COALESCE(total_ptd, 0)) + SUM(COALESCE(total_oc, 0)) + MAX(COALESCE(total_nc, 0))), 2)` : "'-'"} as eac_vs_asbl
-
-            FROM (
-                SELECT 
-                    bu, customer, loa_id, loa_name, cost_revenue, categories, unique_key,
-                    wbs_type,
-                    MAX(asbl) as type_asbl,
-                    SUM(ptd) as total_ptd,
-                    SUM(open_commitment_KEUR) as total_oc,
-                    MAX(non_committed_editable) as total_nc,
-                    MAX(asbl_loa) as cat_asbl_loa
-                FROM final_dashboard_table
-                ${whereClause}
-                GROUP BY bu, customer, loa_id, loa_name, cost_revenue, categories, unique_key, wbs_type
-            ) as t
-            GROUP BY bu, customer, loa_id, loa_name, cost_revenue, categories
-            HAVING 1=1 
-            ${showAll === 'false' ? 'AND ( (asbl REGEXP "^[0-9.-]+$" AND ABS(asbl) > 0.01) OR ABS(ptd) > 0.01 OR ABS(open_commitment) > 0.01)' : ''}
-            ORDER BY loa_name ASC, cost_revenue ASC
-        `;
+        MAX(cat_asbl_loa) as asbl_loa,
+        ROUND(SUM(total_ptd) + SUM(total_oc) + SUM(total_nc_editable), 2) as eac,
+        ${wTArr ? `ROUND(SUM(type_asbl) - (SUM(total_ptd) + SUM(total_oc) + SUM(total_nc_editable)), 2)` : "'-'"} as eac_vs_asbl
+    FROM (
+        SELECT 
+            bu, customer, loa_id, loa_name, cost_revenue, categories, unique_key, wbs_type,
+            MAX(asbl) as type_asbl, 
+            SUM(ptd) as total_ptd, 
+            SUM(open_commitment_KEUR) as total_oc,
+            MAX(non_committed_editable) as total_nc_editable, -- Draft
+            MAX(non_committed) as total_nc_original,          -- Original
+            MAX(asbl_loa) as cat_asbl_loa
+        FROM final_dashboard_table
+        ${whereClause}
+        GROUP BY bu, customer, loa_id, loa_name, cost_revenue, categories, unique_key, wbs_type
+    ) as t
+    GROUP BY bu, customer, loa_id, loa_name, cost_revenue, categories
+    HAVING 1=1 
+    ${showAll === 'false' ? 'AND (ABS(COALESCE(asbl, 0)) > 0.01 OR ABS(ptd) > 0.01 OR ABS(open_commitment) > 0.01 OR ABS(non_committed) > 0.01)' : ''}
+    ORDER BY loa_name ASC, cost_revenue ASC
+`;
 
         const [dataRows] = await db.query(`${matrixQuery} LIMIT ?, ?`, [...filterParams, ...baseParams, startIdx, limitIdx]);
         const [countRes] = await db.query(`SELECT COUNT(*) as total FROM (${matrixQuery}) as temp`, [...filterParams, ...baseParams]);
@@ -548,136 +544,84 @@ exports.exportDrillDown = async (req, res) => {
 };
 
 
-// Non committed cell inputs from user update
 exports.updateNonCommitted = async (req, res) => {
     const { updates, createdBy } = req.body;
 
     try {
+        // Month-Year format for logging (e.g., Jul-2026)
+        const monthYear = new Date().toLocaleDateString('en-US', {
+            month: 'short',
+            year: 'numeric'
+        }).replace(' ', '-');
 
-        const monthYear = new Date()
-            .toLocaleDateString('en-US', {
-                month: 'short',
-                year: 'numeric'
-            })
-            .replace(' ', '-');
+        let totalUpdated = 0;
 
         for (let item of updates) {
+            const { loa_name, categories, value, wbs_type } = item;
 
-            // Purani value fetch karo
+            // 1. Logging ke liye purani details fetch karein (Sync with WBS Type)
             const [existing] = await db.query(
-                `
-                SELECT
-                    non_committed_editable,
-                    customer,
-                    bu,
-                    loa_id,
-                    active_inactive
-                FROM summary
-                WHERE loa_name = ?
-                  AND categories = ?
-                `,
-                [
-                    item.loa_name,
-                    item.categories
-                ]
+                `SELECT non_committed_editable, customer, bu, loa_id, active_inactive 
+                 FROM summary 
+                 WHERE TRIM(loa_name) = TRIM(?) AND TRIM(categories) = TRIM(?) AND TRIM(wbs_type) = TRIM(?)`,
+                [loa_name, categories, wbs_type]
             );
 
-            const oldValue =
-                existing?.[0]?.non_committed_editable || 0;
+            // Agar row nahi mili toh skip karein (Data Integrity Check)
+            if (!existing || existing.length === 0) {
+                console.warn(`Row not found for: ${loa_name} | ${categories} | ${wbs_type}`);
+                continue;
+            }
 
-            const customer =
-                existing?.[0]?.customer || '';
+            const oldValue = existing[0].non_committed_editable || 0;
+            const { customer, bu, loa_id, active_inactive } = existing[0];
 
-            const bu =
-            existing?.[0]?.bu || '';
-
-            const loaId =
-            existing?.[0]?.loa_id || '';
-
-            const activeInactive =
-            existing?.[0]?.active_inactive || '';
-
-            // Summary update
+            // 2. Update Summary Table (Permanent Storage for Edits)
             await db.query(
-                `
-                UPDATE summary
-                SET non_committed_editable = ?,
-                    updated_by = ?
-                WHERE loa_name = ?
-                  AND categories = ?
-                `,
-                [
-                    item.value,
-                    createdBy,
-                    item.loa_name,
-                    item.categories
-                ]
+                `UPDATE summary 
+                 SET non_committed_editable = ?, updated_by = ? 
+                 WHERE TRIM(loa_name) = TRIM(?) AND TRIM(categories) = TRIM(?) AND TRIM(wbs_type) = TRIM(?)`,
+                [value, createdBy, loa_name, categories, wbs_type]
             );
 
-            // Final dashboard update
-            await db.query(
-                `
-                UPDATE final_dashboard_table
-                SET non_committed_editable = ?,
-                    updated_by = ?
-                WHERE loa_name = ?
-                  AND categories = ?
-                `,
-                [
-                    item.value,
-                    createdBy,
-                    item.loa_name,
-                    item.categories
-                ]
+            // 3. Update Dashboard Table (Real-time UI Visibility)
+            const [dashRes] = await db.query(
+                `UPDATE final_dashboard_table 
+                 SET non_committed_editable = ?, updated_by = ? 
+                 WHERE TRIM(loa_name) = TRIM(?) AND TRIM(categories) = TRIM(?) AND TRIM(wbs_type) = TRIM(?)`,
+                [value, createdBy, loa_name, categories, wbs_type]
             );
 
-            // Activity Log Insert
+            if (dashRes.affectedRows > 0) {
+                totalUpdated++;
+            }
+
+            // 4. Insert into Activity Logs (Audit Trail)
             await db.query(
-                `
-                INSERT INTO user_activity_logs
-                (
-                    user_email,
-                    bu,
-                    customer,
-                    loa_name,
-                    loa_id,
-                    categories,
-                    old_value,
-                    new_value,
-                    active_inactive,
-                    month_year
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                `,
-                [
-                    createdBy,
-                    bu,
-                    customer,
-                    item.loa_name,
-                    loaId,
-                    item.categories,
-                    oldValue,
-                    item.value,
-                    activeInactive,
-                    monthYear
-                ]
+                `INSERT INTO user_activity_logs 
+                (user_email, bu, customer, loa_name, loa_id, categories, old_value, new_value, active_inactive, month_year, wbs_type) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                [createdBy, bu, customer, loa_name, loa_id, categories, oldValue, value, active_inactive, monthYear, wbs_type]
             );
         }
 
-        res.status(200).json({
-            message: "Changes saved successfully!"
+        // 5. 🔥 EAC aur Variance Recalculate karein
+        // Ye bohot zaruri hai taaki child rows mein EAC automatic update ho jaye bina page refresh kiye
+        await db.query(`
+            UPDATE final_dashboard_table 
+            SET eac = (ptd + open_commitment_KEUR + non_committed_editable),
+                eac_vs_asbl = (asbl - (ptd + open_commitment_KEUR + non_committed_editable))
+            WHERE ABS(non_committed - non_committed_editable) > 0.01 OR non_committed_editable <> 0
+        `);
+
+        res.status(200).json({ 
+            message: `Successfully saved changes for ${totalUpdated} categories!`,
+            updatedCount: totalUpdated 
         });
 
     } catch (error) {
-
-        console.error(
-            "updateNonCommitted Error:",
-            error
-        );
-
-        res.status(500).json({
-            error: error.message
-        });
+        console.error("updateNonCommitted Error:", error);
+        res.status(500).json({ error: "Server Error: " + error.message });
     }
 };
 
@@ -1030,9 +974,9 @@ exports.fullRefresh = async (req, res) => {
         // 🔥 Naya column 'wbs_element_single' yahan add kiya hai
         const insertSql = `
     INSERT INTO final_dashboard_table 
-    (bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, wbs_type, wbs_description, wbs_element_single, asbl, asbl_loa, non_committed, active_inactive, period, ptd, open_commitment_KEUR, eac, eac_vs_asbl, unique_key)
+    (bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, wbs_type, wbs_description, wbs_element_single, asbl, asbl_loa, non_committed, active_inactive, period, ptd, open_commitment_KEUR, eac, eac_vs_asbl, non_committed_editable, unique_key)
     SELECT 
-     bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, wbs_type, wbs_description, wbs_element_single, asbl, asbl_loa, non_committed, active_inactive, period, ptd, open_commitment_KEUR, eac, eac_vs_asbl, unique_key 
+     bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, wbs_type, wbs_description, wbs_element_single, asbl, asbl_loa, non_committed, active_inactive, period, ptd, open_commitment_KEUR, eac, eac_vs_asbl, non_committed_editable, unique_key 
     FROM final_dashboard
 `;
         await db.query(insertSql);
@@ -1618,39 +1562,28 @@ exports.getReviewChanges = async (req, res) => {
 // 2. Final Save (Commit): Editable value ko original mein move karein
 exports.finalizeChanges = async (req, res) => {
     try {
-        // 1. Pehle check karein ki kitni rows badli hain
-        const [changedRows] = await db.query(
-            "SELECT loa_id FROM final_dashboard_table WHERE ABS(non_committed - non_committed_editable) > 0.01"
-        );
-
-        if (changedRows.length === 0) {
-            return res.status(200).json({ message: "No changes found to finalize." });
-        }
-
-        // 2. 🔥 STEP 1: Summary table mein 'non_committed' ko update karein
+        // 1. Update original non_committed in Summary
         await db.query(`
             UPDATE summary 
             SET non_committed = non_committed_editable 
             WHERE ABS(non_committed - non_committed_editable) > 0.01
         `);
 
-        // 3. 🔥 STEP 2: Dashboard table mein 'non_committed' (Original) ko update karein
+        // 2. Update original non_committed in Dashboard Table
         await db.query(`
             UPDATE final_dashboard_table 
             SET non_committed = non_committed_editable 
             WHERE ABS(non_committed - non_committed_editable) > 0.01
         `);
 
-        // 4. 🔥 STEP 3: EAC aur Variance ko recalculate karein (Sabse Zaroori)
-        // EAC = PTD + OC + New Finalized Non-Committed
+        // 3. Recalculate EAC and Variance globally
         await db.query(`
             UPDATE final_dashboard_table 
             SET eac = (ptd + open_commitment_KEUR + non_committed),
                 eac_vs_asbl = (asbl - (ptd + open_commitment_KEUR + non_committed))
         `);
 
-        res.status(200).json({ message: "✅ All changes finalized! Summary View is now updated." });
-
+        res.status(200).json({ message: "All changes finalized successfully!" });
     } catch (error) {
         console.error("Finalize Error:", error);
         res.status(500).json({ error: error.message });
