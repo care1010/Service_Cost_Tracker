@@ -2,7 +2,7 @@ const db = require('../config/db');
 const XLSX = require('xlsx');
 const fs = require('fs');
 
-// 🔥 Updated CATEGORY_MAP with exactly 23 Categories
+// 🔥 Updated CATEGORY_MAP with exactly 24 Categories
 const CATEGORY_MAP = [
     { cat: "Local Materials", type: "Cost" }, 
     { cat: "Transportation & Logistic cost", type: "Cost" },
@@ -22,10 +22,11 @@ const CATEGORY_MAP = [
     { cat: "Not to considered", type: "NTC" },
     { cat: "Additional HW", type: "Cost" }, 
     { cat: "Risk and Contingencies", type: "Cost" },
-    { cat: "FMA", type: "Cost" }, 
+    { cat: "Quality Audit + FMA", type: "Cost" }, 
     { cat: "Additional Services", type: "Cost" },
     { cat: "Others-Not found in Cost Mapping", type: "Cost" }, 
-    { cat: "Cross ERP Cost", type: "Cost" }, // 🔥 Added back as requested
+    { cat: "I&C Services + DD Resources", type: "Cost" }, 
+    { cat: "Cross ERP Cost", type: "Cost" }, 
     { cat: "Total", type: "Cost" } 
 ];
 
@@ -65,7 +66,6 @@ const processProjectData = async (dataGrid, created_by) => {
         const [exSummary] = await db.query("SELECT wbs FROM summary WHERE TRIM(loa_id) = ? LIMIT 1", [loa_id]);
 
         if (exSummary.length > 0) {
-            // Existing Project Update Logic
             const [exMappings] = await db.query("SELECT TRIM(wbs_element) as wbs_element FROM wbs_loa_id_mapping1 WHERE TRIM(loa_id) = ?", [loa_id]);
             const existingWbs = exMappings.map(m => m.wbs_element.toUpperCase());
             let newWbs = wbs_rows.filter(row => !existingWbs.includes(row.wbs_element.toUpperCase()));
@@ -77,7 +77,7 @@ const processProjectData = async (dataGrid, created_by) => {
             await db.query("INSERT INTO wbs_loa_id_mapping1 (loa_id, wbs_type, wbs_element, wbs_description, wbs, created_by) VALUES ?", [mapRows]);
             processedLoas.add(loa_id);
         } else {
-            // New Project: Insert 23 * 3 Rows
+            // New Project: Insert 24 * 3 Rows
             const finalMergedWbs = merged_wbs || Array.from(new Set(wbs_rows.map(r => r.wbs_element))).join(',');
             let summaryRows = [];
             WBS_TYPES_MASTER.forEach(type => {
@@ -119,14 +119,11 @@ exports.uploadProjectFile = async (req, res) => {
     } catch (error) { res.status(500).json({ error: error.message }); }
 };
 
-
-
-// projectController.js ke end mein:
+// Database Fix script for existing entries
 exports.fixMissingSummaryRows = async (req, res) => {
     try {
-        console.log("Starting DB Audit and Fix...");
+        console.log("Starting DB Audit and Fix for 24 Categories...");
         const WBS_TYPES = ["Project", "AMC", "Warranty/Other"];
-        
         const [uniqueProjects] = await db.query("SELECT DISTINCT bu, customer, loa_id, loa_name, wbs FROM summary");
         let totalNewRows = 0;
 
@@ -135,7 +132,7 @@ exports.fixMissingSummaryRows = async (req, res) => {
                 for (const item of CATEGORY_MAP) {
                     const [exists] = await db.query(
                         "SELECT 1 FROM summary WHERE TRIM(loa_id) = ? AND TRIM(wbs_type) = ? AND categories = ?",
-                        [proj.loa_id.trim(), typeStr, item.cat]
+                        [proj.loa_id.trim(), typeStr.trim(), item.cat]
                     );
 
                     if (exists.length === 0) {
@@ -149,7 +146,7 @@ exports.fixMissingSummaryRows = async (req, res) => {
                 }
             }
         }
-        res.status(200).json({ message: "Database Standardized!", rows_added: totalNewRows });
+        res.status(200).json({ message: "Database Standardized to 24 Categories!", rows_added: totalNewRows });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

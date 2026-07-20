@@ -99,3 +99,6 @@ NOTE:=>  ""React mein HTML ko JSX kehte hain aur wo JavaScript ke sath hi rehti 
 non_committed  = column of final_dashboard_table => original column where old values are exist
 
 non_committed_editable = column of final_dashboard_table => input edit column where new saved values are exist
+
+
+####http://localhost:5000/api/data/run-fix-db
