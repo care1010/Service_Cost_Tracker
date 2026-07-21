@@ -262,7 +262,8 @@ exports.getWbsSummary = async (req, res) => {
                 GROUP BY bu, customer, loa_id, loa_name, cost_revenue, categories, unique_key, wbs_type
             ) as t
             GROUP BY bu, customer, loa_id, loa_name, cost_revenue, categories
-            HAVING 1=1
+            HAVING 1=1 
+            ${showAll === 'false' ? 'AND (ABS(COALESCE(asbl, 0)) > 0.01 OR ABS(ptd) > 0.01 OR ABS(open_commitment) > 0.01 OR ABS(non_committed) > 0.01)' : ''}
             ORDER BY loa_name ASC, cost_revenue ASC
         `;
 
