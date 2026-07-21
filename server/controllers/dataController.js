@@ -197,20 +197,15 @@ exports.getWbsSummary = async (req, res) => {
         const wEArr = getValArray(req.query.wbs);
         const wDArr = getValArray(req.query.wbs_description);
 
-        // 1. Base Conditions build karein
+        // 1. Base Conditions (RLS First)
         let conditions = ["categories NOT IN ('Not to considered')", "cost_revenue <> 'NTC'"];
         let baseParams = [];
-        
-        // RLS apply karein (baseParams bharega)
         applyRLS(type, allowedCustomers, conditions, baseParams);
-        
-        // Category type apply karein
         applyCategoryTypeFilter(req.query.category_type, conditions);
 
-        // 2. Dropdown Filters build karein
+        // 2. Dropdown Filters
         let filterParams = [];
         const dbFilters = ['bu', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period', 'wbs_type', 'wbs_description'];
-        
         dbFilters.forEach(key => {
             const vals = getValArray(req.query[key]);
             if (vals) {
@@ -218,26 +213,41 @@ exports.getWbsSummary = async (req, res) => {
                 filterParams.push(vals);
             }
         });
-
-        if (wEArr) {
-            conditions.push(`wbs_element_single IN (?)`);
-            filterParams.push(wEArr);
-        }
+        if (wEArr) { conditions.push(`wbs_element_single IN (?)`); filterParams.push(wEArr); }
 
         const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+        
+        // 🔥 Parameter Sync: Sequence must match WHERE clause (baseParams -> filterParams)
+        const combinedParams = [...baseParams, ...filterParams];
 
         // 3. Matrix Query
         const matrixQuery = `
             SELECT 
                 bu, customer, loa_id, loa_name, cost_revenue, categories, MAX(unique_key) as unique_key, MAX(wbs_type) as wbs_type,
-                ${wTArr ? `ROUND(SUM(type_asbl), 2)` : "'-'"} as asbl, 
-                ROUND(SUM(total_ptd), 2) as ptd, 
-                ROUND(SUM(total_oc), 2) as open_commitment, 
-                ROUND(SUM(total_nc_editable), 2) as non_committed, 
-                ROUND(SUM(total_nc_original), 2) as non_committed_original,
-                MAX(cat_asbl_loa) as asbl_loa,
-                ROUND(SUM(total_ptd) + SUM(total_oc) + SUM(total_nc_editable), 2) as eac,
-                ${wTArr ? `ROUND(SUM(type_asbl) - (SUM(total_ptd) + SUM(total_oc) + SUM(total_nc_editable)), 2)` : "'-'"} as eac_vs_asbl
+                
+                -- ASBL Logic (Subquery based on WBS Type)
+                ${wTArr ? `(
+                    SELECT COALESCE(SUM(s2.asbl), 0) 
+                    FROM summary s2 
+                    WHERE s2.loa_id = t.loa_id AND s2.categories = t.categories AND s2.wbs_type IN (?)
+                )` : "'-'"} as asbl, 
+
+                ROUND(SUM(COALESCE(total_ptd, 0)), 2) as ptd, 
+                ROUND(SUM(COALESCE(total_oc, 0)), 2) as open_commitment, 
+                ROUND(SUM(COALESCE(total_nc_editable, 0)), 2) as non_committed, 
+                ROUND(SUM(COALESCE(total_nc_original, 0)), 2) as non_committed_original,
+                MAX(COALESCE(cat_asbl_loa, 0)) as asbl_loa,
+
+                -- 🔥 FIXED: EAC Calculation (Child Row visibility)
+                ROUND(SUM(COALESCE(total_ptd, 0)) + SUM(COALESCE(total_oc, 0)) + SUM(COALESCE(total_nc_editable, 0)), 2) as eac,
+
+                -- 🔥 FIXED: EAC vs ASBL Calculation
+                ${wTArr ? `ROUND(
+                    (SELECT COALESCE(SUM(s2.asbl), 0) FROM summary s2 WHERE s2.loa_id = t.loa_id AND s2.categories = t.categories AND s2.wbs_type IN (?)) 
+                    - 
+                    (SUM(COALESCE(total_ptd, 0)) + SUM(COALESCE(total_oc, 0)) + SUM(COALESCE(total_nc_editable, 0))), 2
+                )` : "'-'"} as eac_vs_asbl
+
             FROM (
                 SELECT 
                     bu, customer, loa_id, loa_name, cost_revenue, categories, unique_key, wbs_type,
@@ -252,32 +262,34 @@ exports.getWbsSummary = async (req, res) => {
                 GROUP BY bu, customer, loa_id, loa_name, cost_revenue, categories, unique_key, wbs_type
             ) as t
             GROUP BY bu, customer, loa_id, loa_name, cost_revenue, categories
-            HAVING 1=1 
-            ${showAll === 'false' ? 'AND (ABS(COALESCE(asbl, 0)) > 0.01 OR ABS(ptd) > 0.01 OR ABS(open_commitment) > 0.01 OR ABS(non_committed) > 0.01)' : ''}
+            HAVING 1=1
             ORDER BY loa_name ASC, cost_revenue ASC
         `;
 
-        // 🔥 FIX 1: Sequence must be baseParams (RLS) then filterParams (Dropdowns)
-        const combinedParams = [...baseParams, ...filterParams];
+        // Parameters assembly for DB call
+        let queryParams = [];
+        if (wTArr) queryParams.push(wTArr); // For ASBL cell
+        if (wTArr) queryParams.push(wTArr); // For Variance cell
+        queryParams = [...queryParams, ...combinedParams];
 
-        const [dataRows] = await db.query(`${matrixQuery} LIMIT ?, ?`, [...combinedParams, startIdx, limitIdx]);
-        const [countRes] = await db.query(`SELECT COUNT(*) as total FROM (${matrixQuery}) as temp`, combinedParams);
+        const [dataRows] = await db.query(`${matrixQuery} LIMIT ?, ?`, [...queryParams, startIdx, limitIdx]);
+        const [countRes] = await db.query(`SELECT COUNT(*) as total FROM (${matrixQuery}) as temp`, queryParams);
 
-        // 4. KPI Query
+        // 4. KPI Query (SM % Logic)
         const kpiQuery = `
             SELECT 
                 SUM(CASE WHEN cost_revenue = 'Revenue' THEN cat_asbl ELSE 0 END) as asbl_rev,
                 SUM(CASE WHEN cost_revenue = 'Cost' THEN cat_asbl ELSE 0 END) as asbl_cost,
-                SUM(CASE WHEN cost_revenue = 'Revenue' THEN total_ptd ELSE 0 END) as ptd_rev,
-                SUM(CASE WHEN cost_revenue = 'Cost' THEN total_ptd ELSE 0 END) as ptd_cost,
-                SUM(CASE WHEN cost_revenue = 'Revenue' THEN (total_ptd + total_oc + total_nc) ELSE 0 END) as eac_rev,
-                SUM(CASE WHEN cost_revenue = 'Cost' THEN (total_ptd + total_oc + total_nc) ELSE 0 END) as eac_cost
+                SUM(CASE WHEN cost_revenue = 'Revenue' THEN cat_ptd ELSE 0 END) as ptd_rev,
+                SUM(CASE WHEN cost_revenue = 'Cost' THEN cat_ptd ELSE 0 END) as ptd_cost,
+                SUM(CASE WHEN cost_revenue = 'Revenue' THEN (cat_ptd + cat_oc + cat_nc) ELSE 0 END) as eac_rev,
+                SUM(CASE WHEN cost_revenue = 'Cost' THEN (cat_ptd + cat_oc + cat_nc) ELSE 0 END) as eac_cost
             FROM (
                 SELECT cost_revenue, categories, loa_id,
                        MAX(asbl) as cat_asbl,
-                       SUM(ptd) as total_ptd,
-                       MAX(total_oc_fixed) as total_oc,
-                       MAX(non_committed_editable) as total_nc
+                       SUM(ptd) as cat_ptd,
+                       SUM(open_commitment_KEUR) as cat_oc,
+                       MAX(non_committed_editable) as cat_nc
                 FROM final_dashboard_table
                 ${whereClause}
                 GROUP BY loa_id, categories, cost_revenue
@@ -290,12 +302,12 @@ exports.getWbsSummary = async (req, res) => {
         res.status(200).json({
             draw: parseInt(draw) || 0,
             recordsTotal: countRes[0].total,
+            recordsFiltered: countRes[0].total,
             data: dataRows,
             kpis: {
-                asbl_rev: wTArr ? Number(k.asbl_rev || 0).toFixed(2) : "-",
-                asbl_cost: wTArr ? Number(k.asbl_cost || 0).toFixed(2) : "-",
-                // 🔥 FIX 2: ASBL SM % Logic
-                asbl_sm: (wTArr && Number(k.asbl_rev) !== 0) ? calculateSM(k.asbl_rev, k.asbl_cost) : "0.00",
+                asbl_rev: Number(k.asbl_rev || 0).toFixed(2),
+                asbl_cost: Number(k.asbl_cost || 0).toFixed(2),
+                asbl_sm: (Number(k.asbl_rev) !== 0) ? calculateSM(k.asbl_rev, k.asbl_cost) : "0.00",
                 ptd_rev: Number(k.ptd_rev || 0).toFixed(2),
                 ptd_cost: Number(k.ptd_cost || 0).toFixed(2),
                 ptd_sm: calculateSM(k.ptd_rev, k.ptd_cost),
@@ -337,20 +349,20 @@ exports.getWbsSummaryCollapse = async (req, res) => {
         if (wEArr) { conditions.push(`wbs_element_single IN (?)`); filterParams.push(wEArr); }
 
         const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-        const combinedParams = [...baseParams, ...filterParams];
+        const combinedParams = [...baseParams, ...filterParams]; // 🔥 RLS Params First
 
         const sql = `
             SELECT 
                 bu, customer, loa_name, loa_id, cost_revenue,
-                ${wTArr ? 'ROUND(SUM(type_asbl), 2)' : "'-'"} AS asbl, 
+                ${wTArr ? `(SELECT ROUND(SUM(s2.asbl), 2) FROM summary s2 WHERE s2.loa_id = t.loa_id AND s2.cost_revenue = t.cost_revenue AND s2.wbs_type IN (?))` : "'-'"} AS asbl, 
                 ROUND(MAX(asbl_loa), 2) AS asbl_loa,
                 ROUND(SUM(total_ptd), 2) AS ptd,
                 ROUND(SUM(total_oc), 2) AS open_commitment,
-                MAX(total_nc) AS non_committed
+                ROUND(SUM(total_nc), 2) AS non_committed,
+                ROUND(SUM(total_ptd) + SUM(total_oc) + SUM(total_nc), 2) as eac
             FROM (
                 SELECT 
                     bu, customer, loa_name, loa_id, cost_revenue, categories, wbs_type,
-                    MAX(asbl) as type_asbl,
                     SUM(ptd) as total_ptd,
                     SUM(open_commitment_KEUR) as total_oc,
                     MAX(non_committed_editable) as total_nc,
@@ -363,12 +375,15 @@ exports.getWbsSummaryCollapse = async (req, res) => {
             ORDER BY loa_name ASC
         `;
 
-        const [dataRows] = await db.query(`${sql} LIMIT ?, ?`, [...combinedParams, startIdx, limitIdx]);
-        const [countRes] = await db.query(`SELECT COUNT(*) as total FROM (${sql}) temp`, combinedParams);
+        let queryParams = [];
+        if (wTArr) queryParams.push(wTArr);
+        queryParams = [...queryParams, ...combinedParams];
+
+        const [dataRows] = await db.query(`${sql} LIMIT ?, ?`, [...queryParams, startIdx, limitIdx]);
+        const [countRes] = await db.query(`SELECT COUNT(*) as total FROM (${sql}) temp`, queryParams);
 
         res.status(200).json({ draw: parseInt(draw) || 0, recordsTotal: countRes[0].total, data: dataRows });
     } catch (error) {
-        console.error("Collapse Error:", error);
         res.status(500).json({ error: error.message });
     }
 };
