@@ -1,40 +1,49 @@
-/* .select2-container--default .select2-selection--single .select2-selection__clear { */
-    /* height: 100% !important; */
-    /* display: flex !important; */
-    /* align-items: center !important; */
-    /* margin-right: 35px !important; */
-    /* margin-top: 0 !important; */
-    /* font-size: 14px !important; */
-    /* color: #64748b !important; */
-/* } */
+/* Select2 Wrapper */
+.w-full.md\:w-56, .w-full.md\:w-96 {
+    position: relative; /* Dropdown placement ke liye zaruri */
+}
 
-/* Select box */
-.select2-container {
+/* Dropdown ki width fix karne ke liye */
+.select2-container--default .select2-dropdown {
+    border-radius: 12px !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1) !important;
+    background-color: white !important;
+    z-index: 9999 !important;
+    /* Isse width control hogi */
+    min-width: 100% !important; 
     width: 100% !important;
 }
 
-/* Dropdown bhi parent jitna hi rahe */
-.select2-dropdown {
-    min-width: 100% !important;
-    width: auto !important;
+/* Input Box Style */
+.select2-container--default .select2-selection--single {
+    height: 42px !important;
+    border-radius: 12px !important;
+    border: 2px solid #f1f5f9 !important;
+    background-color: #f8fafc !important;
+    display: flex !important;
+    align-items: center !important;
+    transition: all 0.2s ease;
 }
 
-/* LOA ID & LOA Name */
-#loa-id-select + .select2-container,
-#loa-name-select + .select2-container {
-    width: 100% !important;
-    max-width: 100% !important;
+.select2-container--default .select2-selection--single:focus {
+    border-color: #3b82f6 !important;
 }
 
-/* Text bahar na nikle */
-.select2-selection__rendered,
+/* Dropdown list items */
 .select2-results__option {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    padding: 8px 12px !important;
+    font-size: 13px !important;
 }
 
-.loa-dropdown{
-    width:auto !important;
-    min-width:100% !important;
+/* Taaki search box bhi sahi dikhe */
+.select2-search--dropdown .select2-search__field {
+    border-radius: 8px !important;
+    border: 1px solid #cbd5e1 !important;
+    padding: 6px 10px !important;
+}
+
+/* Container shift prevent karne ke liye */
+body.select2-container--open {
+    width: 100% !important;
 }

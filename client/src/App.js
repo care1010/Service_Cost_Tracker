@@ -73,9 +73,9 @@ function App() {
           <Route path="/" element={
             <>
               {activeTab === 'summary' && <SummaryView user={user} />}
-              {activeTab === 'add-project' && <AddProject />}
+              {activeTab === 'add-project' && <AddProject user={user} />}
               {activeTab === 'ptd' && <PtdAutomation />}
-              {activeTab === 'asbl' && <AsblAutomation />}
+              {activeTab === 'asbl' && <AsblAutomation user={user} />}
               {activeTab === 'dashboard' && <Dashboard user={user} />}
               {activeTab === 'erp_resource' && <ERPResource />}
               {/* 🔥 Sirf admin ya super_admin hi is component ko load kar payenge */}

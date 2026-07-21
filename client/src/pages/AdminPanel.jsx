@@ -5,6 +5,7 @@ import 'datatables.net-dt';
 import 'datatables.net-dt/css/dataTables.dataTables.css';
 import Swal from 'sweetalert2';
 import './AdminPanel.css';
+import { HiOutlineUserAdd, HiOutlineTrash, HiOutlinePencilAlt, HiOutlineShieldCheck, HiOutlineRefresh } from "react-icons/hi";
 
 const AdminPanel = ({ user }) => {
     const [users, setUsers] = useState([]);
@@ -15,116 +16,29 @@ const AdminPanel = ({ user }) => {
     
     const tableRef = useRef(null);
 
-    // Filter available customers based on logged-in user's role (RLS)
+    // 1. Fetch data on load
     useEffect(() => {
         fetchUsers();
-        axios.get(`${process.env.REACT_APP_API_URL}/api/data/filter-options`)
-            .then(res => {
-                const allCustomers = res.data.customer || [];
-                if (user?.type === 'admin') {
-                    // Admins can only see and map customers they themselves have access to
-                    const allowed = allCustomers.filter(c => user.allowedCustomers.includes(c));
-                    setCustomers(allowed);
-                } else {
-                    setCustomers(allCustomers);
-                }
-            })
-            .catch(err => console.error("Error fetching customers:", err));
+        fetchCustomerOptions();
     }, [user]);
 
-    // DataTable Initialization
-    useEffect(() => {
-        if (users.length > 0) {
-            if ($.fn.DataTable.isDataTable(tableRef.current)) {
-                $(tableRef.current).DataTable().destroy();
+    const fetchCustomerOptions = async () => {
+        try {
+            const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/data/filter-options`);
+            const allCustomers = res.data.customer || [];
+            
+            // 🔥 RLS: Admin sirf wahi customer assign kar sakta hai jiski access uske paas khud hai
+            if (user?.type === 'admin') {
+                const allowed = allCustomers.filter(c => user.allowedCustomers.includes(c));
+                setCustomers(allowed);
+            } else {
+                setCustomers(allCustomers);
             }
-
-            $(tableRef.current).DataTable({
-                data: users,
-                destroy: true,
-                pageLength: 50,
-                lengthMenu: [
-                    [50, 100, 200, -1],
-                    [50, 100, 200, "All"]
-                ],
-                columns: [
-                    { 
-                        title: "Email", 
-                        data: "email",
-                        render: (data) => `
-                            <div class="flex items-center gap-3">
-                                <div class="w-8 h-8 rounded-full bg-blue-600/20 text-blue-400 flex items-center justify-center font-bold text-sm uppercase">
-                                    ${data ? data.charAt(0).toUpperCase() : ''}
-                                </div>
-                                <span class="font-semibold text-slate-200">${data}</span>
-                            </div>
-                        `
-                    },
-                    { 
-                        title: "Role", 
-                        data: "type",
-                        render: (data) => `
-                            <span class="px-3 py-1 rounded-lg text-[11px] font-black uppercase ring-1 ${
-                                data === 'super_admin' 
-                                ? 'bg-purple-500/10 text-purple-400 ring-purple-500/30' 
-                                : 'bg-emerald-500/10 text-emerald-400 ring-emerald-500/30'
-                            }">
-                                ${data.replace('_', ' ')}
-                            </span>
-                        `
-                    },
-                    { 
-                        title: "Customer Access", 
-                        data: "customers",
-                        render: (data) => `
-                            <div class="flex flex-wrap gap-1 max-w-md">
-                                ${data && data.length > 0 
-                                    ? data.map(c => `<span class="bg-slate-800 text-slate-300 px-2 py-0.5 rounded text-[12px] border border-slate-700 font-medium">${c}</span>`).join('') 
-                                    : `<span class="text-slate-500 text-xs italic">No Access</span>`
-                                }
-                            </div>
-                        `
-                    },
-                    {
-                        title: "Actions",
-                        data: null,
-                        render: (data, type, row) => `
-                            <div class="flex gap-3">
-                                <button class="edit-btn text-blue-400 hover:text-blue-300 transition-colors" data-id="${row.id}">
-                                    ✏️ <span class="text-xs ml-1"></span>
-                                </button>
-                                <button class="delete-btn text-rose-400 hover:text-rose-300 transition-colors" data-id="${row.id}" data-email="${row.email}">
-                                    🗑️ <span class="text-sm ml-1">Delete</span>
-                                </button>
-                            </div>
-                        `
-                    }
-                ],
-                destroy: true,
-                drawCallback: function() {
-                    $('.edit-btn').off('click').on('click', function() {
-                        const userToEdit = users.find(u => u.id == $(this).data('id'));
-                        if (userToEdit) { 
-                            setEditMode(true); 
-                            setFormData({
-                                id: userToEdit.id,
-                                email: userToEdit.email,
-                                // password: userToEdit.password || '',
-                                type: userToEdit.type || 'user',
-                                customers: userToEdit.customers || []
-                            }); 
-                            setShowModal(true); 
-                        }
-                    });
-                    $('.delete-btn').off('click').on('click', function() {
-                        handleDelete($(this).data('id'), $(this).data('email'));
-                    });
-                }
-            });
+        } catch (err) {
+            console.error("Error fetching customers:", err);
         }
-    }, [users]);
+    };
 
-    // Send logged-in user RLS constraints to API
     const fetchUsers = async () => {
         try {
             const res = await axios.get(`${process.env.REACT_APP_API_URL}/api/data/admin/users`, {
@@ -139,9 +53,76 @@ const AdminPanel = ({ user }) => {
         }
     };
 
-    const generatePassword = () => {
-        setFormData({ ...formData, password: Math.random().toString(36).slice(-10) });
-    };
+    // 2. DataTable Logic
+    useEffect(() => {
+        if (users.length >= 0) {
+            const table = $(tableRef.current).DataTable({
+                data: users,
+                destroy: true,
+                pageLength: 25,
+                columns: [
+                    { 
+                        title: "Email", 
+                        data: "email",
+                        render: (data) => `<div class="font-bold text-slate-200">${data}</div>`
+                    },
+                    { 
+                        title: "System Role", 
+                        data: "type",
+                        render: (data) => `
+                            <span class="px-2 py-1 rounded text-[10px] font-black uppercase ring-1 ${
+                                data === 'super_admin' ? 'bg-purple-500/10 text-purple-400 ring-purple-500/30' : 'bg-blue-500/10 text-blue-400 ring-blue-500/30'
+                            }">
+                                ${data.replace('_', ' ')}
+                            </span>`
+                    },
+                    { 
+                        title: "Customer Access", 
+                        data: "customers",
+                        render: (data) => `
+                            <div class="flex flex-wrap gap-1 max-w-sm">
+                                ${data && data.length > 0 
+                                    ? data.map(c => `<span class="bg-slate-800 text-slate-400 px-2 py-0.5 rounded text-[11px] border border-slate-700">${c}</span>`).join('') 
+                                    : '<span class="text-slate-600 text-xs italic">No Access</span>'}
+                            </div>`
+                    },
+                    {
+                        title: "Actions",
+                        data: null,
+                        render: (data, type, row) => {
+                            // 🔥 SELF-DELETE PROTECTION: Current user cannot delete themselves
+                            const isSelf = row.email === user?.email;
+                            return `
+                            <div class="flex gap-4">
+                                <button class="edit-btn text-blue-400 hover:text-blue-200 transition-all cursor-pointer" data-id="${row.id}">
+                                    EDIT
+                                </button>
+                                ${!isSelf ? `
+                                    <button class="delete-btn text-rose-500 hover:text-rose-300 transition-all cursor-pointer" data-id="${row.id}" data-email="${row.email}">
+                                        DELETE
+                                    </button>
+                                ` : `<span class="text-slate-500 text-[10px] font-bold uppercase italic">Current User</span>`}
+                            </div>`;
+                        }
+                    }
+                ],
+                drawCallback: function() {
+                    $('.edit-btn').off('click').on('click', function() {
+                        const u = users.find(x => x.id == $(this).data('id'));
+                        if (u) {
+                            setEditMode(true);
+                            setFormData({ id: u.id, email: u.email, password: '', type: u.type, customers: u.customers || [] });
+                            setShowModal(true);
+                        }
+                    });
+                    $('.delete-btn').off('click').on('click', function() {
+                        handleDelete($(this).data('id'), $(this).data('email'));
+                    });
+                }
+            });
+            return () => table.destroy();
+        }
+    }, [users, user]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -157,61 +138,50 @@ const AdminPanel = ({ user }) => {
             } else {
                 await axios.post(`${process.env.REACT_APP_API_URL}/api/data/admin/create-user`, payload);
             }
-            Swal.fire({ icon: 'success', title: 'Saved successfully!', timer: 1500, showConfirmButton: false });
+            
+            Swal.fire({ icon: 'success', title: 'User permissions updated!', timer: 2000, showConfirmButton: false });
             setShowModal(false);
             fetchUsers();
-        } catch (err) { 
-            Swal.fire('Error', err.response?.data?.error || 'Failed to save changes.', 'error'); 
+        } catch (err) {
+            Swal.fire('Error', err.response?.data?.error || 'Action failed', 'error');
         }
     };
 
     const handleDelete = (id, email) => {
         Swal.fire({
-            title: 'Are you sure?',
-            text: `This will permanently delete ${email}.`,
+            title: 'Confirm Deletion',
+            text: `Are you sure you want to remove ${email}?`,
             icon: 'warning',
             showCancelButton: true,
-            confirmButtonText: 'Yes, delete!',
-            background: '#0f172a',
-            color: '#fff',
             confirmButtonColor: '#e11d48',
-            cancelButtonColor: '#475569'
+            cancelButtonColor: '#475569',
+            background: '#0f172a',
+            color: '#fff'
         }).then(async (result) => {
             if (result.isConfirmed) {
                 try {
                     await axios.delete(`${process.env.REACT_APP_API_URL}/api/data/admin/delete-user`, {
-                        params: {
-                            id,
-                            email,
-                            currentUserType: user?.type
-                        }
+                        params: { id, email, currentUserType: user?.type }
                     });
                     fetchUsers();
-                    Swal.fire('Deleted!', 'User has been deleted.', 'success');
+                    Swal.fire('Deleted!', 'User has been removed from system.', 'success');
                 } catch (err) {
-                    Swal.fire('Error', err.response?.data?.error || 'Failed to delete user.', 'error');
+                    Swal.fire('Error', err.response?.data?.error || 'Delete failed', 'error');
                 }
             }
         });
     };
 
-    const handleSelectAllCustomers = () => {
-        setFormData({ ...formData, customers: [...customers] });
-    };
-
-    const handleClearAllCustomers = () => {
-        setFormData({ ...formData, customers: [] });
-    };
-
     return (
-        <div className="p-6 bg-slate-950 min-h-screen">
-            {/* Header Section */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+        <div className="p-6 bg-slate-950 min-h-screen font-sans">
+            {/* Top Header */}
+            <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
                 <div>
-                    <h1 className="text-3xl font-black text-white tracking-tight">
-                        User <span className="text-blue-500">Management</span>
+                    <h1 className="text-3xl font-black text-white uppercase tracking-tight flex items-center gap-3">
+                        <HiOutlineShieldCheck className="text-blue-500" />
+                        Access <span className="text-blue-500">Management</span>
                     </h1>
-                    <p className="text-slate-400 text-sm mt-1"></p>
+                    <p className="text-slate-500 text-xs font-bold uppercase tracking-widest mt-1">Control user roles and customer boundaries</p>
                 </div>
                 <button 
                     onClick={() => { 
@@ -219,160 +189,93 @@ const AdminPanel = ({ user }) => {
                         setFormData({ id: '', email: '', password: '', type: 'user', customers: [] }); 
                         setShowModal(true); 
                     }}
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-bold shadow-lg transition-all flex items-center gap-2"
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-2xl font-black uppercase text-xs tracking-widest shadow-xl shadow-blue-900/20 transition-all flex items-center gap-2"
                 >
-                    <span className="text-white text-2xl font-bold">+</span> Create User
+                    <HiOutlineUserAdd className="text-lg" /> Create New User
                 </button>
             </div>
 
-            {/* Datatable Container */}
-            <div className="bg-slate-900 rounded-[2rem] shadow-2xl p-6 border border-slate-800 admin-dt-wrapper overflow-x-auto">
-                <table ref={tableRef} className="display nowrap w-full text-slate-300"></table>
+            {/* Table Container */}
+            <div className="bg-slate-900 rounded-[2.5rem] p-8 border border-slate-800 shadow-2xl">
+                <table ref={tableRef} className="display nowrap w-full"></table>
             </div>
 
-            {/* Modal */}
+            {/* User Modal */}
             {showModal && (
-                <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/85 backdrop-blur-sm p-4">
-                    <div className="bg-slate-900 w-full max-w-2xl rounded-[2rem] shadow-2xl border border-slate-800 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-                        {/* Modal Header */}
-                        <div className="p-6 border-b border-slate-800 flex justify-between items-center bg-slate-950">
-                            <div>
-                                <h2 className="text-2xl font-black text-white">{editMode ? 'Edit User details' : 'Create New User'}</h2>
-                                
-                            </div>
-                            <button 
-                                onClick={() => setShowModal(false)} 
-                                className="text-slate-400 hover:text-white text-3xl transition-colors font-light"
-                            >
-                                &times;
-                            </button>
+                <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/90 backdrop-blur-md p-4">
+                    <div className="bg-slate-900 w-full max-w-2xl rounded-[2.5rem] border border-slate-800 shadow-2xl overflow-hidden">
+                        <div className="p-8 border-b border-slate-800 flex justify-between items-center bg-slate-950">
+                            <h2 className="text-xl font-black text-white uppercase tracking-tighter">
+                                {editMode ? 'Edit User Permissions' : 'Configure New User'}
+                            </h2>
+                            <button onClick={() => setShowModal(false)} className="text-slate-500 hover:text-white text-3xl font-light">&times;</button>
                         </div>
 
-                        {/* Modal Form */}
-                        <form onSubmit={handleSubmit} className="p-6 space-y-5">
-                            {/* Email & Role Input Row */}
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <form onSubmit={handleSubmit} className="p-8 space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div>
-                                    <label className="text-[12px] font-bold text-slate-200 uppercase tracking-wider mb-2 block">Email Address</label>
+                                    <label className="text-[10px] font-black text-slate-500 uppercase block mb-2">Login Email</label>
                                     <input 
-                                        type="email" 
-                                        disabled={editMode} 
-                                        className="w-full p-3 rounded-xl bg-slate-950 border border-slate-800 text-white outline-none focus:border-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed" 
-                                        value={formData.email} 
-                                        onChange={e => setFormData({...formData, email: e.target.value})} 
-                                        placeholder="email@nokia.com" 
-                                        required 
+                                        type="email" disabled={editMode} 
+                                        className="w-full p-4 rounded-2xl bg-slate-950 border border-slate-800 text-white outline-none focus:border-blue-500 transition-all disabled:opacity-30" 
+                                        value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="user@nokia.com" required 
                                     />
                                 </div>
                                 <div>
-                                    <label className="text-[12px] font-bold text-slate-200 uppercase tracking-wider mb-2 block">System Role</label>
+                                    <label className="text-[10px] font-black text-slate-500 uppercase block mb-2">Assigned Role</label>
                                     <select 
-                                        className="w-full p-3 rounded-xl bg-slate-950 border border-slate-800 text-white outline-none focus:border-blue-500 transition-colors" 
-                                        value={formData.type} 
-                                        onChange={e => setFormData({...formData, type: e.target.value})}
+                                        className="w-full p-4 rounded-2xl bg-slate-950 border border-slate-800 text-white outline-none focus:border-blue-500 transition-all" 
+                                        value={formData.type} onChange={e => setFormData({...formData, type: e.target.value})}
                                     >
-                                        <option value="user">User</option>
-                                        <option value="admin">Admin</option>
-                                        
-                                        {/* Super Admin logged-in user ko naya Super Admin create karne ka complete access deta hai */}
-                                        {(user?.type === 'super_admin' || user?.type === 'super_admin') && (
-                                            <option value="super_admin">Super Admin</option>
-                                        )}
+                                        <option value="user">User (View Only)</option>
+                                        <option value="admin">Admin (Editor)</option>
+                                        {user?.type === 'super_admin' && <option value="super_admin">Super Admin</option>}
                                     </select>
                                 </div>
                             </div>
 
-                            {/* Password input row */}
                             <div>
-                                <label className="text-[12px] font-bold text-slate-200 uppercase tracking-wider mb-2 block">Password</label>
-                                <div className="flex gap-2">
-                                    <input 
-                                        type="text" 
-                                        className="flex-1 p-3 rounded-xl bg-slate-950 border border-slate-800 text-blue-400 font-mono text-sm outline-none focus:border-blue-500 transition-colors" 
-                                        value={formData.password} 
-                                        onChange={e => setFormData({...formData, password: e.target.value})} 
-                                        placeholder="Enter password or auto-generate" 
-                                        required 
-                                    />
-                                    <button 
-                                        type="button" 
-                                        onClick={generatePassword} 
-                                        className="bg-blue-600 hover:bg-blue-700 text-white px-5 rounded-xl font-bold text-xs tracking-wider transition-colors uppercase"
-                                    >
-                                        Generate
-                                    </button>
-                                </div>
+                                <label className="text-[10px] font-black text-slate-500 uppercase block mb-2">
+                                    Account Password {editMode && <span className="text-blue-500 font-normal">(Leave blank to keep current)</span>}
+                                </label>
+                                <input 
+                                    type="text" 
+                                    className="w-full p-4 rounded-2xl bg-slate-950 border border-slate-800 text-blue-400 font-mono outline-none focus:border-blue-500" 
+                                    value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} 
+                                    placeholder={editMode ? "Enter only to change..." : "Assign a password"} required={!editMode} 
+                                />
                             </div>
 
-                            {/* Customer Access Row */}
-                            <div className="p-5 bg-slate-950 rounded-2xl border border-slate-800 min-h-[450px]">
+                            <div className="p-6 bg-slate-950 rounded-3xl border border-slate-800">
                                 <div className="flex justify-between items-center mb-4">
-                                    <div>
-                                        <p className="text-[12px] font-bold text-slate-200 uppercase tracking-wider">Customer Access</p>
-                                        
-                                    </div>
-                                    <div className="flex gap-3">
-                                        <button 
-                                            type="button" 
-                                            onClick={handleSelectAllCustomers}
-                                            className="text-[12px] font-bold text-blue-400 hover:text-blue-300 transition-colors"
-                                        >
-                                            Select All
-                                        </button>
-                                        <div className="w-[1px] h-3 bg-slate-800"></div>
-                                        <button 
-                                            type="button" 
-                                            onClick={handleClearAllCustomers}
-                                            className="text-[12px] font-bold text-rose-400 hover:text-rose-300 transition-colors"
-                                        >
-                                            Clear All
-                                        </button>
+                                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Assign Customer Access</p>
+                                    <div className="flex gap-4">
+                                        <button type="button" onClick={() => setFormData({...formData, customers: [...customers]})} className="text-[10px] font-black text-blue-500 hover:text-blue-300 uppercase">Select All</button>
+                                        <button type="button" onClick={() => setFormData({...formData, customers: []})} className="text-[10px] font-black text-rose-500 hover:text-rose-300 uppercase">Clear</button>
                                     </div>
                                 </div>
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 max-h-[340px] overflow-y-auto pr-2">
-                                    {customers.length > 0 ? (
-                                        customers.map(c => (
-                                            <label 
-                                                key={c} 
-                                                className="flex items-center gap-3 text-sm text-slate-300 hover:text-white cursor-pointer select-none py-1"
-                                            >
-                                                <input 
-                                                    type="checkbox" 
-                                                    className="rounded border-slate-800 text-blue-600 focus:ring-blue-500 bg-slate-900 cursor-pointer"
-                                                    checked={formData.customers.includes(c)} 
-                                                    onChange={() => {
-                                                        const current = [...formData.customers];
-                                                        const idx = current.indexOf(c);
-                                                        if (idx > -1) {
-                                                            current.splice(idx, 1); 
-                                                        } else {
-                                                            current.push(c);
-                                                        }
-                                                        setFormData({ ...formData, customers: current });
-                                                    }} 
-                                                /> 
-                                                <span className="truncate">{c}</span>
-                                            </label>
-                                        ))
-                                    ) : (
-                                        <p className="text-slate-600 text-xs italic col-span-2">No customers found.</p>
-                                    )}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-56 overflow-y-auto custom-scrollbar pr-2">
+                                    {customers.map(c => (
+                                        <label key={c} className="flex items-center gap-3 p-3 rounded-xl bg-slate-900 border border-slate-800 cursor-pointer hover:border-slate-600 transition-all">
+                                            <input 
+                                                type="checkbox" className="w-4 h-4 rounded border-slate-700 text-blue-600 bg-slate-950"
+                                                checked={formData.customers.includes(c)} 
+                                                onChange={() => {
+                                                    const next = formData.customers.includes(c) ? formData.customers.filter(x => x !== c) : [...formData.customers, c];
+                                                    setFormData({ ...formData, customers: next });
+                                                }} 
+                                            /> 
+                                            <span className="text-xs text-slate-300 truncate">{c}</span>
+                                        </label>
+                                    ))}
                                 </div>
                             </div>
 
-                            {/* Modal Action Buttons */}
-                            <div className="flex gap-4 pt-2">
-                                <button 
-                                    type="submit" 
-                                    className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-4 rounded-2xl font-bold transition-all shadow-lg shadow-blue-900/10"
-                                >
-                                    {editMode ? 'Update User' : 'Create New User'}
+                            <div className="flex gap-4 pt-4">
+                                <button type="submit" className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-5 rounded-[1.5rem] font-black uppercase text-xs tracking-[0.2em] transition-all shadow-xl shadow-blue-900/20">
+                                    {editMode ? 'Update Account' : 'Initialize Account'}
                                 </button>
-                                <button 
-                                    type="button" 
-                                    onClick={() => setShowModal(false)} 
-                                    className="px-8 bg-slate-800 hover:bg-slate-700 text-slate-300 py-4 rounded-2xl font-bold transition-all"
-                                >
+                                <button type="button" onClick={() => setShowModal(false)} className="px-10 bg-slate-800 hover:bg-slate-700 text-slate-400 py-5 rounded-[1.5rem] font-black uppercase text-xs tracking-widest transition-all">
                                     Cancel
                                 </button>
                             </div>

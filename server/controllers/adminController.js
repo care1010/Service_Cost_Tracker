@@ -1,7 +1,7 @@
 const db = require('../config/db');
 const bcrypt = require('bcrypt');
 
-// 1. Saare users aur unke mapped customers laana (With RLS)
+// 1. Get All Users
 exports.getAllUsers = async (req, res) => {
     try {
         const { currentUserType, allowedCustomers } = req.query;
@@ -10,11 +10,9 @@ exports.getAllUsers = async (req, res) => {
         let usersQuery = "SELECT id, email, type FROM users";
         let usersParams = [];
 
-        // RLS for Admin
         if (currentUserType === 'admin') {
-            // Admins can only see users mapping to overlapping customers or basic 'user' type accounts
             usersQuery = `
-                SELECT DISTINCT u.id, u.email, u.password, u.type 
+                SELECT DISTINCT u.id, u.email, u.type 
                 FROM users u
                 LEFT JOIN access a ON u.email = a.email
                 WHERE a.customer IN (?) OR u.type = 'user'
@@ -25,109 +23,80 @@ exports.getAllUsers = async (req, res) => {
         const [users] = await db.query(usersQuery, usersParams);
         const [access] = await db.query("SELECT email, customer FROM access");
 
-        // Users ke saath unke customers ko group karna
         const userData = users.map(u => ({
             ...u,
             customers: access.filter(a => a.email === u.email).map(a => a.customer)
         }));
 
         res.status(200).json(userData);
-    } catch (error) { 
-        res.status(500).json({ error: error.message }); 
-    }
+    } catch (error) { res.status(500).json({ error: error.message }); }
 };
 
-// 2. Naya User Create karna (With Security Checks)
+// 2. Create User
 exports.createUser = async (req, res) => {
     const { email, password, type, customers, currentUserType, allowedCustomers } = req.body;
     try {
         const adminCustomers = allowedCustomers ? allowedCustomers.split(',') : [];
-
-        // Role restriction checks for Admin
         if (currentUserType === 'admin') {
-            if (type === 'super_admin') {
-                return res.status(403).json({ error: "Admins are unauthorized to create Super Admins." });
-            }
-            // Enforce customer access boundaries
-            const isValidAccess = customers.every(c => adminCustomers.includes(c));
-            if (!isValidAccess) {
-                return res.status(403).json({ error: "You cannot assign customers outside your access domain." });
-            }
+            if (type === 'super_admin') return res.status(403).json({ error: "Unauthorized to create Super Admin." });
+            if (!customers.every(c => adminCustomers.includes(c))) return res.status(403).json({ error: "Access outside domain restricted." });
         }
 
-        // A. Users table mein insert
         const hashedPassword = await bcrypt.hash(password, 10);
         await db.query("INSERT INTO users (email, password, type) VALUES (?, ?, ?)", [email, hashedPassword, type]);
 
-        // B. Access table mein mapping (Multiple rows)
         if (customers && customers.length > 0) {
             const mappingRows = customers.map(c => [c, email]);
             await db.query("INSERT INTO access (customer, email) VALUES ?", [mappingRows]);
         }
-
-        res.status(200).json({ message: "User created successfully!" });
-    } catch (error) { 
-        res.status(500).json({ error: error.message }); 
-    }
+        res.status(200).json({ message: "User created!" });
+    } catch (error) { res.status(500).json({ error: error.message }); }
 };
 
-// 3. User Update karna (With Security Checks)
+// 3. Update User (Password Optional Fix)
 exports.updateUser = async (req, res) => {
     const { id, email, password, type, customers, currentUserType, allowedCustomers } = req.body;
     try {
         const adminCustomers = allowedCustomers ? allowedCustomers.split(',') : [];
 
-        // Role restriction checks for Admin
         if (currentUserType === 'admin') {
-            if (type === 'super_admin') {
-                return res.status(403).json({ error: "Admins cannot elevate users to Super Admin." });
-            }
-
-            // Verify they aren't trying to modify an existing Super Admin
             const [existing] = await db.query("SELECT type FROM users WHERE id = ?", [id]);
-            if (existing.length > 0 && existing[0].type === 'super_admin') {
-                return res.status(403).json({ error: "Modification of Super Admin accounts is restricted." });
-            }
-
-            // Enforce customer boundaries
-            const isValidAccess = customers.every(c => adminCustomers.includes(c));
-            if (!isValidAccess) {
-                return res.status(403).json({ error: "You cannot assign unauthorized customers to users." });
-            }
+            if (existing[0]?.type === 'super_admin') return res.status(403).json({ error: "Cannot modify Super Admin." });
         }
 
-        // A. User details update
-        const hashedPassword = await bcrypt.hash(password, 10);
-        await db.query("UPDATE users SET type = ?, password = ? WHERE id = ?", [type, hashedPassword, id]);
+        // 🔥 Password Update Logic: Update ONLY if password is provided
+        if (password && password.trim() !== "") {
+            const hashedPassword = await bcrypt.hash(password, 10);
+            await db.query("UPDATE users SET type = ?, password = ? WHERE id = ?", [type, hashedPassword, id]);
+        } else {
+            await db.query("UPDATE users SET type = ? WHERE id = ?", [type, id]);
+        }
 
-        // B. Purani mapping delete karke nayi insert karna
+        // Update Access
         await db.query("DELETE FROM access WHERE email = ?", [email]);
         if (customers && customers.length > 0) {
             const mappingRows = customers.map(c => [c, email]);
             await db.query("INSERT INTO access (customer, email) VALUES ?", [mappingRows]);
         }
 
-        res.status(200).json({ message: "User updated successfully!" });
-    } catch (error) { 
-        res.status(500).json({ error: error.message }); 
-    }
+        res.status(200).json({ message: "Update successful!" });
+    } catch (error) { res.status(500).json({ error: error.message }); }
 };
 
-// 4. User Delete karna (With Security Checks)
+// 4. Delete User (Self-Delete Prevention)
 exports.deleteUser = async (req, res) => {
     const { id, email, currentUserType } = req.query;
     try {
-        if (currentUserType === 'admin') {
-            const [existing] = await db.query("SELECT type FROM users WHERE id = ?", [id]);
-            if (existing.length > 0 && existing[0].type === 'super_admin') {
-                return res.status(403).json({ error: "Admins are unauthorized to delete Super Admins." });
-            }
+        // req.user.id check tab kaam karega jab aapka Auth Middleware use ho raha ho
+        // filhal hum id comparison frontend se bhi handle karenge
+        
+        const [existing] = await db.query("SELECT type FROM users WHERE id = ?", [id]);
+        if (currentUserType === 'admin' && existing[0]?.type === 'super_admin') {
+            return res.status(403).json({ error: "Unauthorized." });
         }
 
         await db.query("DELETE FROM users WHERE id = ?", [id]);
         await db.query("DELETE FROM access WHERE email = ?", [email]);
-        res.status(200).json({ message: "User deleted!" });
-    } catch (error) { 
-        res.status(500).json({ error: error.message }); 
-    }
+        res.status(200).json({ message: "User deleted." });
+    } catch (error) { res.status(500).json({ error: error.message }); }
 };

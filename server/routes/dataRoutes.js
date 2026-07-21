@@ -119,6 +119,7 @@ router.post('/upload-project-file', upload.single('file'), projectController.upl
 
 router.get('/project-wbs-options', asblController.getProjectWbsOptions);
 
+// router.get('/asbl-wbs-types', asblController.getAsblWbsTypes); 
 router.get('/filtered-projects', asblController.getFilteredProjects);
 
 // Ye naya route add karein:

@@ -1,18 +1,85 @@
 const db = require('../config/db');
 
-const cleanString = (str) => {
-    if (!str) return "";
-    return str.toString().replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+// Helper to handle RLS on summary table
+const applyRLSLocal = (userType, allowedCustomers, conditions, params) => {
+    if (userType === 'super_admin') return;
+    
+    if (allowedCustomers) {
+        const customersArray = allowedCustomers.split(',').map(c => c.trim()).filter(Boolean);
+        if (customersArray.length > 0) {
+            conditions.push(`customer IN (?)`);
+            params.push(customersArray);
+        } else {
+            conditions.push("1=0"); // Block if no customers assigned
+        }
+    } else {
+        conditions.push("1=0");
+    }
 };
 
-const syncDashboardRow = async (loaId, wbs_type) => {
-    await db.query(`
-        UPDATE final_dashboard_table 
-        SET eac_vs_asbl = (asbl - (ptd + open_commitment_KEUR + non_committed))
-        WHERE TRIM(loa_id) = ? AND wbs_type = ?
-    `, [loaId, wbs_type]);
+// 🔥 1. getFilteredProjects (Fix for empty dropdowns)
+exports.getFilteredProjects = async (req, res) => {
+    try {
+        const { wbs_type, type, allowedCustomers } = req.query;
+
+        console.log("===== getFilteredProjects =====");
+        console.log("wbs_type:", wbs_type);
+        console.log("type:", type);
+        console.log("allowedCustomers:", allowedCustomers);
+
+        let conditions = ["wbs_type = ?"];
+        let params = [wbs_type];
+
+        applyRLSLocal(type, allowedCustomers, conditions, params);
+
+        const sql = `
+            SELECT DISTINCT loa_id, loa_name, customer
+            FROM summary
+            WHERE ${conditions.join(" AND ")}
+            ORDER BY loa_name
+        `;
+
+        console.log("SQL:", sql);
+        console.log("Params:", params);
+
+        const [rows] = await db.query(sql, params);
+
+        console.log("Rows:", rows.length);
+
+        res.json(rows);
+
+    } catch(err){
+        console.log(err);
+    }
+}
+
+// 🔥 2. getProjectDetails (Fix for data fetch)
+exports.getProjectDetails = async (req, res) => {
+    try {
+        const { loa_name, wbs_type, type, allowedCustomers } = req.query;
+        if (!loa_name || !wbs_type) return res.json([]);
+
+        let conditions = ["TRIM(loa_name) = TRIM(?)", "wbs_type = ?"];
+        let params = [loa_name, wbs_type];
+
+        applyRLSLocal(type, allowedCustomers, conditions, params);
+
+        const sql = `
+            SELECT loa_id, loa_name, cost_revenue, categories, asbl, wbs_type 
+            FROM summary 
+            WHERE ${conditions.join(' AND ')} 
+            ORDER BY categories ASC`;
+
+        const [rows] = await db.query(sql, params);
+        res.status(200).json(rows);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 };
 
+// ... updateManualAsbl, processAsblUpdate, getProjectWbsOptions logic remains same as provided before ...
+
+// 4. Excel Paste Update
 exports.processAsblUpdate = async (req, res) => {
     const { rawText, wbs_type } = req.body; 
     try {
@@ -44,6 +111,7 @@ exports.processAsblUpdate = async (req, res) => {
     } catch (error) { res.status(500).json({ error: error.message }); }
 };
 
+// 5. Manual UI Edit Update
 exports.updateManualAsbl = async (req, res) => {
     const { loa_name, wbs_type, updates } = req.body;
     try {
@@ -58,14 +126,7 @@ exports.updateManualAsbl = async (req, res) => {
     } catch (error) { res.status(500).json({ error: error.message }); }
 };
 
-exports.getProjectDetails = async (req, res) => {
-    try {
-        const { loa_name, wbs_type } = req.query;
-        const [rows] = await db.query(`SELECT loa_id, loa_name, cost_revenue, categories, asbl, wbs_type FROM summary WHERE TRIM(loa_name) = TRIM(?) AND wbs_type = ? ORDER BY categories ASC`, [loa_name, wbs_type || 'Project']);
-        res.status(200).json(rows);
-    } catch (error) { res.status(500).json({ error: error.message }); }
-};
-
+// 6. Project WBS Options
 exports.getProjectWbsOptions = async (req, res) => {
     try {
         const [proj] = await db.query("SELECT loa_id FROM summary WHERE TRIM(loa_name) = TRIM(?) LIMIT 1", [req.query.loa_name]);
@@ -73,24 +134,4 @@ exports.getProjectWbsOptions = async (req, res) => {
         const [wbs] = await db.query("SELECT DISTINCT wbs_type, wbs_element FROM wbs_loa_id_mapping1 WHERE loa_id = ?", [proj[0].loa_id]);
         res.json(wbs);
     } catch (error) { res.status(500).json({ error: error.message }); }
-};
-
-// 🔥 Add this to asblController.js
-exports.getFilteredProjects = async (req, res) => {
-    try {
-        const { wbs_type } = req.query;
-        if (!wbs_type) return res.json([]);
-
-        // Sirf wahi projects layenge jinme ye wbs_type exist karta hai summary table mein
-        const [rows] = await db.query(
-            `SELECT DISTINCT loa_id, loa_name 
-             FROM summary 
-             WHERE wbs_type = ? 
-             ORDER BY loa_name ASC`, 
-            [wbs_type]
-        );
-        res.status(200).json(rows);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
 };

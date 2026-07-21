@@ -86,6 +86,10 @@ const DashMultiSelect = ({ label, options = [], selected = [], onChange }) => {
 };
 
 const Dashboard = ({ user }) => {
+    console.log("===== DASHBOARD USER =====");
+console.log(user);
+console.log("User Type:", user?.type);
+console.log("Allowed Customers:", user?.allowedCustomers);
 
     const [activeFilter, setActiveFilter] = useState('');
 
@@ -998,9 +1002,9 @@ const displayLoaData = showAllLoa
                                         <p className="text-[11px] font-bold text-grey-400 uppercase mb-1">PTD Utilization%</p>
                                         <p className="text-lg font-black text-green-600">{ptdPerc}%</p>
                                     </div>
-                                    <div className="bg-white p-3 rounded-2xl border border-purple-100 text-center">
+                                    <div className="bg-white p-3 rounded-2xl border border-amber-100 text-center">
                                         <p className="text-[11px] font-bold text-grey-400 uppercase mb-1">EAC vs ASBL</p>
-                                        <p className="text-lg font-black text-purple-600">{eacPerc}%</p>
+                                        <p className="text-lg font-black text-amber-600">{eacPerc}%</p>
                                     </div>
                                 </div>
                             </div>
@@ -1084,7 +1088,7 @@ const displayLoaData = showAllLoa
                                 />
                             </Bar>
                             
-                            <Bar dataKey="eac" name="eac" fill="#8b5cf6" radius={[8, 8, 0, 0]} barSize={120}>
+                            <Bar dataKey="eac" name="eac" fill="#f59e0b" radius={[8, 8, 0, 0]} barSize={120}>
                                 <LabelList 
                                     dataKey="eac" 
                                     position="top" 
@@ -1312,7 +1316,7 @@ const displayLoaData = showAllLoa
                             {/* EAC */}
                             <Bar
                                 dataKey="eac"
-                                fill="#8b5cf6"
+                                fill="#f59e0b"
                                 name="EAC"
                             >
                                 <LabelList
