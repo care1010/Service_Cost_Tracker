@@ -19,97 +19,175 @@ const CATEGORY_MAP = [
     { cat: "Total", type: "Cost" } 
 ];
 
-// 🔥 Private Helper Engine
-const processProjectData = async (dataGrid, created_by) => {
-    if (!dataGrid || dataGrid.length < 2) throw new Error("No data found or headers missing!");
-    const headers = dataGrid[0].map(h => String(h || "").trim().toUpperCase());
+// Helper: cleanString for Excel elements
+const cleanString = (str) => {
+    if (!str) return "";
+    return str.toString().replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+};
+
+// 🔥 SELF-HEALING ENGINE (Consolidates & Syncs all WBS elements based on single summary table)
+const syncProjectWbs = async (loa_id, loa_name) => {
+    // 1. Get all unique single_wbs elements for this loa_id + loa_name combo
+    const [rows] = await db.query(
+        "SELECT DISTINCT TRIM(single_wbs) as wbs FROM wbs_loa_id_mapping1 WHERE TRIM(loa_id) = ? AND TRIM(loa_name) = ?",
+        [loa_id.trim(), loa_name.trim()]
+    );
     
-    const idxBu = headers.findIndex(h => h.includes('BUSINESS DIVISION') || h === 'BU');
-    const idxCustomer = headers.findIndex(h => h.includes('CT NAME') || h === 'CUSTOMER_');
-    const idxLoaId = headers.findIndex(h => h.includes('OPPORTUNITY CODE') || h === 'LOA_ID');
-    const idxLoaName = headers.findIndex(h => h.includes('PROJECT DESCRIPTION') || h === 'LOA_NAME');
-    const idxWbsType = headers.findIndex(h => h.includes('WBS TYPE'));
+    const uniqueWbs = rows.map(r => r.wbs).filter(Boolean);
+    if (uniqueWbs.length === 0) return "";
+
+    const mergedWbsStr = uniqueWbs.join(',');
+
+    // 2. Update wbs_loa_id_mapping1 merged_wbs
+    await db.query(
+        "UPDATE wbs_loa_id_mapping1 SET merged_wbs = ? WHERE TRIM(loa_id) = ? AND TRIM(loa_name) = ?",
+        [mergedWbsStr, loa_id.trim(), loa_name.trim()]
+    );
+
+    // 3. Update summary table merged_wbs & Merged_wbs_category
+    await db.query(`
+        UPDATE summary 
+        SET merged_wbs = ?,
+            Merged_wbs_category = CONCAT(?, '-', categories)
+        WHERE TRIM(loa_id) = ? AND TRIM(loa_name) = ?
+    `, [mergedWbsStr, mergedWbsStr, loa_id.trim(), loa_name.trim()]);
+
+    return mergedWbsStr;
+};
+
+// 🔥 Core Processing Engine (Add Project & Add WBS Addition)
+const processProjectData = async (dataGrid, created_by, mode) => {
+    if (!dataGrid || dataGrid.length < 2) throw new Error("No data found or headers missing!");
+    
+    // Header Mapping
+    const headers = dataGrid[0].map(h => String(h || "").trim().toUpperCase());
+    const idxBu = headers.findIndex(h => h === 'BUSINESS DIVISION (BD)' || h === 'BU');
+    const idxCustomer = headers.findIndex(h => h === 'CT NAME (REPORTED CUST)' || h === 'CUSTOMER');
+    const idxLoaId = headers.findIndex(h => h === 'OPPORTUNITY CODE' || h === 'LOA_ID');
+    const idxLoaName = headers.findIndex(h => h === 'PROJECT DESCRIPTION' || h === 'LOA_NAME');
+    const idxWbsType = headers.findIndex(h => h === 'WBS TYPE');
     const idxWbsElement = headers.findIndex(h => h === 'WBS');
-    const idxWbsDesc = headers.findIndex(h => h.includes('WBS DESCRIPTION'));
-    const idxMerged = headers.findIndex(h => h === 'MERGED');
+    const idxWbsDesc = headers.findIndex(h => h === 'WBS DESCRIPTION');
 
     const dataLines = dataGrid.slice(1);
     const projectGroups = {};
-    let c_bu = "", c_cust = "", c_lid = "", c_lname = "", c_mwbs = "", c_wt = "";
+    let c_bu = "", c_cust = "", c_lid = "", c_lname = "", c_wt = "";
 
+    // Parse Excel/Pasted Grid rows
     for (let cols of dataLines) {
         if (cols.every(c => !c || String(c).trim() === '')) continue;
-        const r_bu = cols[idxBu]?.trim(), r_cust = cols[idxCustomer]?.trim(), r_lid = cols[idxLoaId]?.trim(), r_ln = cols[idxLoaName]?.trim(), r_wt = cols[idxWbsType]?.trim(), r_we = cols[idxWbsElement]?.trim(), r_wd = cols[idxWbsDesc]?.trim(), r_mw = cols[idxMerged]?.trim();
-        if (r_bu) c_bu = r_bu; if (r_cust) c_cust = r_cust; if (r_lid) c_lid = r_lid; if (r_ln) c_lname = r_ln; if (r_mw) c_mwbs = r_mw; if (r_wt) c_wt = r_wt;
+        const r_bu = cols[idxBu]?.trim(), r_cust = cols[idxCustomer]?.trim(), r_lid = cols[idxLoaId]?.trim(), r_ln = cols[idxLoaName]?.trim(), r_wt = cols[idxWbsType]?.trim(), r_we = cols[idxWbsElement]?.trim(), r_wd = cols[idxWbsDesc]?.trim();
+        if (r_bu) c_bu = r_bu; if (r_cust) c_cust = r_cust; if (r_lid) c_lid = r_lid; if (r_ln) c_lname = r_ln; if (r_wt) c_wt = r_wt;
         const loa_id = r_lid || c_lid;
         if (!loa_id) continue;
-        if (!projectGroups[loa_id]) projectGroups[loa_id] = { bu: r_bu || c_bu, customer: r_cust || c_cust, loa_id, loa_name: r_ln || c_lname, merged_wbs: r_mw || c_mwbs, wbs_rows: [] };
+        if (!projectGroups[loa_id]) projectGroups[loa_id] = { bu: r_bu || c_bu, customer: r_cust || c_cust, loa_id, loa_name: r_ln || c_lname, wbs_rows: [] };
         if (r_we) projectGroups[loa_id].wbs_rows.push({ wbs_type: r_wt || c_wt, wbs_element: r_we, wbs_description: r_wd });
     }
 
     let processedLoas = new Set();
+    let alreadyExistsMessage = "";
 
     for (const loa_id of Object.keys(projectGroups)) {
-        const { bu, customer, loa_name, merged_wbs, wbs_rows } = projectGroups[loa_id];
-        const uniqueTypesInData = [...new Set(wbs_rows.map(r => r.wbs_type))].filter(Boolean);
-        const [exSummary] = await db.query("SELECT wbs, wbs_type FROM summary WHERE TRIM(loa_id) = ?", [loa_id]);
+        const { bu, customer, loa_name, wbs_rows } = projectGroups[loa_id];
+        
+        // Extract unique WBS elements from the current upload
+        const uploadedWbs = [...new Set(wbs_rows.map(r => r.wbs_element.trim()))].filter(Boolean);
+        if (uploadedWbs.length === 0) continue;
+
+        // Check if Project already exists in master summary
+        const [exSummary] = await db.query("SELECT id, merged_wbs FROM summary WHERE TRIM(loa_id) = ? LIMIT 1", [loa_id]);
 
         if (exSummary.length > 0) {
-            const existingTypesInDB = [...new Set(exSummary.map(s => s.wbs_type))];
-            const updatedWbsStr = Array.from(new Set([...(exSummary[0].wbs?.split(',') || []), ...wbs_rows.map(r => r.wbs_element)])).join(',');
-            await db.query("UPDATE summary SET wbs = ? WHERE TRIM(loa_id) = ?", [updatedWbsStr, loa_id]);
-            await db.query("UPDATE wbs_loa_id_mapping1 SET wbs = ? WHERE TRIM(loa_id) = ?", [updatedWbsStr, loa_id]);
+            // =======================================================
+            // 🔄 CASE 2: Add WBS in Existing Project (LOA)
+            // =======================================================
+            console.log(`Action: Adding WBS to Existing Project [${loa_id}]`);
 
-            for (const type of uniqueTypesInData) {
-                if (!existingTypesInDB.includes(type)) {
-                    let newTypeRows = CATEGORY_MAP.map(item => [bu, customer, loa_id, loa_name, item.type, item.cat, updatedWbsStr, 0, 'Active', type, 0]);
-                    await db.query("INSERT INTO summary (bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, asbl, active_inactive, wbs_type, non_committed_editable) VALUES ?", [newTypeRows]);
-                }
-            }
+            // Merge existing and new WBS elements for strict uniqueness
+            const existingWbs = exSummary[0].merged_wbs ? exSummary[0].merged_wbs.split(',').map(w => w.trim()).filter(Boolean) : [];
+            const finalMergedWbs = Array.from(new Set([...existingWbs, ...uploadedWbs])).join(',');
 
-            const [exMappings] = await db.query("SELECT TRIM(wbs_element) as wbs_element FROM wbs_loa_id_mapping1 WHERE TRIM(loa_id) = ?", [loa_id]);
-            const existingWbs = exMappings.map(m => m.wbs_element.toUpperCase());
-            let newWbsToMap = wbs_rows.filter(row => !existingWbs.includes(row.wbs_element.toUpperCase()));
+            // A. Update `summary` Table (merged_wbs & Merged_wbs_category)
+            await db.query(`
+                UPDATE summary 
+                SET merged_wbs = ?,
+                    Merged_wbs_category = CONCAT(?, '-', categories)
+                WHERE TRIM(loa_id) = ?
+            `, [finalMergedWbs, finalMergedWbs, loa_id]);
+
+            // B. In `wbs_loa_id_mapping1`, insert only TRULY NEW WBS elements
+            const [exMappings] = await db.query("SELECT TRIM(single_wbs) as single_wbs FROM wbs_loa_id_mapping1 WHERE TRIM(loa_id) = ?", [loa_id]);
+            const existingMappingWbs = exMappings.map(m => m.single_wbs.toUpperCase());
+            let newWbsToMap = wbs_rows.filter(row => !existingMappingWbs.includes(row.wbs_element.toUpperCase()));
+            
             if (newWbsToMap.length > 0) {
-                const mapRows = newWbsToMap.map(r => [loa_id, r.wbs_type, r.wbs_element, r.wbs_description, updatedWbsStr, created_by]);
-                await db.query("INSERT INTO wbs_loa_id_mapping1 (loa_id, wbs_type, wbs_element, wbs_description, wbs, created_by) VALUES ?", [mapRows]);
+                const mapRows = newWbsToMap.map(r => [
+                    bu, customer, loa_id, loa_name, r.wbs_type, r.wbs_element, r.wbs_description, finalMergedWbs, created_by
+                ]);
+                await db.query(`
+                    INSERT INTO wbs_loa_id_mapping1 
+                    (bu, customer, loa_id, loa_name, wbs_type, single_wbs, wbs_description, merged_wbs, created_by) 
+                    VALUES ?
+                `, [mapRows]);
             }
+
+            // C. Forcefully update `merged_wbs` for ALL rows matching `loa_id` in mapping table
+            await db.query("UPDATE wbs_loa_id_mapping1 SET merged_wbs = ? WHERE TRIM(loa_id) = ?", [finalMergedWbs, loa_id]);
             processedLoas.add(loa_id);
         } else {
-            const finalMergedWbs = merged_wbs || Array.from(new Set(wbs_rows.map(r => r.wbs_element))).join(',');
-            let summaryRows = [];
-            uniqueTypesInData.forEach(type => {
-                CATEGORY_MAP.forEach(item => {
-                    summaryRows.push([bu, customer, loa_id, loa_name, item.type, item.cat, finalMergedWbs, 0, 'Active', type, 0]);
-                });
-            });
-            if (summaryRows.length > 0) {
-                await db.query("INSERT INTO summary (bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, asbl, active_inactive, wbs_type, non_committed_editable) VALUES ?", [summaryRows]);
-            }
-            const mapRows = wbs_rows.map(r => [loa_id, r.wbs_type, r.wbs_element, r.wbs_description, finalMergedWbs, created_by]);
-            await db.query("INSERT INTO wbs_loa_id_mapping1 (loa_id, wbs_type, wbs_element, wbs_description, wbs, created_by) VALUES ?", [mapRows]);
+            // =======================================================
+            // 🆕 CASE 1: Add Project (New LOA Entry)
+            // =======================================================
+            console.log(`Action: Adding Brand New Project [${loa_id}]`);
+
+            const finalMergedWbs = uploadedWbs.join(',');
+
+            // A. Seed Master `summary` Table (24 Categories)
+            let summaryRows = CATEGORY_MAP.map(item => [
+                bu, customer, loa_id, loa_name, item.type, item.cat, finalMergedWbs, `${finalMergedWbs}-${item.cat}`, 'Active'
+            ]);
+            await db.query(`
+                INSERT INTO summary 
+                (bu, customer, loa_id, loa_name, cost_revenue, categories, merged_wbs, Merged_wbs_category, active_inactive) 
+                VALUES ?
+            `, [summaryRows]);
+
+            // B. Insert mapping rows in `wbs_loa_id_mapping1`
+            const mapRows = wbs_rows.map(r => [
+                bu, customer, loa_id, loa_name, r.wbs_type, r.wbs_element, r.wbs_description, finalMergedWbs, created_by
+            ]);
+            await db.query(`
+                INSERT INTO wbs_loa_id_mapping1 
+                (bu, customer, loa_id, loa_name, wbs_type, single_wbs, wbs_description, merged_wbs, created_by) 
+                VALUES ?
+            `, [mapRows]);
+
             processedLoas.add(loa_id);
         }
     }
 
+    // 🚀 Refresh Final Dashboard Table (Strictly matched columns)
     const loaList = Array.from(processedLoas);
     if (loaList.length > 0) {
         await db.query("DELETE FROM final_dashboard_table WHERE loa_id IN (?)", [loaList]);
         await db.query(`INSERT INTO final_dashboard_table (bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, wbs_type, wbs_description, wbs_element_single, asbl, asbl_loa, non_committed, active_inactive, period, ptd, open_commitment_KEUR, eac, eac_vs_asbl, non_committed_editable, unique_key)
             SELECT bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, wbs_type, wbs_description, wbs_element_single, asbl, asbl_loa, non_committed, active_inactive, period, ptd, open_commitment_KEUR, eac, eac_vs_asbl, non_committed_editable, unique_key FROM final_dashboard WHERE loa_id IN (?)`, [loaList, loaList]);
     }
-    return { message: `Processed: ${processedLoas.size} Projects` };
+    
+    return { 
+        message: `${alreadyExistsMessage}Successfully Processed ${processedLoas.size} Project(s).` 
+    };
 };
 
 // ==========================================
-// 🔥 EXPORTED HANDLERS (Used by routes)
+// EXPORTED API HANDLERS
 // ==========================================
 
 exports.processProjectPaste = async (req, res) => {
     try {
         if (!req.body.rawText) return res.status(400).json({ error: "No data pasted" });
         const dataGrid = req.body.rawText.trim().split(/\r?\n/).map(l => l.split('\t'));
-        const result = await processProjectData(dataGrid, req.user?.email || 'System');
+        const result = await processProjectData(dataGrid, req.user?.email || 'System', req.body.mode || 'new');
         res.status(200).json(result);
     } catch (error) {
         res.status(500).json({ error: error.message });
@@ -121,7 +199,7 @@ exports.uploadProjectFile = async (req, res) => {
         if (!req.file) return res.status(400).json({ error: "No file uploaded" });
         const wb = XLSX.readFile(req.file.path);
         const dataGrid = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, defval: "" });
-        const result = await processProjectData(dataGrid, req.user?.email || 'System');
+        const result = await processProjectData(dataGrid, req.user?.email || 'System', req.body.mode || 'new');
         if (fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         res.status(200).json(result);
     } catch (error) { 
@@ -130,19 +208,20 @@ exports.uploadProjectFile = async (req, res) => {
     }
 };
 
+// Database standardisation cleanup script
 exports.fixMissingSummaryRows = async (req, res) => {
     try {
         console.log("Starting Smart Cleanup...");
-        await db.query(`DELETE FROM summary WHERE (loa_id, wbs_type) NOT IN (SELECT DISTINCT loa_id, wbs_type FROM wbs_loa_id_mapping1)`);
-        const [mappingPairs] = await db.query("SELECT DISTINCT loa_id, wbs_type FROM wbs_loa_id_mapping1");
+        await db.query(`DELETE FROM summary WHERE loa_id NOT IN (SELECT DISTINCT loa_id FROM wbs_loa_id_mapping1)`);
+        const [mappingPairs] = await db.query("SELECT DISTINCT loa_id FROM wbs_loa_id_mapping1");
         let added = 0;
         for (const pair of mappingPairs) {
             for (const item of CATEGORY_MAP) {
-                const [exists] = await db.query("SELECT 1 FROM summary WHERE TRIM(loa_id) = ? AND TRIM(wbs_type) = ? AND categories = ?", [pair.loa_id.trim(), pair.wbs_type.trim(), item.cat]);
+                const [exists] = await db.query("SELECT 1 FROM summary WHERE TRIM(loa_id) = ? AND categories = ?", [pair.loa_id.trim(), item.cat]);
                 if (exists.length === 0) {
-                    const [info] = await db.query("SELECT bu, customer, loa_name, wbs FROM summary WHERE TRIM(loa_id) = ? LIMIT 1", [pair.loa_id.trim()]);
+                    const [info] = await db.query("SELECT bu, customer, loa_name, merged_wbs FROM summary WHERE TRIM(loa_id) = ? LIMIT 1", [pair.loa_id.trim()]);
                     if (info.length > 0) {
-                        await db.query(`INSERT INTO summary (bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, asbl, active_inactive, wbs_type, non_committed_editable) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'Active', ?, 0)`, [info[0].bu, info[0].customer, pair.loa_id, info[0].loa_name, item.type, item.cat, info[0].wbs, pair.wbs_type]);
+                        await db.query(`INSERT INTO summary (bu, customer, loa_id, loa_name, cost_revenue, categories, merged_wbs, Merged_wbs_category, asbl, active_inactive) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'Active')`, [info[0].bu, info[0].customer, pair.loa_id, info[0].loa_name, item.type, item.cat, info[0].merged_wbs, `${info[0].merged_wbs}-${item.cat}`]);
                         added++;
                     }
                 }
