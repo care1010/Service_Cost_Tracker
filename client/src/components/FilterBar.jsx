@@ -14,7 +14,7 @@ const FILTER_CONFIGS = [
   { label: 'LOA ID',          name: 'loa_id',          width: '130px' },
   { label: 'LOA Name',        name: 'loa_name',        width: '300px' },
   { label: 'WBS Type',        name: 'wbs_type',        width: '140px' },
-  { label: 'WBS',             name: 'wbs',             width: '300px' },
+  { label: 'WBS',             name: 'wbs',             width: '300px' }, // Matches columnMapping['wbs']
   { label: 'WBS Description', name: 'wbs_description', width: '300px' },
   { label: 'Period',          name: 'period',          width: '110px' },
   { label: 'Active/Inactive', name: 'active_inactive', width: '150px' },
