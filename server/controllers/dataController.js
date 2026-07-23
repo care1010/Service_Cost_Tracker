@@ -131,62 +131,69 @@ const applyCategoryTypeFilter = (catType, conditions) => {
 exports.getFilterOptions = async (req, res) => {
     try {
         const { type, allowedCustomers } = req.query;
-        let baseConditions = ["categories NOT IN ('Not to considered')", "cost_revenue <> 'NTC'"];
-        let baseParams = [];
-        applyRLS(type, allowedCustomers, baseConditions, baseParams);
-        
-        applyCategoryTypeFilter(req.query.category_type, baseConditions);
+        let conditions = ["1=1"];
+        let params = [];
+        applyRLS(type, allowedCustomers, conditions, params);
 
-        const getFilteredDistinct = async (targetColumn, currentFilters) => {
-            let conditions = [...baseConditions];
-            let filterValues = [...baseParams];
-
-            const dbFilters = ['bu', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period', 'wbs_type', 'wbs_description', 'wbs'];
-
-            dbFilters.forEach(key => {
-                if (key !== targetColumn) {
-                    const vals = getValArray(currentFilters[key]);
-                    if (vals) {
-                        const dbCol = (key === 'wbs') ? 'wbs_element_single' : `\`${key}\``;
-                        conditions.push(`${dbCol} IN (?)`);
-                        filterValues.push(vals);
-                    }
-                }
-            });
-
-            const finalTarget = (targetColumn === 'wbs') ? 'wbs_element_single' : `\`${targetColumn}\``;
-            const sql = `SELECT DISTINCT ${finalTarget} as value FROM final_dashboard_table 
-                         WHERE ${conditions.join(' AND ')} AND ${finalTarget} IS NOT NULL AND ${finalTarget} <> ''
-                         ORDER BY ${finalTarget} ASC`;
-
-            const [rows] = await db.query(sql, filterValues);
+        const getDistinct = async (col, sourceTable = 'wbs_loa_id_mapping1') => {
+            const sql = `SELECT DISTINCT \`${col}\` as value FROM ${sourceTable} WHERE ${conditions.join(' AND ')} AND \`${col}\` IS NOT NULL ORDER BY 1`;
+            const [rows] = await db.query(sql, params);
             return rows.map(r => r.value);
         };
 
-        const keys = ['bu', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period', 'wbs_type', 'wbs_description', 'wbs'];
-        const results = await Promise.all(keys.map(k => getFilteredDistinct(k, req.query)));
-        
-        const response = { category_type: ['All', 'Local Materials'] };
-        keys.forEach((key, i) => { response[key] = results[i]; });
-        res.status(200).json(response);
-    } catch (error) { res.status(500).json({ error: error.message }); }
+        // UI Column Mapping
+        const filters = {
+            bu: await getDistinct('bu'),
+            customer: await getDistinct('customer'),
+            loa_id: await getDistinct('loa_id'),
+            loa_name: await getDistinct('loa_name'),
+            wbs_type: await getDistinct('wbs_type'),
+            wbs: await getDistinct('single_wbs'), // UI calls it 'wbs'
+            wbs_description: await getDistinct('wbs_description'),
+            period: await getDistinct('period', 'final_dashboard_table'), // Period dashboard se hi aayega
+            active_inactive: ['Active', 'Inactive'],
+            category_type: ['All', 'Local Materials']
+        };
+
+        res.status(200).json(filters);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
 };
 
 
-// --- Updated Helper function for SM % (Treats Negative Revenue as Positive) ---
+// --- Updated Helper function for SM % ---
 const calculateSM = (rev, cost) => {
-    // Math.abs se negative value (e.g. -12) positive (12) ban jayegi
     const r = Math.abs(parseFloat(rev) || 0); 
     const c = parseFloat(cost) || 0;
-    
-    // Agar revenue zero hai toh 0.00 dikhao taaki division error na aaye
     if (r === 0) return "0.00"; 
-    
-    // Formula: ((Revenue - Cost) / Revenue) * 100
     const margin = ((r - c) / r) * 100;
     return margin.toFixed(2);
 };
 
+// --- Helper Function: Matrix ke liye (MAX use karega) ---
+const getDynamicSumMatrix = (wbsTypes, prefix) => {
+    if (!wbsTypes || wbsTypes.length === 0 || wbsTypes.includes('All')) return "0";
+    let cols = [];
+    if (wbsTypes.some(v => v.toLowerCase().includes('project'))) cols.push(`MAX(${prefix}_project)`);
+    if (wbsTypes.some(v => v.toLowerCase().includes('amc'))) cols.push(`MAX(${prefix}_amc)`);
+    if (wbsTypes.some(v => v.toLowerCase().includes('warranty'))) cols.push(`MAX(${prefix}_warranty)`);
+    return cols.length > 0 ? `(${cols.join(' + ')})` : "0";
+};
+
+// --- Helper Function: KPI ke liye (MAX ke bina) ---
+const getDynamicSumKPI = (wbsTypes, prefix) => {
+    if (!wbsTypes || wbsTypes.length === 0 || wbsTypes.includes('All')) return "0";
+    let cols = [];
+    if (wbsTypes.some(v => v.toLowerCase().includes('project'))) cols.push(`${prefix}_project`);
+    if (wbsTypes.some(v => v.toLowerCase().includes('amc'))) cols.push(`${prefix}_amc`);
+    if (wbsTypes.some(v => v.toLowerCase().includes('warranty'))) cols.push(`${prefix}_warranty`);
+    return cols.length > 0 ? `(${cols.join(' + ')})` : "0";
+};
+
+// ==============================
+// 3. WBS Summary View (Matrix)
+// ==============================
 exports.getWbsSummary = async (req, res) => {
     try {
         const { draw, start, length, showAll, type, allowedCustomers } = req.query;
@@ -195,88 +202,74 @@ exports.getWbsSummary = async (req, res) => {
 
         const wTArr = getValArray(req.query.wbs_type);
         const wEArr = getValArray(req.query.wbs);
-        const wDArr = getValArray(req.query.wbs_description);
 
-        // 1. Base Conditions (RLS First)
-        let conditions = ["categories NOT IN ('Not to considered')", "cost_revenue <> 'NTC'"];
+        // 1. Logic Selection
+        const asblMatrix = getDynamicSumMatrix(wTArr, 'asbl');
+        const asblKPI = getDynamicSumKPI(wTArr, 'asbl');
+        
+        const ncPrefix = (type === 'super_admin' || type === 'admin') ? 'non_committed' : 'non_committed_editable';
+        const ncMatrix = getDynamicSumMatrix(wTArr, ncPrefix);
+        const ncKPI = getDynamicSumKPI(wTArr, ncPrefix);
+
+        // 2. Base Conditions
+        let conditions = ["(categories IS NULL OR categories NOT IN ('Not to considered'))", "(cost_revenue IS NULL OR cost_revenue <> 'NTC')"];
         let baseParams = [];
         applyRLS(type, allowedCustomers, conditions, baseParams);
         applyCategoryTypeFilter(req.query.category_type, conditions);
 
-        // 2. Dropdown Filters
+        // 3. Filters
         let filterParams = [];
         const dbFilters = ['bu', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period', 'wbs_type', 'wbs_description'];
         dbFilters.forEach(key => {
             const vals = getValArray(req.query[key]);
-            if (vals) {
-                conditions.push(`\`${key}\` IN (?)`);
+            if (vals && vals.length > 0 && !vals.includes('All')) {
+                if (key === 'active_inactive' && vals.includes('Active')) {
+                    conditions.push(`(active_inactive IN (?) OR active_inactive IS NULL OR active_inactive = '')`);
+                } else {
+                    conditions.push(`\`${key}\` IN (?)`);
+                }
                 filterParams.push(vals);
             }
         });
-        if (wEArr) { conditions.push(`wbs_element_single IN (?)`); filterParams.push(wEArr); }
+        if (wEArr && !wEArr.includes('All')) { conditions.push(`wbs_element_single IN (?)`); filterParams.push(wEArr); }
 
         const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-        
-        // 🔥 Parameter Sync: Sequence must match WHERE clause (baseParams -> filterParams)
         const combinedParams = [...baseParams, ...filterParams];
 
-        // 3. Matrix Query
+        // 4. Matrix Query
         const matrixQuery = `
             SELECT 
-                bu, customer, loa_id, loa_name, cost_revenue, categories, MAX(unique_key) as unique_key, MAX(wbs_type) as wbs_type,
-                
-                -- ASBL Logic (Subquery based on WBS Type)
-                ${wTArr ? `(
-                    SELECT COALESCE(SUM(s2.asbl), 0) 
-                    FROM summary s2 
-                    WHERE s2.loa_id = t.loa_id AND s2.categories = t.categories AND s2.wbs_type IN (?)
-                )` : "'-'"} as asbl, 
-
-                ROUND(SUM(COALESCE(total_ptd, 0)), 2) as ptd, 
-                ROUND(SUM(COALESCE(total_oc, 0)), 2) as open_commitment, 
-                ROUND(SUM(COALESCE(total_nc_editable, 0)), 2) as non_committed, 
-                ROUND(SUM(COALESCE(total_nc_original, 0)), 2) as non_committed_original,
-                MAX(COALESCE(cat_asbl_loa, 0)) as asbl_loa,
-
-                -- 🔥 FIXED: EAC Calculation (Child Row visibility)
-                ROUND(SUM(COALESCE(total_ptd, 0)) + SUM(COALESCE(total_oc, 0)) + SUM(COALESCE(total_nc_editable, 0)), 2) as eac,
-
-                -- 🔥 FIXED: EAC vs ASBL Calculation
-                ${wTArr ? `ROUND(
-                    (SELECT COALESCE(SUM(s2.asbl), 0) FROM summary s2 WHERE s2.loa_id = t.loa_id AND s2.categories = t.categories AND s2.wbs_type IN (?)) 
-                    - 
-                    (SUM(COALESCE(total_ptd, 0)) + SUM(COALESCE(total_oc, 0)) + SUM(COALESCE(total_nc_editable, 0))), 2
-                )` : "'-'"} as eac_vs_asbl
-
+                bu, customer, loa_id, loa_name, cost_revenue, categories, 
+                MAX(Merged_wbs_categories) as Merged_wbs_categories,
+                ROUND(${asblMatrix}, 2) as asbl,
+                ROUND(MAX(COALESCE(asbl_loa, 0)), 2) as asbl_loa,
+                ROUND(SUM(ptd_val), 2) as ptd, 
+                ROUND(SUM(oc_val), 2) as open_commitment_KEUR, 
+                ROUND(SUM(oc_val), 2) as open_commitment,
+                ROUND(${ncMatrix}, 2) as non_committed_editable, 
+                ROUND(${ncMatrix}, 2) as non_committed, 
+                ROUND(SUM(ptd_val) + SUM(oc_val) + ${ncMatrix}, 2) as eac,
+                ROUND(${asblMatrix} - (SUM(ptd_val) + SUM(oc_val) + ${ncMatrix}), 2) as eac_vs_asbl
             FROM (
                 SELECT 
-                    bu, customer, loa_id, loa_name, cost_revenue, categories, unique_key, wbs_type,
-                    MAX(asbl) as type_asbl, 
-                    SUM(ptd) as total_ptd, 
-                    SUM(open_commitment_KEUR) as total_oc,
-                    MAX(non_committed_editable) as total_nc_editable,
-                    MAX(non_committed) as total_nc_original,
-                    MAX(asbl_loa) as cat_asbl_loa
+                    bu, customer, loa_id, loa_name, cost_revenue, categories, Merged_wbs_categories,
+                    asbl_project, asbl_amc, asbl_warranty, asbl_loa,
+                    non_committed_project, non_committed_amc, non_committed_warranty,
+                    non_committed_editable_project, non_committed_editable_amc, non_committed_editable_warranty,
+                    ptd as ptd_val, open_commitment_KEUR as oc_val
                 FROM final_dashboard_table
                 ${whereClause}
-                GROUP BY bu, customer, loa_id, loa_name, cost_revenue, categories, unique_key, wbs_type
             ) as t
             GROUP BY bu, customer, loa_id, loa_name, cost_revenue, categories
             HAVING 1=1 
-            ${showAll === 'false' ? 'AND (ABS(COALESCE(asbl, 0)) > 0.01 OR ABS(ptd) > 0.01 OR ABS(open_commitment) > 0.01 OR ABS(non_committed) > 0.01)' : ''}
+            ${showAll === 'false' ? 'AND (ABS(COALESCE(asbl, 0)) > 0.01 OR ABS(ptd) > 0.01 OR ABS(open_commitment_KEUR) > 0.01)' : ''}
             ORDER BY loa_name ASC, cost_revenue ASC
         `;
 
-        // Parameters assembly for DB call
-        let queryParams = [];
-        if (wTArr) queryParams.push(wTArr); // For ASBL cell
-        if (wTArr) queryParams.push(wTArr); // For Variance cell
-        queryParams = [...queryParams, ...combinedParams];
+        const [dataRows] = await db.query(`${matrixQuery} LIMIT ?, ?`, [...combinedParams, startIdx, limitIdx]);
+        const [countRes] = await db.query(`SELECT COUNT(*) as total FROM (${matrixQuery}) as temp`, combinedParams);
 
-        const [dataRows] = await db.query(`${matrixQuery} LIMIT ?, ?`, [...queryParams, startIdx, limitIdx]);
-        const [countRes] = await db.query(`SELECT COUNT(*) as total FROM (${matrixQuery}) as temp`, queryParams);
-
-        // 4. KPI Query (SM % Logic)
+        // 5. FIXED KPI QUERY: Pre-aggregates Category level values then sums them
         const kpiQuery = `
             SELECT 
                 SUM(CASE WHEN cost_revenue = 'Revenue' THEN cat_asbl ELSE 0 END) as asbl_rev,
@@ -286,15 +279,15 @@ exports.getWbsSummary = async (req, res) => {
                 SUM(CASE WHEN cost_revenue = 'Revenue' THEN (cat_ptd + cat_oc + cat_nc) ELSE 0 END) as eac_rev,
                 SUM(CASE WHEN cost_revenue = 'Cost' THEN (cat_ptd + cat_oc + cat_nc) ELSE 0 END) as eac_cost
             FROM (
-                SELECT cost_revenue, categories, loa_id,
-                       MAX(asbl) as cat_asbl,
+                SELECT cost_revenue, loa_id, categories,
+                       MAX(${asblKPI}) as cat_asbl,
                        SUM(ptd) as cat_ptd,
                        SUM(open_commitment_KEUR) as cat_oc,
-                       MAX(non_committed_editable) as cat_nc
+                       MAX(${ncKPI}) as cat_nc
                 FROM final_dashboard_table
                 ${whereClause}
-                GROUP BY loa_id, categories, cost_revenue
-            ) as t
+                GROUP BY cost_revenue, loa_id, categories
+            ) as aggregated_t
         `;
         
         const [kpiRes] = await db.query(kpiQuery, combinedParams);
@@ -302,15 +295,12 @@ exports.getWbsSummary = async (req, res) => {
 
         res.status(200).json({
             draw: parseInt(draw) || 0,
-            recordsTotal: countRes[0].total,
             recordsFiltered: countRes[0].total,
             data: dataRows,
             kpis: {
-                asbl_rev: Number(k.asbl_rev || 0).toFixed(2),
-                asbl_cost: Number(k.asbl_cost || 0).toFixed(2),
-                asbl_sm: (Number(k.asbl_rev) !== 0) ? calculateSM(k.asbl_rev, k.asbl_cost) : "0.00",
-                ptd_rev: Number(k.ptd_rev || 0).toFixed(2),
-                ptd_cost: Number(k.ptd_cost || 0).toFixed(2),
+                asbl_rev: Number(k.asbl_rev || 0).toFixed(2), asbl_cost: Number(k.asbl_cost || 0).toFixed(2),
+                asbl_sm: calculateSM(k.asbl_rev, k.asbl_cost),
+                ptd_rev: Number(k.ptd_rev || 0).toFixed(2), ptd_cost: Number(k.ptd_cost || 0).toFixed(2),
                 ptd_sm: calculateSM(k.ptd_rev, k.ptd_cost),
                 eac_sm: calculateSM(k.eac_rev, k.eac_cost)
             }
@@ -322,68 +312,64 @@ exports.getWbsSummary = async (req, res) => {
 };
 
 // ==============================
-// 4. SUMMARY TABLE COLLAPSE VIEW
+// 4. Summary View (Collapse)
 // ==============================
 exports.getWbsSummaryCollapse = async (req, res) => {
     try {
-        const { draw, start, length, type, allowedCustomers, showAll } = req.query;
+        const { draw, start, length, type, allowedCustomers } = req.query;
         const startIdx = parseInt(start) || 0;
         const limitIdx = parseInt(length) || 10;
 
         const wTArr = getValArray(req.query.wbs_type);
         const wEArr = getValArray(req.query.wbs);
 
-        let conditions = ["categories NOT IN ('Not to considered')", "cost_revenue <> 'NTC'"];
+        let conditions = ["(categories IS NULL OR categories NOT IN ('Not to considered'))", "(cost_revenue IS NULL OR cost_revenue <> 'NTC')"];
         let baseParams = [];
         applyRLS(type, allowedCustomers, conditions, baseParams);
-        applyCategoryTypeFilter(req.query.category_type, conditions);
 
         let filterParams = [];
         const dbFilters = ['bu', 'customer', 'loa_id', 'loa_name', 'active_inactive', 'period', 'wbs_type', 'wbs_description'];
         dbFilters.forEach(key => {
             const vals = getValArray(req.query[key]);
-            if (vals) {
+            if (vals && vals.length > 0 && !vals.includes('All')) {
                 conditions.push(`\`${key}\` IN (?)`);
                 filterParams.push(vals);
             }
         });
-        if (wEArr) { conditions.push(`wbs_element_single IN (?)`); filterParams.push(wEArr); }
+        if (wEArr && !wEArr.includes('All')) { conditions.push(`wbs_element_single IN (?)`); filterParams.push(wEArr); }
 
         const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
-        const combinedParams = [...baseParams, ...filterParams]; // 🔥 RLS Params First
+        
+        let asblSumLogic = "MAX(asbl)"; 
+        if (wTArr && wTArr.length > 0) {
+            let parts = [];
+            if (wTArr.some(v => v.toLowerCase().includes('project'))) parts.push("MAX(asbl_project)");
+            if (wTArr.some(v => v.toLowerCase().includes('amc'))) parts.push("MAX(asbl_amc)");
+            if (parts.length > 0) asblSumLogic = `(${parts.join(' + ')})`;
+        }
 
         const sql = `
             SELECT 
                 bu, customer, loa_name, loa_id, cost_revenue,
-                ${wTArr ? `(SELECT ROUND(SUM(s2.asbl), 2) FROM summary s2 WHERE s2.loa_id = t.loa_id AND s2.cost_revenue = t.cost_revenue AND s2.wbs_type IN (?))` : "'-'"} AS asbl, 
+                ROUND(${asblSumLogic}, 2) AS asbl, 
                 ROUND(MAX(asbl_loa), 2) AS asbl_loa,
-                ROUND(SUM(total_ptd), 2) AS ptd,
-                ROUND(SUM(total_oc), 2) AS open_commitment,
-                ROUND(SUM(total_nc), 2) AS non_committed,
-                ROUND(SUM(total_ptd) + SUM(total_oc) + SUM(total_nc), 2) as eac
-            FROM (
-                SELECT 
-                    bu, customer, loa_name, loa_id, cost_revenue, categories, wbs_type,
-                    SUM(ptd) as total_ptd,
-                    SUM(open_commitment_KEUR) as total_oc,
-                    MAX(non_committed_editable) as total_nc,
-                    MAX(asbl_loa) as asbl_loa
-                FROM final_dashboard_table
-                ${whereClause}
-                GROUP BY bu, customer, loa_name, loa_id, cost_revenue, categories, wbs_type
-            ) as t
+                ROUND(SUM(ptd), 2) AS ptd,
+                -- 🔥 FIXED: Both aliases for Parent row sum
+                ROUND(SUM(open_commitment_KEUR), 2) AS open_commitment_KEUR, 
+                ROUND(SUM(open_commitment_KEUR), 2) AS open_commitment, 
+                ROUND(SUM(non_committed_editable), 2) AS non_committed_editable,
+                ROUND(SUM(non_committed_editable), 2) AS non_committed,
+                ROUND(SUM(ptd) + SUM(open_commitment_KEUR) + SUM(non_committed_editable), 2) as eac
+            FROM final_dashboard_table
+            ${whereClause}
             GROUP BY bu, customer, loa_name, loa_id, cost_revenue
             ORDER BY loa_name ASC
         `;
 
-        let queryParams = [];
-        if (wTArr) queryParams.push(wTArr);
-        queryParams = [...queryParams, ...combinedParams];
+        const [dataRows] = await db.query(`${sql} LIMIT ?, ?`, [...baseParams, ...filterParams, startIdx, limitIdx]);
+        const [countRes] = await db.query(`SELECT COUNT(*) as total FROM (${sql}) temp`, [...baseParams, ...filterParams]);
 
-        const [dataRows] = await db.query(`${sql} LIMIT ?, ?`, [...queryParams, startIdx, limitIdx]);
-        const [countRes] = await db.query(`SELECT COUNT(*) as total FROM (${sql}) temp`, queryParams);
-
-        res.status(200).json({ draw: parseInt(draw) || 0, recordsTotal: countRes[0].total, data: dataRows });
+        res.status(200).json({ draw: parseInt(draw) || 0, recordsFiltered: countRes[0].total, data: dataRows });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -975,31 +961,108 @@ exports.saveProjectData = async (req, res) => {
 
 exports.fullRefresh = async (req, res) => {
     try {
-        console.log("Starting Full Sync...");
+        console.log("Starting Full Sync Fix (OC Double Counting & Column Error Fixed)...");
+
+        // Phase 1: Staging Actuals (CJ74)
+        await db.query(`DROP TABLE IF EXISTS stg_cj74_agg`);
+        await db.query(`
+            CREATE TABLE stg_cj74_agg AS
+            SELECT 
+                TRIM(REPLACE(REPLACE(REPLACE(object_1,' ',''),'\n',''),'\r','')) COLLATE utf8mb4_general_ci as clean_wbs,
+                cost_element,
+                TRIM(CONCAT(year,'-P',LPAD(CAST(per AS UNSIGNED),3,'0'))) as period,
+                SUM(val_in_rc / 1000) as ptd_val
+            FROM cj74_new GROUP BY 1, 2, 3
+        `);
+        await db.query("ALTER TABLE stg_cj74_agg ADD INDEX (clean_wbs), ADD INDEX (cost_element)");
+
+        // Phase 2: Staging Commitments (CJI5)
+        console.log("Processing CJI5 Staging...");
+        await db.query(`DROP TABLE IF EXISTS stg_cji5_agg`);
+        await db.query(`
+            CREATE TABLE stg_cji5_agg AS
+            SELECT 
+                TRIM(REPLACE(REPLACE(REPLACE(wbs_element,' ',''),'\n',''),'\r','')) COLLATE utf8mb4_general_ci as clean_wbs,
+                TRIM(cost_element) COLLATE utf8mb4_general_ci as cost_element,
+                SUM(val_in_rep_cur / 1000) as oc_val
+            FROM cji5_new 
+            GROUP BY 1, 2
+        `);
+        await db.query("ALTER TABLE stg_cji5_agg ADD INDEX (clean_wbs), ADD INDEX (cost_element)");
+
+        // Phase 3: Master Mapping
+        await db.query(`DROP TABLE IF EXISTS stg_master_mapping`);
+        await db.query(`
+            CREATE TABLE stg_master_mapping AS
+            SELECT 
+                CAST(TRIM(m.single_wbs) AS CHAR(255)) COLLATE utf8mb4_general_ci as single_wbs,
+                m.bu, m.customer, m.loa_id, m.loa_name, m.merged_wbs, m.wbs_type, m.wbs_description,
+                cm.categories, cm.cost_element, cm.cost_revenue as mapped_cost_revenue,
+                CAST(CONVERT(TRIM(CONCAT(IFNULL(m.merged_wbs,''), ' ', IFNULL(cm.categories,''))) USING utf8mb4) AS CHAR(500)) COLLATE utf8mb4_general_ci as Merged_wbs_categories
+            FROM wbs_loa_id_mapping1 m
+            CROSS JOIN (SELECT DISTINCT cost_element, categories, cost_revenue FROM cost_mapping) cm
+        `);
+        await db.query("ALTER TABLE stg_master_mapping ADD INDEX (single_wbs), ADD INDEX (cost_element), ADD INDEX (Merged_wbs_categories(255))");
+
+        // Phase 4: Final Table Insert (Handling Double Counting and Column Mapping)
+        console.log("Filling Final Dashboard Table...");
         await db.query("TRUNCATE TABLE final_dashboard_table");
 
-        // 🔥 Naya column 'wbs_element_single' yahan add kiya hai
-        const insertSql = `
-    INSERT INTO final_dashboard_table 
-    (bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, wbs_type, wbs_description, wbs_element_single, asbl, asbl_loa, non_committed, active_inactive, period, ptd, open_commitment_KEUR, eac, eac_vs_asbl, non_committed_editable, unique_key)
-    SELECT 
-     bu, customer, loa_id, loa_name, cost_revenue, categories, wbs, wbs_type, wbs_description, wbs_element_single, asbl, asbl_loa, non_committed, active_inactive, period, ptd, open_commitment_KEUR, eac, eac_vs_asbl, non_committed_editable, unique_key 
-    FROM final_dashboard
-`;
-        await db.query(insertSql);
+        const finalInsertSql = `
+            INSERT INTO final_dashboard_table 
+            (id, bu, customer, loa_id, loa_name, cost_revenue, categories, merged_wbs, active_inactive, 
+            asbl, asbl_amc, asbl_project, asbl_warranty, asbl_loa, 
+            non_committed, non_committed_editable,
+            period, ptd, wbs_element_single, wbs_type, wbs_description, 
+            open_commitment_KEUR, eac, eac_vs_asbl, Merged_wbs_categories, updated_by, updated_at)
+            
+            SELECT 
+                id, bu, customer, loa_id, loa_name, cost_revenue, categories, merged_wbs, active_inactive,
+                asbl, asbl_amc, asbl_project, asbl_warranty, asbl_loa,
+                non_committed, non_committed_editable,
+                period, ptd, wbs_element_single, wbs_type, wbs_description,
+                
+                -- 🔥 Double Counting Fix: row_num is used to pick OC only once
+                IF(row_num = 1, oc_val_raw, 0) as open_commitment_KEUR,
+                
+                (ptd + IF(row_num = 1, oc_val_raw, 0) + non_committed_editable) as eac,
+                (asbl - (ptd + IF(row_num = 1, oc_val_raw, 0) + non_committed_editable)) as eac_vs_asbl,
+                
+                Merged_wbs_categories, updated_by, updated_at
+            FROM (
+                SELECT 
+                    CAST(COALESCE(s.id, CONCAT('NEW-', m.Merged_wbs_categories)) AS CHAR(700)) as id,
+                    COALESCE(s.bu, m.bu) as bu, COALESCE(s.customer, m.customer) as customer, 
+                    COALESCE(s.loa_id, m.loa_id) as loa_id, COALESCE(s.loa_name, m.loa_name) as loa_name,
+                    IFNULL(s.cost_revenue, m.mapped_cost_revenue) as cost_revenue, 
+                    m.categories, 
+                    COALESCE(s.merged_wbs, m.merged_wbs) as merged_wbs, 
+                    IFNULL(s.active_inactive, 'Active') as active_inactive,
+                    IFNULL(s.asbl, 0) as asbl, IFNULL(s.asbl_amc, 0) as asbl_amc, IFNULL(s.asbl_project, 0) as asbl_project, 
+                    IFNULL(s.asbl_warranty, 0) as asbl_warranty, IFNULL(s.asbl_loa, 0) as asbl_loa,
+                    IFNULL(s.non_committed, 0) as non_committed, IFNULL(s.non_committed_editable, 0) as non_committed_editable,
+                    cj.period, 
+                    IFNULL(cj.ptd_val, 0) as ptd, 
+                    -- 🔥 Renamed to match outer query
+                    m.single_wbs AS wbs_element_single, 
+                    m.wbs_type, 
+                    m.wbs_description,
+                    IFNULL(ci.oc_val, 0) as oc_val_raw,
+                    m.Merged_wbs_categories, s.updated_by, s.updated_at,
+                    ROW_NUMBER() OVER (PARTITION BY m.Merged_wbs_categories ORDER BY cj.period DESC) as row_num
+                FROM stg_master_mapping m
+                LEFT JOIN stg_cj74_agg cj ON (m.single_wbs COLLATE utf8mb4_general_ci = cj.clean_wbs) AND (m.cost_element COLLATE utf8mb4_general_ci = cj.cost_element)
+                LEFT JOIN stg_cji5_agg ci ON (m.single_wbs COLLATE utf8mb4_general_ci = ci.clean_wbs) AND (m.cost_element COLLATE utf8mb4_general_ci = ci.cost_element)
+                LEFT JOIN summary s ON (m.Merged_wbs_categories COLLATE utf8mb4_general_ci = s.Merged_wbs_category COLLATE utf8mb4_general_ci)
+                WHERE cj.ptd_val IS NOT NULL OR ci.oc_val IS NOT NULL OR s.asbl > 0
+            ) AS final_src
+        `;
 
-        // Update total_oc_fixed (optional, but keep it if you need it for KPIs)
-        await db.query(`
-            UPDATE final_dashboard_table t
-            JOIN (
-                SELECT loa_id, categories, SUM(open_commitment_KEUR) as total_sum
-                FROM final_dashboard_table
-                GROUP BY loa_id, categories
-            ) as src ON t.loa_id = src.loa_id AND t.categories = src.categories
-            SET t.total_oc_fixed = src.total_sum
-        `);
+        await db.query(finalInsertSql);
 
-        res.status(200).json({ message: "Sync Complete!" });
+        console.log("Full Sync Completed Successfully!");
+        res.status(200).json({ message: "Sync Complete! Double counting and column issues fixed." });
+
     } catch (error) {
         console.error("Full Refresh Error:", error);
         res.status(500).json({ error: error.message });
