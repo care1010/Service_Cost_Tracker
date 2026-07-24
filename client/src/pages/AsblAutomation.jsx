@@ -145,7 +145,7 @@ console.log("customersStr:", customersStr);
     return (
         <div className="p-6 bg-slate-50 min-h-screen space-y-6">
             <span className="inline-block mt-2 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm font-medium text-slate-700 leading-6">
-                <strong className="text-amber-700">Note:</strong> Enter budget for the specific WBS Type selected. Total = All categories sum.
+                <strong className="text-amber-700">Note:</strong>Total = All categories sum. Not to consider, I&C Services + DD Resources - No values to be put under this
             </span>
             
             <div className="bg-white rounded-[2rem] shadow-sm p-8 border border-slate-100">
