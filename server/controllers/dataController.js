@@ -110,32 +110,27 @@ const getValArray = (val) => {
     return arr.length > 0 ? arr : null;
 };
 
-// --- 2. Helper: Category Type Filter (Fixed Logic) ---
+// --- Category Type Filter ---
 const applyCategoryTypeFilter = (catType, conditions) => {
-    // String ya array ko handle karne ke liye parsing
-    const catArr = Array.isArray(catType) ? catType : (catType ? catType.split(',').map(v => v.trim()) : []);
+    // 1. Parsing
+    let catArr = Array.isArray(catType) ? catType : (catType ? catType.split(",") : []);
+    catArr = catArr.map(v => v.trim()).filter(Boolean);
 
-    const hasAll = catArr.includes('All');
-    const hasLM = catArr.includes('Local Materials');
+    const hasAll = catArr.includes("All");
+    const hasLM = catArr.includes("Local Materials");
 
-    // Scenario 1: Agar Dono select hain ("All" AND "Local Materials")
-    // Requirement: Saari rows dikhni chahiye (LM + Baaki sab)
-    if (hasAll && hasLM) {
-        // Kuch nahi karenge, isse SQL me categories ka koi restriction nahi lagega aur sab kuch dikhega
-        return; 
-    }
+    // SCENARIO 1: Both (Everything)
+    if (hasAll && hasLM) return;
 
-    // Scenario 2: Agar Sirf "Local Materials" select hai
-    // Requirement: Sirf "Local Materials" ki rows dikhni chahiye
+    // SCENARIO 2: Only Local Materials
     if (hasLM && !hasAll) {
-        conditions.push(`categories = 'Local Materials'`);
+        conditions.push("TRIM(categories) = 'Local Materials'");
         return;
     }
 
-    // Scenario 3: Agar Sirf "All" select hai (Ya kuch bhi select nahi hai)
-    // Requirement: "Local Materials" ko chhod kar baaki saari rows dikhni chahiye
+    // SCENARIO 3: Only All (Default)
     if (hasAll || catArr.length === 0) {
-        conditions.push(`categories <> 'Local Materials'`);
+        conditions.push("TRIM(categories) <> 'Local Materials'");
         return;
     }
 };
@@ -439,7 +434,7 @@ exports.getWbsSummaryCollapse = async (req, res) => {
 
 
 // ===========================================
-// Helper: Dynamic Drilldown Filters Builder
+// Helper: Dynamic Drilldown Filters Builder (Physical Table Compatible)
 // ===========================================
 const buildDrilldownConditions = (filters, tableName) => {
     let conds = [];
@@ -447,7 +442,6 @@ const buildDrilldownConditions = (filters, tableName) => {
 
     if (!filters) return { sql: '', params: [] };
 
-    // Function to parse frontend filter strings into arrays safely
     const getArray = (val) => {
         if (!val) return [];
         if (Array.isArray(val)) return val;
@@ -461,31 +455,22 @@ const buildDrilldownConditions = (filters, tableName) => {
         params.push(...wbsTypes);
     }
 
-    // 2. WBS Element (sap_wbs) Filter
+    // 2. 🔥 FIXED: UI "wbs" filter maps to "sap_wbs" in Physical Tables
     const wbsElements = getArray(filters.wbs);
     if (wbsElements.length > 0) {
         conds.push(`sap_wbs IN (${wbsElements.map(() => '?').join(',')})`);
         params.push(...wbsElements);
     }
 
-    // 3. WBS Description Filter (Only for PTD as OC table might not have it)
-    if (tableName === 't_cj74_transformed') {
-        const wbsDescs = getArray(filters.wbs_description);
-        if (wbsDescs.length > 0) {
-            conds.push(`wbs_description IN (${wbsDescs.map(() => '?').join(',')})`);
-            params.push(...wbsDescs);
-        }
-    }
-
-    // 4. Period Filter
+    // 3. Period Filter
     const periods = getArray(filters.period);
     if (periods.length > 0) {
         if (tableName === 't_cj74_transformed') {
             conds.push(`period IN (${periods.map(() => '?').join(',')})`);
             params.push(...periods);
         } else {
-            // OC table ke liye hum year aur per ko jod kar period banate hain match karne ke liye
-            conds.push(`CONCAT(year, '-P', LPAD(CAST(per AS UNSIGNED), 3, '0')) IN (${periods.map(() => '?').join(',')})`);
+            // 🔥 CJI5 table mein period column nahi h toh concat use karenge
+            conds.push(`CONCAT(year, '-P', LPAD(per, 2, '0')) IN (${periods.map(() => '?').join(',')})`);
             params.push(...periods);
         }
     }
@@ -496,53 +481,38 @@ const buildDrilldownConditions = (filters, tableName) => {
     };
 };
 
-
 // ===========================================
-// Get Drilldown Data (For UI Table)
+// Get Drilldown Data (Fast Physical Table Query)
 // ===========================================
 exports.getDrillDownData = async (req, res) => {
     try {
-        // 👇 1. Jaise hi API hit hogi, Terminal mein yeh print hoga
-        console.log("\n========================================");
-        console.log("🔥 DRILLDOWN API HIT 🔥");
-        
         const { field, row, filters } = req.body;
         const loaId = row?.loa_id;
         const category = row?.categories;
 
-        // 👇 2. Frontend se kya data aaya, wo print hoga
-        console.log(`📌 Field: ${field}`);
-        console.log(`📌 LOA ID: ${loaId} | Category: ${category}`);
-        console.log(`📌 Filters Applied:`, filters);
-
         if (!loaId || !category) {
-            console.log("❌ ERROR: LOA ID or Category is missing!");
             return res.status(400).json({ error: "Missing LOA ID or Category" });
         }
 
-        const tableName = field === 'ptd' ? 't_cj74_transformed' : 't_cji5_transformed';
+        // 🔥 Mapping to your PHYSICAL Tables
+        const tableName = (field === 'ptd') ? 't_cj74_transformed' : 't_cji5_transformed';
         
+        // LoA ID aur Category selection
         let sql = `SELECT * FROM ${tableName} WHERE loa_id = ? AND categories = ?`;
         let params = [loaId, category];
 
+        // Dynamic Filters logic
         const dynamicFilters = buildDrilldownConditions(filters, tableName);
         sql += dynamicFilters.sql;
         params.push(...dynamicFilters.params);
 
-        sql += ` ORDER BY year DESC, per DESC LIMIT 5000`; // Limit lagai hai taaki browser crash na ho
+        // Efficiency limit
+        sql += ` LIMIT 10000`; 
 
-        // 👇 3. Final SQL query jo database ko jayegi, wo print hogi
-        console.log("⚙️ Executing SQL Query...");
-        
         const [rows] = await db.query(sql, params);
-
-        // 👇 4. SUCCESS! Kitni rows mili, wo terminal mein print hoga
-        console.log(`✅ SUCCESS: Found ${rows.length} rows from Database!`);
-        console.log("========================================\n");
-
         res.status(200).json(rows); 
     } catch (error) {
-        console.error("❌ DRILLDOWN FATAL ERROR:", error);
+        console.error("Drilldown Error:", error);
         res.status(500).json({ error: error.message });
     }
 };
@@ -1134,9 +1104,6 @@ exports.fullRefresh = async (req, res) => {
         `;
         
         await db.query(finalInsertSql);
-
-        console.log("✅ All Sync Fixed! PTD and OC are now 100% Correct.");
-        res.status(200).json({ message: "Sync Success! Everything is balanced now." });
 
     } catch (error) {
         console.error("Full Refresh Error:", error);
