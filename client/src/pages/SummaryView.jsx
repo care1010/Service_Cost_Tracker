@@ -182,8 +182,8 @@ const SummaryView = ({ user }) => {
         { header: 'ASBL', field: 'asbl' },
         { header: 'ASBL LOA', field: 'asbl_loa' },
         { header: 'PTD', field: 'ptd', clickable: true },
-        { header: 'Open Commitment', field: 'open_commitment', clickable: true },
-        { header: 'Non Committed', field: 'non_committed' },
+        { header: 'Open Commitment', field: 'open_commitment_KEUR', clickable: true }, // Updated field name
+        { header: 'Non Committed', field: 'non_committed_editable' }, // Updated to editable field
         { header: 'EAC', field: 'eac' },
         { header: 'EAC vs ASBL', field: 'eac_vs_asbl' }
     ];

@@ -198,7 +198,7 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
             ajax: {
                 url: apiUrl,
                 type: 'GET',
-                data: (d) => ({ ...d, ...filters }),
+                data: (d) => ({ ...d, ...filtersRef.current }),
                 dataSrc: function (json) {
                     if (json.kpis && typeof onKpiUpdate === 'function') {
                         onKpiUpdate(json.kpis); 
@@ -241,14 +241,14 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
                                     step="any">`;
                         }
                     }
-                    const drillFields = ['ptd', 'open_commitment'];
+                    const drillFields = ['ptd', 'open_commitment_KEUR'];
 
                     if (type === 'display' && drillFields.includes(col.field)) {
                         return `
                             <span
                                 class="drill-link text-grey-600 font-bold cursor-pointer hover:underline"
                                 data-field="${col.field}"
-                                data-uniquekey="${row.unique_key}"
+                                data-uniquekey="${row.unique_key || row.Merged_wbs_categories}"
                                 data-loaid="${row.loa_id}" 
                                 data-loa="${row.loa_name}"
                                 data-category="${row.categories}"

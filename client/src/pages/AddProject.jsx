@@ -43,7 +43,7 @@ const AddProject = () => {
             try {
                 const res = await axios.post(
                     `${process.env.REACT_APP_API_URL}/api/data/process-project-paste`,
-                    { rawText: pasteData }
+                    { rawText: pasteData, mode } // 🔥 'mode' parameter pass kiya
                 );
 
                 Swal.fire({
@@ -89,6 +89,7 @@ const AddProject = () => {
 
             const formData = new FormData();
             formData.append('file', selectedFile);
+            formData.append('mode', mode); // 🔥 'mode' form data mein append kiya
 
             try {
                 const res = await axios.post(
