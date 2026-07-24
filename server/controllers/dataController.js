@@ -993,117 +993,107 @@ exports.saveProjectData = async (req, res) => {
 
 exports.fullRefresh = async (req, res) => {
     try {
-        console.log("🚀 Starting Sync (PTD & OC Corrected - Final Version)...");
+        console.log("🚀 Starting Bare-Metal Sync (Strict Mode & Performance Fixed)...");
 
-        // 1. Session & Collation Fix
+        // 1. Session Setup: Standardise names and BYPASS Strict Grouping
         await db.query("SET NAMES utf8mb4");
         await db.query("SET collation_connection = 'utf8mb4_general_ci'");
+        
+        // 🔥 Yeh line Strict Mode error (#1055) ko bypass kar degi
+        await db.query(`SET SESSION sql_mode=(SELECT REPLACE(@@sql_mode,'ONLY_FULL_GROUP_BY',''))`);
+        
+        await db.query("SET SESSION wait_timeout = 900");
 
-        // Phase 1: PTD Staging (Wahi logic jo aapne manga tha)
-        await db.query(`DROP TABLE IF EXISTS stg_cj74_agg`);
-        await db.query(`
-            CREATE TABLE stg_cj74_agg AS
-            SELECT 
-                TRIM(REPLACE(REPLACE(REPLACE(object_1,' ',''),'\n',''),'\r','')) COLLATE utf8mb4_general_ci as clean_wbs,
-                cost_element,
-                TRIM(CONCAT(year,'-P',LPAD(CAST(per AS UNSIGNED),3,'0'))) as period,
-                SUM(val_in_rc / 1000) as ptd_val
-            FROM cj74_new GROUP BY 1, 2, 3
-        `);
-        await db.query("ALTER TABLE stg_cj74_agg ADD INDEX (clean_wbs), ADD INDEX (cost_element)");
-
-        // Phase 2: OC Staging
-        await db.query(`DROP TABLE IF EXISTS stg_cji5_agg`);
-        await db.query(`
-            CREATE TABLE stg_cji5_agg AS
-            SELECT 
-                TRIM(REPLACE(REPLACE(REPLACE(wbs_element,' ',''),'\n',''),'\r','')) COLLATE utf8mb4_general_ci as clean_wbs,
-                TRIM(cost_element) COLLATE utf8mb4_general_ci as cost_element,
-                SUM(val_in_rep_cur / 1000) as oc_val
-            FROM cji5_new GROUP BY 1, 2
-        `);
-        await db.query("ALTER TABLE stg_cji5_agg ADD INDEX (clean_wbs), ADD INDEX (cost_element)");
-
-        // Phase 3: Master Mapping
-        await db.query(`DROP TABLE IF EXISTS stg_master_mapping`);
-        await db.query(`
-            CREATE TABLE stg_master_mapping AS
-            SELECT 
-                CAST(TRIM(m.single_wbs) AS CHAR(255)) COLLATE utf8mb4_general_ci as single_wbs,
-                m.bu, m.customer, m.loa_id, m.loa_name, m.merged_wbs, m.wbs_type, m.wbs_description,
-                cm.categories, cm.cost_element, cm.cost_revenue as mapped_cost_revenue,
-                CAST(CONVERT(TRIM(CONCAT(IFNULL(m.merged_wbs,''), '-', IFNULL(cm.categories,''))) USING utf8mb4) AS CHAR(500)) COLLATE utf8mb4_general_ci as Merged_wbs_categories
-            FROM wbs_loa_id_mapping1 m
-            CROSS JOIN (SELECT DISTINCT cost_element, categories, cost_revenue FROM cost_mapping) cm
-        `);
-        await db.query("ALTER TABLE stg_master_mapping ADD INDEX (single_wbs), ADD INDEX (cost_element), ADD INDEX (Merged_wbs_categories(255))");
-
-        // Phase 4: Final Table Fill
-        console.log("Filling Final Dashboard Table (Double Logic Applied)...");
+        // 2. Clear Target Table
         await db.query("TRUNCATE TABLE final_dashboard_table");
 
-        const finalInsertSql = `
+        // --- STEP 1: Insert Base Data from Mapping (Metadata) ---
+        console.log("Step 1: Mapping Metadata (Cross Join Logic)...");
+        await db.query(`
             INSERT INTO final_dashboard_table 
-            (id, bu, customer, loa_id, loa_name, cost_revenue, categories, merged_wbs, active_inactive, 
-             asbl, asbl_amc, asbl_project, asbl_warranty, asbl_loa, 
-             non_committed, non_committed_amc, non_committed_project, non_committed_warranty,
-             non_committed_editable, non_committed_editable_amc, non_committed_editable_project, non_committed_editable_warranty,
-             period, ptd, wbs_element_single, wbs_type, wbs_description, 
-             open_commitment_KEUR, eac, eac_vs_asbl, Merged_wbs_categories, updated_by, updated_at)
-            
+            (bu, customer, loa_id, loa_name, categories, merged_wbs, wbs_element_single, wbs_type, wbs_description, Merged_wbs_categories, cost_revenue)
             SELECT 
-                COALESCE(s.id, CONCAT('NEW-', m.Merged_wbs_categories)),
-                COALESCE(s.bu, m.bu), COALESCE(s.customer, m.customer), COALESCE(s.loa_id, m.loa_id), COALESCE(s.loa_name, m.loa_name),
-                IFNULL(s.cost_revenue, m.mapped_cost_revenue), 
-                m.categories, 
-                COALESCE(s.merged_wbs, m.merged_wbs), 
-                IFNULL(s.active_inactive, 'Active'),
-                
-                -- Summary data Rank fix
-                IF(m.rank_project = 1, IFNULL(s.asbl, 0), 0), 
-                IF(m.rank_project = 1, IFNULL(s.asbl_amc, 0), 0), 
-                IF(m.rank_project = 1, IFNULL(s.asbl_project, 0), 0), 
-                IF(m.rank_project = 1, IFNULL(s.asbl_warranty, 0), 0), 
-                IF(m.rank_project = 1, IFNULL(s.asbl_loa, 0), 0),
-                
-                IF(m.rank_project = 1, IFNULL(s.non_committed, 0), 0),
-                IF(m.rank_project = 1, IFNULL(s.non_committed_amc, 0), 0),
-                IF(m.rank_project = 1, IFNULL(s.non_committed_project, 0), 0),
-                IF(m.rank_project = 1, IFNULL(s.non_committed_warranty, 0), 0),
-                
-                IF(m.rank_project = 1, IFNULL(s.non_committed_editable, 0), 0),
-                IF(m.rank_project = 1, IFNULL(s.non_committed_editable_amc, 0), 0),
-                IF(m.rank_project = 1, IFNULL(s.non_committed_editable_project, 0), 0),
-                IF(m.rank_project = 1, IFNULL(s.non_committed_editable_warranty, 0), 0),
-                
-                m.period, 
-                IFNULL(m.ptd_val, 0), -- 🔥 PTD remains correctly joined on cost_element
-                m.single_wbs, m.wbs_type, m.wbs_description,
-                
-                -- 🔥 OC Logic Fix: Picking OC only once per WBS-CE combo to prevent decimal shift
-                IF(m.rank_oc = 1, m.oc_val_raw, 0),
-                
-                -- Calculations
-                (IFNULL(m.ptd_val, 0) + IF(m.rank_oc = 1, m.oc_val_raw, 0) + IF(m.rank_project = 1, IFNULL(s.non_committed_editable, 0), 0)),
-                (IF(m.rank_project = 1, IFNULL(s.asbl, 0), 0) - (IFNULL(m.ptd_val, 0) + IF(m.rank_oc = 1, m.oc_val_raw, 0) + IF(m.rank_project = 1, IFNULL(s.non_committed_editable, 0), 0))),
-                
-                m.Merged_wbs_categories, s.updated_by, s.updated_at
-            FROM (
+                MAX(m.bu), MAX(m.customer), MAX(m.loa_id), MAX(m.loa_name), 
+                cm.categories, 
+                MAX(m.merged_wbs), 
+                m.single_wbs, 
+                MAX(m.wbs_type), 
+                MAX(m.wbs_description),
+                CONCAT(TRIM(MAX(m.merged_wbs)), '-', TRIM(cm.categories)),
+                MAX(cm.cost_revenue)
+            FROM wbs_loa_id_mapping1 m
+            CROSS JOIN (SELECT DISTINCT categories, cost_revenue FROM cost_mapping) cm
+            GROUP BY m.single_wbs, cm.categories
+        `);
+
+        // --- STEP 2: Update PTD Data Directly from CJ74 ---
+        console.log("Step 2: Updating PTD values...");
+        await db.query(`
+            UPDATE final_dashboard_table t
+            INNER JOIN (
                 SELECT 
-                    m.*, cj.period, cj.ptd_val, IFNULL(ci.oc_val, 0) as oc_val_raw,
-                    -- Rank 1: For OC (Per WBS + Cost Element)
-                    ROW_NUMBER() OVER (PARTITION BY m.single_wbs, m.cost_element ORDER BY cj.period DESC) as rank_oc,
-                    -- Rank 2: For Summary (Per Project Category)
-                    ROW_NUMBER() OVER (PARTITION BY m.Merged_wbs_categories ORDER BY cj.period DESC) as rank_project
-                FROM stg_master_mapping m
-                LEFT JOIN stg_cj74_agg cj ON (m.single_wbs = cj.clean_wbs AND m.cost_element = cj.cost_element)
-                LEFT JOIN stg_cji5_agg ci ON (m.single_wbs = ci.clean_wbs AND m.cost_element = ci.cost_element)
-            ) AS m
-            LEFT JOIN summary s ON (m.Merged_wbs_categories COLLATE utf8mb4_general_ci = s.Merged_wbs_category COLLATE utf8mb4_general_ci)
-            WHERE m.ptd_val IS NOT NULL OR m.oc_val_raw > 0 OR s.asbl > 0
-        `;
-        
-        await db.query(finalInsertSql);
+                    TRIM(REPLACE(REPLACE(REPLACE(object_1,' ',''),'\\n',''),'\\r','')) as clean_wbs,
+                    TRIM(cm.categories) as cat_name,
+                    TRIM(CONCAT(year,'-P',LPAD(CAST(per AS UNSIGNED),3,'0'))) as per_name,
+                    SUM(val_in_rc / 1000) as ptd_sum
+                FROM cj74_new c
+                INNER JOIN cost_mapping cm ON TRIM(c.cost_element) = TRIM(cm.cost_element)
+                GROUP BY 1, 2, 3
+            ) src ON t.wbs_element_single = src.clean_wbs AND t.categories = src.cat_name
+            SET t.ptd = src.ptd_sum, t.period = src.per_name
+        `);
+
+        // --- STEP 3: Update OC Data Directly from CJI5 ---
+        console.log("Step 3: Updating OC values...");
+        await db.query(`
+            UPDATE final_dashboard_table t
+            INNER JOIN (
+                SELECT 
+                    TRIM(REPLACE(REPLACE(REPLACE(wbs_element,' ',''),'\\n',''),'\\r','')) as clean_wbs,
+                    TRIM(cm.categories) as cat_name,
+                    SUM(val_in_rep_cur / 1000) as oc_sum
+                FROM cji5_new c
+                INNER JOIN cost_mapping cm ON TRIM(c.cost_element) = TRIM(cm.cost_element)
+                GROUP BY 1, 2
+            ) src ON t.wbs_element_single = src.clean_wbs AND t.categories = src.cat_name
+            SET t.open_commitment_KEUR = src.oc_sum
+        `);
+
+        // --- STEP 4: Sync Financials from Summary ---
+        console.log("Step 4: Syncing ASBL & NC from Summary...");
+        await db.query(`
+            UPDATE final_dashboard_table t
+            INNER JOIN summary s ON t.Merged_wbs_categories = s.Merged_wbs_category
+            SET 
+                t.id = s.id, t.cost_revenue = s.cost_revenue, t.active_inactive = s.active_inactive,
+                t.asbl = s.asbl, t.asbl_amc = s.asbl_amc, t.asbl_project = s.asbl_project, t.asbl_warranty = s.asbl_warranty, t.asbl_loa = s.asbl_loa,
+                t.non_committed = s.non_committed, t.non_committed_amc = s.non_committed_amc, t.non_committed_project = s.non_committed_project, t.non_committed_warranty = s.non_committed_warranty,
+                t.non_committed_editable = s.non_committed_editable, t.non_committed_editable_amc = s.non_committed_editable_amc, t.non_committed_editable_project = s.non_committed_editable_project, t.non_committed_editable_warranty = s.non_committed_editable_warranty
+        `);
+
+        // --- STEP 5: Final Totals and Defaults ---
+        console.log("Step 5: Calculating final totals...");
+        await db.query(`
+            UPDATE final_dashboard_table 
+            SET 
+                period = IFNULL(period, 'No Actuals'),
+                active_inactive = IFNULL(active_inactive, 'Active'),
+                eac = IFNULL(ptd,0) + IFNULL(open_commitment_KEUR,0) + IFNULL(non_committed_editable,0),
+                eac_vs_asbl = IFNULL(asbl,0) - (IFNULL(ptd,0) + IFNULL(open_commitment_KEUR,0) + IFNULL(non_committed_editable,0))
+        `);
+
+        // --- STEP 6: Delete completely empty rows to save memory ---
+        console.log("Step 6: Cleaning up...");
+        await db.query(`
+            DELETE FROM final_dashboard_table 
+            WHERE (ptd IS NULL OR ptd = 0) 
+              AND (open_commitment_KEUR IS NULL OR open_commitment_KEUR = 0) 
+              AND (asbl IS NULL OR asbl = 0)
+              AND (non_committed_editable IS NULL OR non_committed_editable = 0)
+        `);
+
+        console.log("✅ Sync Complete!");
+        res.status(200).json({ message: "Database Sync Complete! Performance optimized." });
 
     } catch (error) {
         console.error("Full Refresh Error:", error);

@@ -248,7 +248,7 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
                             <span
                                 class="drill-link text-grey-600 font-bold cursor-pointer hover:underline"
                                 data-field="${col.field}"
-                                data-uniquekey="${row.unique_key || row.Merged_wbs_categories}"
+                                data-uniquekey="${row.unique_key || row.Merged_wbs_categories}" 
                                 data-loaid="${row.loa_id}" 
                                 data-loa="${row.loa_name}"
                                 data-category="${row.categories}"
@@ -395,7 +395,7 @@ const DataTable = ({ title, columns, apiUrl, filters, onKpiUpdate, showSaveButto
                     e.stopPropagation();
                     const field = $(this).data('field');
                     const row = {
-                        unique_key: $(this).data('uniquekey'),
+                        Merged_wbs_categories: $(this).data('uniquekey'), 
                         loa_id: $(this).data('loaid'),      // 🔥 YEH ADD KIYA HAI
                         loa_name: $(this).data('loa'),
                         categories: $(this).data('category'), 
