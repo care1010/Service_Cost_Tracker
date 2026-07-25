@@ -9,3 +9,6 @@ data_upload/
 server/uploads/
 
 uploads/
+
+package.json
+package-lock.json
