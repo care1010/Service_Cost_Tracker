@@ -2,44 +2,26 @@ const db = require('../config/db');
 const XLSX = require('xlsx');
 const fs = require('fs');
 
-const CATEGORY_MAP = [
-    { cat: "Local Materials", type: "Cost" }, { cat: "Transportation & Logistic cost", type: "Cost" },
-    { cat: "Travel+Training", type: "Cost" }, { cat: "SBU-Design+Dep.+Mig", type: "Cost" },
-    { cat: "CE Resources", type: "Cost" }, { cat: "Revenue", type: "Revenue" },
-    { cat: "I&C Services", type: "Cost" }, { cat: "DD Resources", type: "Cost" },
-    { cat: "Welcome Center Costs", type: "Cost" }, { cat: "Local TAC Support + L3 Support", type: "Cost" },
-    { cat: "Repair cost", type: "Cost" }, { cat: "Cost Reclass", type: "Cost" },
-    { cat: "Project Management", type: "Cost" }, { cat: "Software Upgrade + NSP Upgrade", type: "Cost" },
-    { cat: "3rd Party Cost", type: "Cost" }, { cat: "Not to considered", type: "NTC" },
-    { cat: "Additional HW", type: "Cost" }, { cat: "Risk and Contingencies", type: "Cost" },
-    { cat: "Quality Audit + FMA", type: "Cost" }, { cat: "Additional Services", type: "Cost" },
-    { cat: "Others-Not found in Cost Mapping", type: "Cost" }, 
-    { cat: "I&C Services + DD Resources", type: "Cost" }, 
-    { cat: "Cross ERP Cost", type: "Cost" }, 
-    { cat: "Total", type: "Cost" } 
-];
+// 🔥 EXCLUDE LIST FOR CJ74 (Donkey-Proofing)
+const EXCLUDED_WBS_TYPES_FOR_CJ74 = ['Warranty', 'Warranty/Other'];
+
 
 /**
- * 🔥 Optimized Sync: No TRIM() in SQL. 
- * Assumes data in DB is already clean.
+ * Helper: Sync WBS mappings
  */
 const syncProjectWbs = async (arg1, arg2, arg3) => {
     let conn, loa_id, loa_name;
 
-    // Flexible Argument Handling
     if (typeof arg1 === 'string') {
-        // Agar pehla argument string hai, matlab connection skip kiya gaya hai
-        conn = db; // Default promise pool use karega
+        conn = db;
         loa_id = arg1;
         loa_name = arg2;
     } else {
-        // Agar pehla argument object hai, matlab connection pass kiya gaya hai
         conn = arg1;
         loa_id = arg2;
         loa_name = arg3;
     }
 
-    // Ab 'conn' hamesha valid query object hoga
     const [rows] = await conn.query(
         "SELECT DISTINCT single_wbs as wbs FROM wbs_loa_id_mapping1 WHERE loa_id = ? AND loa_name = ?",
         [loa_id, loa_name]
@@ -63,13 +45,59 @@ const syncProjectWbs = async (arg1, arg2, arg3) => {
     return mergedWbsStr;
 };
 
+
 /**
- * 🔥 Core Engine: Trims data at entry point
+ * Helper: Naye WBS ke liye cj74_new me dummy rows dalne ka function
+ */
+const insertCj74DummyData = async (connection, newWbsList, costElements) => {
+    if (newWbsList.length === 0 || costElements.length === 0) return;
+
+    const currentDate = new Date();
+    const currentYear = currentDate.getFullYear(); 
+    const currentMonth = (currentDate.getMonth() + 1).toString(); 
+
+    let cj74BatchRows = [];
+
+    for (const wbsObj of newWbsList) {
+        const type = (wbsObj.wbs_type || "").trim();
+        
+        // Naye projects par rule apply hoga (Exclude list check karega)
+        const isExcluded = EXCLUDED_WBS_TYPES_FOR_CJ74.some(
+            exType => exType.toLowerCase() === type.toLowerCase()
+        );
+
+        if (!isExcluded) {
+            for (const ce of costElements) {
+                // 🔥 NAYA: Aakhiri value 0 add ki hai (NULL ki jagah)
+                cj74BatchRows.push([
+                    currentYear, 
+                    currentMonth, 
+                    ce, 
+                    wbsObj.wbs_element, 
+                    wbsObj.wbs_element,
+                    0 // <-- Explicit 0 for val_in_rc
+                ]);
+            }
+        }
+    }
+
+    if (cj74BatchRows.length > 0) {
+        // 🔥 NAYA: Query mein `val_in_rc` column ka naam bhi add kar diya hai
+        await connection.query(
+            `INSERT INTO cj74_new (year, per, cost_element, object_1, object_2, val_in_rc) VALUES ?`,
+            [cj74BatchRows]
+        );
+        console.log(`✅ Added ${cj74BatchRows.length} dummy rows with 0 value to cj74_new for ${newWbsList.length} WBS.`);
+    }
+};
+
+
+/**
+ * 🔥 Core Engine: Processes Project Data with Deadlock-Proof Logic
  */
 const processProjectData = async (dataGrid, created_by, mode) => {
     if (!dataGrid || dataGrid.length < 2) throw new Error("No data found or headers missing!");
     
-    // Clean headers once
     const headers = dataGrid[0].map(h => String(h || "").trim().toUpperCase());
     const idxBu = headers.findIndex(h => h === 'BUSINESS DIVISION (BD)' || h === 'BU');
     const idxCustomer = headers.findIndex(h => h === 'CT NAME (REPORTED CUST)' || h === 'CUSTOMER');
@@ -83,11 +111,9 @@ const processProjectData = async (dataGrid, created_by, mode) => {
     const projectGroups = {};
     let c_bu = "", c_cust = "", c_lid = "", c_lname = "";
 
-    // CLEANING PHASE: Trim everything before processing logic
     for (let cols of dataLines) {
         if (cols.every(c => !c || String(c).trim() === '')) continue;
         
-        // Trim inputs immediately
         const r_bu = cols[idxBu]?.toString().trim() || "";
         const r_cust = cols[idxCustomer]?.toString().trim() || "";
         const r_lid = cols[idxLoaId]?.toString().trim() || "";
@@ -115,15 +141,24 @@ const processProjectData = async (dataGrid, created_by, mode) => {
     }
 
     const connection = await db.getConnection();
+    let isCommitted = false; // 🔥 Safety flag to track if data is saved
+
     try {
         await connection.beginTransaction();
+        
+        const [catRows] = await connection.query("SELECT categories as cat, cost_revenue_type as type FROM master_categories");
+        const CATEGORY_MAP = catRows; 
+
+        const [costElementsRows] = await connection.query("SELECT cost_element FROM master_cost_element");
+        const costElements = costElementsRows.map(row => row.cost_element);
+        
         let processedLoas = new Set();
         let warningMessage = "";
 
+        // MAIN LOOP
         for (const loa_id of Object.keys(projectGroups)) {
             const { bu, customer, loa_name, wbs_rows } = projectGroups[loa_id];
 
-            // Direct comparison (Index optimized)
             const [exSummary] = await connection.query(
                 "SELECT id FROM summary WHERE loa_id = ? AND loa_name = ? LIMIT 1", 
                 [loa_id, loa_name]
@@ -144,40 +179,66 @@ const processProjectData = async (dataGrid, created_by, mode) => {
                 const mapRows = wbs_rows.map(r => [bu, customer, loa_id, loa_name, r.wbs_type, r.wbs_element, r.wbs_description, finalMergedWbs, created_by]);
                 await connection.query(`INSERT INTO wbs_loa_id_mapping1 (bu, customer, loa_id, loa_name, wbs_type, single_wbs, wbs_description, merged_wbs, created_by) VALUES ?`, [mapRows]);
                 
+                await insertCj74DummyData(connection, wbs_rows, costElements);
+
                 processedLoas.add(loa_id);
 
             } else if (mode === 'existing') {
-            const [exMappings] = await connection.query(
-                "SELECT single_wbs as wbs, wbs_type as type FROM wbs_loa_id_mapping1 WHERE loa_id = ? AND loa_name = ?", 
-                [loa_id, loa_name]
-            );
+                const [exMappings] = await connection.query(
+                    "SELECT single_wbs as wbs, wbs_type as type FROM wbs_loa_id_mapping1 WHERE loa_id = ? AND loa_name = ?", 
+                    [loa_id, loa_name]
+                );
 
-            const existingKeys = new Set(exMappings.map(m => `${m.wbs}|${m.type}`.toUpperCase()));
-            const newWbsToMap = wbs_rows.filter(row => !existingKeys.has(`${row.wbs_element}|${row.wbs_type}`.toUpperCase()));
+                const existingKeys = new Set(exMappings.map(m => `${m.wbs}|${m.type}`.toUpperCase()));
+                const newWbsToMap = wbs_rows.filter(row => !existingKeys.has(`${row.wbs_element}|${row.wbs_type}`.toUpperCase()));
 
-            if (newWbsToMap.length > 0) {
-                const mapRows = newWbsToMap.map(r => [bu, customer, loa_id, loa_name, r.wbs_type, r.wbs_element, r.wbs_description, "", created_by]);
-                await connection.query(`INSERT INTO wbs_loa_id_mapping1 (bu, customer, loa_id, loa_name, wbs_type, single_wbs, wbs_description, merged_wbs, created_by) VALUES ?`, [mapRows]);
-                
-                // ✅ Pass connection here to keep it in the same transaction
-                await syncProjectWbs(connection, loa_id, loa_name); 
+                if (newWbsToMap.length > 0) {
+                    const mapRows = newWbsToMap.map(r => [bu, customer, loa_id, loa_name, r.wbs_type, r.wbs_element, r.wbs_description, "", created_by]);
+                    await connection.query(`INSERT INTO wbs_loa_id_mapping1 (bu, customer, loa_id, loa_name, wbs_type, single_wbs, wbs_description, merged_wbs, created_by) VALUES ?`, [mapRows]);
+                    
+                    await syncProjectWbs(connection, loa_id, loa_name); 
+
+                    await insertCj74DummyData(connection, newWbsToMap, costElements);
+                }
+                processedLoas.add(loa_id);
             }
-            processedLoas.add(loa_id);
-        }
         }
 
-        // 🔥 Optimized Dashboard Refresh
+        // 🟢 FIX 1: PEHLE DATA SAVE (COMMIT) KARENGE
+        await connection.commit();
+        isCommitted = true;
+        console.log("✅ Primary Database Tables Updated and Committed Successfully!");
+
+        // 🟢 FIX 2: AB AARAM SE DASHBOARD VIEW REFRESH KARENGE
+        // .... WBS processing loop ends here ....
+        
+        // 🔥 FAST DASHBOARD REFRESH LOGIC
         const loaList = Array.from(processedLoas);
         if (loaList.length > 0) {
+            console.log("🔄 Refreshing Dashboard Table for LOAs:", loaList);
             await connection.query("DELETE FROM final_dashboard_table WHERE loa_id IN (?)", [loaList]);
+
+            // Hum heavy View ki jagah sidha base tables se fast insert karenge
             await connection.query(`
-                INSERT INTO final_dashboard_table 
-                SELECT * FROM final_dashboard WHERE loa_id IN (?)
+                INSERT INTO final_dashboard_table (
+                    bu, customer, loa_id, loa_name, cost_revenue, categories, active_inactive,
+                    wbs_element_single, wbs_type, wbs_description, merged_wbs, Merged_wbs_categories
+                )
+                SELECT 
+                    s.bu, s.customer, s.loa_id, s.loa_name, s.cost_revenue, s.categories, s.active_inactive,
+                    m.single_wbs, m.wbs_type, m.wbs_description, m.merged_wbs,
+                    CONCAT(m.merged_wbs, '-', s.categories)
+                FROM summary s
+                LEFT JOIN wbs_loa_id_mapping1 m ON s.loa_id = m.loa_id
+                WHERE s.loa_id IN (?)
             `, [loaList]);
+            
+            console.log("✅ Dashboard Refreshed at Lightning Speed!");
         }
 
         await connection.commit();
         return { message: `${warningMessage}Successfully Processed ${processedLoas.size} Project(s).` };
+
     } catch (error) {
         await connection.rollback();
         throw error;
@@ -187,17 +248,18 @@ const processProjectData = async (dataGrid, created_by, mode) => {
 };
 
 /**
- * 🔥 Optimized Fix/Cleanup
+ * Fix Missing Summary Rows (Cleanup/Utility)
  */
 exports.fixMissingSummaryRows = async (req, res) => {
     let connection;
     try {
         connection = await db.getConnection();
-        
-        // Timeout ko session level par badhao
         await connection.query("SET SESSION innodb_lock_wait_timeout = 300");
 
-        // 1. Unique Projects ki list lein
+        // 🔥 Yahan bhi Hardcoded array ko hatakar DB se fetch kar liya
+        const [catRows] = await connection.query("SELECT categories as cat, cost_revenue_type as type FROM master_categories");
+        const CATEGORY_MAP = catRows;
+
         const [projects] = await connection.query(
             "SELECT DISTINCT loa_id, loa_name, ANY_VALUE(bu) as bu, ANY_VALUE(customer) as customer FROM wbs_loa_id_mapping1 GROUP BY loa_id"
         );
@@ -205,9 +267,6 @@ exports.fixMissingSummaryRows = async (req, res) => {
         console.log(`🚀 Processing ${projects.length} projects...`);
 
         for (const p of projects) {
-            // BINA transaction ke kaam karenge (Autocommit mode)
-            
-            // Step A: Missing categories insert karein
             for (const catItem of CATEGORY_MAP) {
                 const [exists] = await connection.query(
                     "SELECT id FROM summary WHERE loa_id = ? AND categories = ? LIMIT 1", 
@@ -221,11 +280,7 @@ exports.fixMissingSummaryRows = async (req, res) => {
                     );
                 }
             }
-
-            // Step B: WBS Sync karein
-            // Note: syncProjectWbs ke andar bhi ensure karein ki koi transactional lock na ho
             await syncProjectWbs(connection, p.loa_id, p.loa_name);
-
             console.log(`✅ ${p.loa_id} sync completed.`);
         }
 
@@ -238,7 +293,6 @@ exports.fixMissingSummaryRows = async (req, res) => {
         if (connection) connection.release();
     }
 };
-
 
 // ==========================================
 // EXPORTED API HANDLERS
@@ -268,58 +322,5 @@ exports.uploadProjectFile = async (req, res) => {
     } catch (error) { 
         if (req.file && fs.existsSync(req.file.path)) fs.unlinkSync(req.file.path);
         res.status(500).json({ error: error.message }); 
-    }
-};
-
-exports.fixMissingSummaryRows = async (req, res) => {
-    const connection = await db.getConnection();
-    try {
-        await connection.beginTransaction();
-        console.log("🚀 Starting Pro-Level Data Cleanup...");
-
-        // 1. GET ALL UNIQUE PROJECTS
-        const [projects] = await connection.query(
-            "SELECT DISTINCT TRIM(loa_id) as loa_id, TRIM(loa_name) as loa_name, bu, customer FROM wbs_loa_id_mapping1"
-        );
-
-        for (const p of projects) {
-            // 2. CLEAN SUMMARY TABLE (Delete duplicates for this project)
-            // Hum categories ke basis pe duplicates delete karenge aur latest (max id) ko rakhenge
-            await connection.query(`
-                DELETE s1 FROM summary s1
-                INNER JOIN summary s2 
-                WHERE s1.id < s2.id 
-                AND s1.loa_id = s2.loa_id 
-                AND s1.loa_name = s2.loa_name 
-                AND s1.categories = s2.categories 
-                AND s1.loa_id = ?`, [p.loa_id]);
-
-            // 3. ENSURE EXACT 24 ROWS
-            // Jo categories miss ho gayi hain unhe insert karenge
-            for (const catItem of CATEGORY_MAP) {
-                const [exists] = await connection.query(
-                    "SELECT id FROM summary WHERE loa_id = ? AND categories = ?", 
-                    [p.loa_id, catItem.cat]
-                );
-                if (exists.length === 0) {
-                    await connection.query(
-                        "INSERT INTO summary (bu, customer, loa_id, loa_name, cost_revenue, categories) VALUES (?,?,?,?,?,?)",
-                        [p.bu, p.customer, p.loa_id, p.loa_name, catItem.type, catItem.cat]
-                    );
-                }
-            }
-
-            // 4. SYNC WBS MAPPING
-            // Mapping table se saare WBS uthakar summary aur mapping ke merged_wbs column ko update karega
-            await syncProjectWbs(p.loa_id, p.loa_name);
-        }
-
-        await connection.commit();
-        res.status(200).json({ message: "Database Cleaned & Synced Successfully!" });
-    } catch (error) {
-        await connection.rollback();
-        res.status(500).json({ error: error.message });
-    } finally {
-        connection.release();
     }
 };

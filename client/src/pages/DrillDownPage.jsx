@@ -57,7 +57,8 @@ const DrillDownPage = () => {
         return filteredData.reduce((sum, item) => {
             const val = field === "ptd"
                 ? parseFloat(item.ptd_val || 0)
-                : parseFloat(item.oc_val || 0);
+                // 🔥 NAYA: oc_val ki jagah open_commitment aa gaya
+                : parseFloat(item.open_commitment || 0);
             return sum + val;
         }, 0);
     };
@@ -216,8 +217,8 @@ const DrillDownPage = () => {
                             {currentRows.length > 0 ? currentRows.map((item, index) => (
                                 <tr key={index} className="border-b border-slate-50 hover:bg-slate-50 transition-colors">
                                     {Object.entries(item).map(([key, val], i) => {
-                                        // 💡 Target Column Highlight Logic
-                                        const isTargetColumn = key === 'ptd_val' || key === 'oc_val';
+                                        // 💡 🔥 NAYA: oc_val ki jagah open_commitment aa gaya
+                                        const isTargetColumn = key === 'ptd_val' || key === 'open_commitment';
                                         return (
                                             <td 
                                                 key={i} 

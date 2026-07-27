@@ -494,19 +494,36 @@ exports.getDrillDownData = async (req, res) => {
             return res.status(400).json({ error: "Missing LOA ID or Category" });
         }
 
-        // 🔥 Mapping to your PHYSICAL Tables
         const tableName = (field === 'ptd') ? 't_cj74_transformed' : 't_cji5_transformed';
         
-        // LoA ID aur Category selection
-        let sql = `SELECT * FROM ${tableName} WHERE loa_id = ? AND categories = ?`;
+        // 🔥 NAYA LOGIC: Select strictly required columns & Rename them using 'AS'
+        let selectColumns = "";
+        if (field === 'ptd') {
+            selectColumns = `
+                sap_wbs AS wbs, year, per, cost_element, cost_element_name, ptd_val, 
+                period, cocd, proj_def, profit_ctr, name2, tcurr, value_trancurr, 
+                obcur, val_in_obj_crcy, rcurr, cost_element_descr, refdocno, document_no, 
+                doc_date, postg_date, offst_acct, material, material_description, 
+                name1, name22, created_on, user_name, pur_doc, quantity, 
+                purchase_order_text, loa_id
+            `;
+        } else {
+            selectColumns = `
+                project_def, sap_wbs AS wbs, refdocno, item, co_object_name, supplier, 
+                name, exch_rate, year, per, cost_element, cost_element_descr, 
+                matl_group, material, description, user_name, docc, quantity, 
+                qty_plan, debit_date, doc_date, cocode, report_currency, tcurr, 
+                value_tcur, obj_curr, value_in_obj_crcy, oc_val AS open_commitment, loa_id
+            `;
+        }
+        
+        let sql = `SELECT ${selectColumns} FROM ${tableName} WHERE loa_id = ? AND categories = ?`;
         let params = [loaId, category];
 
-        // Dynamic Filters logic
         const dynamicFilters = buildDrilldownConditions(filters, tableName);
         sql += dynamicFilters.sql;
         params.push(...dynamicFilters.params);
 
-        // Efficiency limit
         sql += ` LIMIT 10000`; 
 
         const [rows] = await db.query(sql, params);
@@ -526,20 +543,39 @@ exports.exportDrillDown = async (req, res) => {
 
         if (!loa_id || !categories) return res.status(400).send("Missing required parameters");
 
-        // Decode URL JSON filter object
         let parsedFilters = {};
         try { parsedFilters = JSON.parse(filters || '{}'); } catch(e) {}
 
         const tableName = field === 'ptd' ? 't_cj74_transformed' : 't_cji5_transformed';
         
-        let sql = `SELECT * FROM ${tableName} WHERE loa_id = ? AND categories = ?`;
+        // 🔥 SAME SELECT LOGIC AS FETCH
+        let selectColumns = "";
+        if (field === 'ptd') {
+            selectColumns = `
+                sap_wbs AS wbs, year, per, cost_element, cost_element_name, ptd_val, 
+                period, cocd, proj_def, profit_ctr, name2, tcurr, value_trancurr, 
+                obcur, val_in_obj_crcy, rcurr, cost_element_descr, refdocno, document_no, 
+                doc_date, postg_date, offst_acct, material, material_description, 
+                name1, name22, created_on, user_name, pur_doc, quantity, 
+                purchase_order_text, loa_id
+            `;
+        } else {
+            selectColumns = `
+                project_def, sap_wbs AS wbs, refdocno, item, co_object_name, supplier, 
+                name, exch_rate, year, per, cost_element, cost_element_descr, 
+                matl_group, material, description, user_name, docc, quantity, 
+                qty_plan, debit_date, doc_date, cocode, report_currency, tcurr, 
+                value_tcur, obj_curr, value_in_obj_crcy, oc_val AS open_commitment, loa_id
+            `;
+        }
+        
+        let sql = `SELECT ${selectColumns} FROM ${tableName} WHERE loa_id = ? AND categories = ?`;
         let params = [loa_id, categories];
 
         const dynamicFilters = buildDrilldownConditions(parsedFilters, tableName);
         sql += dynamicFilters.sql;
         params.push(...dynamicFilters.params);
 
-        // sql += ` ORDER BY year DESC, CAST(per AS UNSIGNED) DESC`;
         sql += ` ORDER BY year DESC, per DESC`;
 
         const [rows] = await db.query(sql, params);
@@ -1112,11 +1148,22 @@ exports.fullRefresh = async (req, res) => {
         await db.query(`
             CREATE TABLE stg_cj74_agg AS
             SELECT
-                TRIM(REPLACE(REPLACE(REPLACE(object_1,' ',''),'\n',''),'\r','')) COLLATE utf8mb4_general_ci as clean_wbs,
+                TRIM(REPLACE(REPLACE(REPLACE(object_1,' ',''),'\\n',''),'\\r','')) COLLATE utf8mb4_general_ci as clean_wbs,
                 cost_element,
                 TRIM(CONCAT(year,'-P',LPAD(CAST(per AS UNSIGNED),3,'0'))) as period,
-                SUM(val_in_rc / 1000) as ptd_val
-            FROM cj74_new GROUP BY 1, 2, 3
+                -- 🔥 THE FIX: Super Strict Regex for Numbers
+                SUM(
+                    CASE 
+                        -- Check karta hai ki kya ye ek valid positive ya negative number hai
+                        WHEN TRIM(val_in_rc) REGEXP '^[+-]?[0-9]*\\\\.?[0-9]+$' THEN CAST(TRIM(val_in_rc) AS DECIMAL(18,2))
+                        ELSE 0 
+                    END / 1000
+                ) as ptd_val
+            FROM cj74_new 
+            WHERE year IS NOT NULL AND per IS NOT NULL 
+              AND TRIM(year) != 'NULL' AND TRIM(per) != 'NULL'
+              AND TRIM(year) != '' AND TRIM(per) != ''
+            GROUP BY 1, 2, 3
         `);
         await db.query("ALTER TABLE stg_cj74_agg ADD INDEX (clean_wbs), ADD INDEX (cost_element)");
 
@@ -1125,10 +1172,17 @@ exports.fullRefresh = async (req, res) => {
         await db.query(`
             CREATE TABLE stg_cji5_agg AS
             SELECT
-                TRIM(REPLACE(REPLACE(REPLACE(wbs_element,' ',''),'\n',''),'\r','')) COLLATE utf8mb4_general_ci as clean_wbs,
+                TRIM(REPLACE(REPLACE(REPLACE(wbs_element,' ',''),'\\n',''),'\\r','')) COLLATE utf8mb4_general_ci as clean_wbs,
                 TRIM(cost_element) COLLATE utf8mb4_general_ci as cost_element,
-                SUM(val_in_rep_cur / 1000) as oc_val
-            FROM cji5_new GROUP BY 1, 2
+                -- 🔥 THE FIX: Super Strict Regex for OC Data as well
+                SUM(
+                    CASE 
+                        WHEN TRIM(val_in_rep_cur) REGEXP '^[+-]?[0-9]*\\\\.?[0-9]+$' THEN CAST(TRIM(val_in_rep_cur) AS DECIMAL(18,2))
+                        ELSE 0 
+                    END / 1000
+                ) as oc_val
+            FROM cji5_new 
+            GROUP BY 1, 2
         `);
         await db.query("ALTER TABLE stg_cji5_agg ADD INDEX (clean_wbs), ADD INDEX (cost_element)");
 
@@ -1200,6 +1254,9 @@ exports.fullRefresh = async (req, res) => {
         `;
         
         await db.query(finalInsertSql);
+
+        // Phase 5: Drilldown Data Export
+        await exports.syncDrilldownTables();
         res.status(200).json({ message: "Sync Success! Everything is now accurate and error-free." });
 
     } catch (error) {
@@ -2120,4 +2177,89 @@ exports.uploadERPResource = async (req, res) => {
       message: 'Upload failed: ' + err.message
     });
   }
+};
+
+
+// ==========================================
+// DRILLDOWN TABLES SYNC HELPER (SUPER FAST DIRECT SQL & SAFE)
+// ==========================================
+exports.syncDrilldownTables = async () => {
+    try {
+        console.log("🔄 Syncing Drilldown Tables (Bypassing slow views)...");
+
+        // 1. FAST PTD (CJ74) Drilldown Table Sync (With Garbage Filter & Regex)
+        await db.query("TRUNCATE TABLE t_cj74_transformed");
+        await db.query(`
+            INSERT INTO t_cj74_transformed (
+                id, sap_wbs, year, per, cost_element, cost_element_name, ptd_val, period, cocd, proj_def, 
+                profit_ctr, name2, tcurr, value_trancurr, obcur, val_in_obj_crcy, val_in_rc, rcurr, 
+                cost_element_descr, refdocno, document_no, doc_date, postg_date, offst_acct, 
+                name_of_offsetting_account, material, material_description, name1, name22, created_on, 
+                origin_form, user_name, pur_doc, quantity, purchase_order_text, loa_id, wbs_string, 
+                wbs_type, wbs_description, categories, cost_revenue
+            )
+            SELECT 
+                c.id, 
+                TRIM(REPLACE(REPLACE(REPLACE(c.object_1,' ',''),'\\n',''),'\\r','')) AS sap_wbs, 
+                c.year, c.per, c.cost_element, c.cost_element_name, 
+                -- 🔥 THE FIX: Safe Decimal Regex for PTD
+                (CASE WHEN TRIM(c.val_in_rc) REGEXP '^[+-]?[0-9]*\\\\.?[0-9]+$' THEN CAST(TRIM(c.val_in_rc) AS DECIMAL(18,2)) ELSE 0 END) / 1000 AS ptd_val, 
+                TRIM(CONCAT(c.year,'-P',LPAD(CAST(c.per AS UNSIGNED),3,'0'))) AS period, 
+                c.cocd, c.proj_def, c.profit_ctr, c.name2, c.tcurr, c.value_trancurr, c.obcur, 
+                c.val_in_obj_crcy, c.val_in_rc, c.rcurr, c.cost_element_descr, c.refdocno, 
+                c.document_no, c.doc_date, c.postg_date, c.offst_acct, c.name_of_offsetting_account, 
+                c.material, c.material_description, c.name1, c.name22, c.created_on, c.frm, 
+                c.user_name, c.pur_doc, c.quantity, c.purchase_order_text, 
+                m.loa_id, m.merged_wbs, m.wbs_type, m.wbs_description, 
+                cm.categories, cm.cost_revenue
+            FROM cj74_new c
+            LEFT JOIN (
+                SELECT DISTINCT single_wbs, loa_id, merged_wbs, wbs_type, wbs_description
+                FROM wbs_loa_id_mapping1
+            ) m ON TRIM(REPLACE(REPLACE(REPLACE(c.object_1,' ',''),'\\n',''),'\\r','')) = m.single_wbs
+            LEFT JOIN (
+                SELECT DISTINCT cost_element, categories, cost_revenue
+                FROM cost_mapping
+            ) cm ON TRIM(c.cost_element) = TRIM(cm.cost_element)
+            -- 🔥 THE FIX: Ignore Garbage Dates
+            WHERE c.year IS NOT NULL AND c.per IS NOT NULL 
+              AND TRIM(c.year) != 'NULL' AND TRIM(c.per) != 'NULL'
+              AND TRIM(c.year) != '' AND TRIM(c.per) != ''
+        `);
+        console.log("✅ CJ74 Drilldown Table Synced!");
+
+        // 2. FAST OC (CJI5) Drilldown Table Sync (With Regex)
+        await db.query("TRUNCATE TABLE t_cji5_transformed");
+        await db.query(`
+            INSERT INTO t_cji5_transformed (
+                id, project_def, sap_wbs, refdocno, item, co_object_name, supplier, name, exch_rate, 
+                year, per, cost_element, cost_element_descr, matl_group, material, description, 
+                user_name, docc, quantity, qty_plan, debit_date, doc_date, cocode, report_currency, 
+                val_in_rep_cur, tcurr, value_tcur, obj_curr, value_in_obj_crcy, oc_val, loa_id, wbs_type, categories
+            )
+            SELECT 
+                c.id, c.project_def, TRIM(c.wbs_element) AS sap_wbs, c.refdocno, c.item, 
+                c.co_object_name, c.supplier, c.name, c.exch_rate, c.year, c.per, c.cost_element, 
+                c.cost_element_descr, c.matl_group, c.material, c.description, c.user_name, c.docc, 
+                c.quantity, c.qty_plan, c.debit_date, c.doc_date, c.cocode, c.report_currency, 
+                c.val_in_rep_cur, c.tcurr, c.value_tcur, c.obj_curr, c.value_in_obj_crcy, 
+                -- 🔥 THE FIX: Safe Decimal Regex for OC
+                (CASE WHEN TRIM(c.val_in_rep_cur) REGEXP '^[+-]?[0-9]*\\\\.?[0-9]+$' THEN CAST(TRIM(c.val_in_rep_cur) AS DECIMAL(18,2)) ELSE 0 END) / 1000 AS oc_val, 
+                m.loa_id, m.wbs_type, cm.categories
+            FROM cji5_new c
+            LEFT JOIN (
+                SELECT DISTINCT single_wbs, loa_id, wbs_type
+                FROM wbs_loa_id_mapping1
+            ) m ON TRIM(c.wbs_element) = m.single_wbs
+            LEFT JOIN (
+                SELECT DISTINCT cost_element, categories
+                FROM cost_mapping
+            ) cm ON TRIM(c.cost_element) = TRIM(cm.cost_element)
+        `);
+        console.log("✅ CJI5 Drilldown Table Synced!");
+
+        console.log("🚀 All Drilldown Tables Ready for UI!");
+    } catch (err) {
+        console.error("❌ Error in syncing Drilldown tables:", err);
+    }
 };
